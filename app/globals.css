@@ -47,6 +47,32 @@ textarea {
   font: inherit;
 }
 
+button {
+  transition:
+    transform 140ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+.pressable {
+  transition:
+    transform 140ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.pressable:active {
+  transform: scale(0.98);
+}
+
 ::selection {
   background: rgba(15, 118, 110, 0.18);
 }

@@ -54,9 +54,8 @@ export default function LoginPage() {
               Log in to AssistDesk
             </h1>
             <p className="mt-4 max-w-md text-sm leading-7 text-slate-400">
-              Use the temporary hardcoded credentials for the first dashboard
-              milestone. Once database auth is added, we will replace this flow
-              with proper user accounts.
+              Sign in with your registered account or use the demo admin user to
+              access the dashboard shell.
             </p>
 
             <div className="mt-8 space-y-4">

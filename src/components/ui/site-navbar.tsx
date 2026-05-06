@@ -33,13 +33,13 @@ export function SiteNavbar() {
         <div className="flex items-center gap-3">
           <Link
             href="/login"
-            className="inline-flex min-w-[104px] items-center justify-center rounded-xl border border-white/15 bg-black px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/5"
+            className="pressable inline-flex min-w-[104px] items-center justify-center rounded-xl border border-white/15 bg-black px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/5"
           >
             Login
           </Link>
           <Link
             href="/signup"
-            className="inline-flex min-w-[112px] items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-[#050505] transition hover:bg-neutral-200"
+            className="pressable inline-flex min-w-[112px] items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-[#050505] transition hover:bg-neutral-200"
           >
             Sign Up
           </Link>

@@ -75,19 +75,11 @@ export async function POST(request: Request) {
     },
   });
 
-  await prisma.inbox.create({
-    data: {
-      workspaceId: workspace.id,
-      name: "Support",
-      emailPrefix: `${workspaceSlug}.support`,
-      ticketPrefix: "AD",
-      autoReplyEnabled: true,
-      senderEmail: email,
-    },
-  });
-
   const session = await createSession(user.id);
-  const response = NextResponse.json({ success: true });
+  const response = NextResponse.json({
+    success: true,
+    redirectTo: "/setup",
+  });
 
   response.cookies.set(AUTH_COOKIE_NAME, session.token, {
     httpOnly: true,

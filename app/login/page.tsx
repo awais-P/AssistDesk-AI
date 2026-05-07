@@ -25,7 +25,10 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as {
+        error?: string;
+        redirectTo?: string;
+      };
 
       if (!response.ok) {
         setError(data.error ?? "Login failed. Please try again.");
@@ -33,7 +36,7 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.assign("/dashboard/tickets");
+      window.location.assign(data.redirectTo ?? "/dashboard/tickets");
     } catch {
       setError("Something went wrong during login. Please try again.");
       setIsLoading(false);

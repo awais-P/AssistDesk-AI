@@ -26,7 +26,10 @@ export default function SignupPage() {
         body: JSON.stringify({ fullName, email, password }),
       });
 
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as {
+        error?: string;
+        redirectTo?: string;
+      };
 
       if (!response.ok) {
         setError(data.error ?? "Signup failed. Please try again.");
@@ -34,7 +37,7 @@ export default function SignupPage() {
         return;
       }
 
-      window.location.assign("/dashboard/tickets");
+      window.location.assign(data.redirectTo ?? "/setup");
     } catch {
       setError("Something went wrong during signup. Please try again.");
       setIsLoading(false);

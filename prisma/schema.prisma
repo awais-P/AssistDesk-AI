@@ -65,6 +65,11 @@ enum ChannelType {
   EMAIL
 }
 
+enum AutomationTrigger {
+  INCOMING
+  SCHEDULED
+}
+
 enum ChatSessionStatus {
   ACTIVE
   ESCALATED
@@ -96,6 +101,7 @@ model Workspace {
   settings         WorkspaceSetting?
   knowledgeSources KnowledgeSource[]
   chatSessions     ChatSession[]
+  agentAutomations AgentAutomation[]
 }
 
 model User {
@@ -164,9 +170,31 @@ model AIAgent {
   inbox               Inbox?              @relation(fields: [inboxId], references: [id], onDelete: SetNull)
   chatbots            Chatbot[]
   knowledgeSources    KnowledgeSource[]
+  automations         AgentAutomation[]
 
   @@index([workspaceId])
   @@index([inboxId])
+}
+
+model AgentAutomation {
+  id          String            @id @default(cuid())
+  workspaceId String
+  agentId     String
+  key         String
+  title       String
+  description String
+  triggerType AutomationTrigger
+  summary     String?
+  isEnabled   Boolean           @default(false)
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent       AIAgent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, key])
+  @@index([workspaceId])
+  @@index([agentId])
 }
 
 model Chatbot {
@@ -200,6 +228,7 @@ model KnowledgeSource {
   sourceUrl    String?
   fileName     String?
   mimeType     String?
+  rawText      String?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   lastSyncedAt DateTime?

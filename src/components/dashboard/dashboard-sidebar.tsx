@@ -14,6 +14,7 @@ const iconMap: Record<string, string> = {
   Logs: "L",
   Inboxes: "I",
   Chatbots: "B",
+  "Knowledge Base": "KB",
   "Canned Responses": "T",
   Tags: "#",
   "API Keys": "K",

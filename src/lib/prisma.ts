@@ -23,7 +23,9 @@ function createPrismaClient() {
 const existingClient = global.prisma;
 
 export const prisma =
-  existingClient && "session" in existingClient
+  existingClient &&
+  "session" in existingClient &&
+  "agentAutomation" in existingClient
     ? existingClient
     : createPrismaClient();
 

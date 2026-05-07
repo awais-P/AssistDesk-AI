@@ -81,6 +81,15 @@ export const dashboardItems: DashboardItem[] = [
     group: "Setup",
   },
   {
+    href: "/dashboard/knowledge-base",
+    title: "Knowledge Base",
+    section: "knowledge-base",
+    description:
+      "Organize training data, manual notes, and website content for assistant knowledge.",
+    moduleLabel: "Module 10 - Knowledge Base Management",
+    group: "Setup",
+  },
+  {
     href: "/dashboard/canned-responses",
     title: "Canned Responses",
     section: "canned-responses",

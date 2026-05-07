@@ -6,6 +6,7 @@ import {
 } from "@/src/lib/auth";
 import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
+import { getWorkspaceSetupRedirect, getWorkspaceSetupState } from "@/src/lib/setup";
 
 type LoginPayload = {
   email?: string;
@@ -40,8 +41,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const workspaceState = await getWorkspaceSetupState(user.workspaceId);
+  const redirectTo = getWorkspaceSetupRedirect(workspaceState);
   const session = await createSession(user.id);
-  const response = NextResponse.json({ success: true });
+  const response = NextResponse.json({ success: true, redirectTo });
 
   response.cookies.set(AUTH_COOKIE_NAME, session.token, {
     httpOnly: true,

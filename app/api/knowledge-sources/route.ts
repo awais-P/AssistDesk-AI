@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
+import { fetchKnowledgeSourceText } from "@/src/lib/knowledge-runtime";
 import { prisma } from "@/src/lib/prisma";
 
 type KnowledgeSourcePayload = {
@@ -85,15 +86,34 @@ export async function POST(request: Request) {
     );
   }
 
+  let sourceStatus: "SYNCED" | "FAILED" = "SYNCED";
+  let rawText = body.rawText?.trim() || null;
+
+  if (type === "URL") {
+    try {
+      rawText = await fetchKnowledgeSourceText(body.sourceUrl!.trim());
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to fetch readable content from this URL.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   const knowledgeSource = await prisma.knowledgeSource.create({
     data: {
       workspaceId: session.user.workspaceId,
       agentId: body.agentId || null,
       title,
       type,
-      status: "SYNCED",
+      status: sourceStatus,
       sourceUrl: body.sourceUrl?.trim() || null,
-      rawText: body.rawText?.trim() || null,
+      rawText,
       fileName: body.fileName?.trim() || null,
       mimeType: body.mimeType?.trim() || null,
       lastSyncedAt: new Date(),

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import { processIncomingTicket } from "@/src/lib/ticket-workflow";
 import { TicketPriority, TicketSource, TicketStatus } from "@/app/generated/prisma/enums";
 
 type CreateTicketPayload = {
@@ -73,6 +74,29 @@ export async function POST(request: Request) {
       source:
         body.source && body.source in TicketSource ? body.source : "WEB",
     },
+  });
+
+  const initialRequest = [subject, body.previewText?.trim()]
+    .filter(Boolean)
+    .join("\n\n");
+
+  if (initialRequest) {
+    await prisma.ticketMessage.create({
+      data: {
+        workspaceId: session.user.workspaceId,
+        ticketId: ticket.id,
+        sender: "USER",
+        content: initialRequest,
+      },
+    });
+  }
+
+  await processIncomingTicket(ticket.id);
+
+  const processedTicket = await prisma.ticket.findUnique({
+    where: {
+      id: ticket.id,
+    },
     include: {
       assignee: true,
       ticketTags: {
@@ -83,5 +107,5 @@ export async function POST(request: Request) {
     },
   });
 
-  return NextResponse.json({ ticket });
+  return NextResponse.json({ ticket: processedTicket });
 }

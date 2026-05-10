@@ -5,9 +5,7 @@ import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 
 export default async function TicketsPage() {
-  await ensureDemoData();
-
-  const session = await getCurrentSession();
+  const [, session] = await Promise.all([ensureDemoData(), getCurrentSession()]);
 
   if (!session) {
     redirect("/login");

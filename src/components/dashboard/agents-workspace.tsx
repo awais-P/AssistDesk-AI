@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  agentModelOptions,
   agentProviderOptions,
   defaultAgentSystemPrompt,
   formatAgentRuntimeLabel,
   formatAgentShortId,
+  getDefaultModelForProvider,
+  getModelsForProvider,
+  usesCustomApiKey,
 } from "@/src/lib/agent-config";
 
 type AgentItem = {
@@ -16,6 +18,7 @@ type AgentItem = {
   name: string;
   provider: string;
   model: string;
+  apiKey: string | null;
   systemPrompt: string | null;
   inboxId: string | null;
   inboxName: string | null;
@@ -38,7 +41,8 @@ type AgentsWorkspaceProps = {
 const emptyAgentForm = {
   name: "",
   provider: "Default",
-  model: "meta/llama-3.3-70b-instruct-fp8-fast",
+  model: getDefaultModelForProvider("Default"),
+  apiKey: "",
   inboxId: "",
   temperature: 0.7,
   confidenceThreshold: 0.5,
@@ -65,6 +69,10 @@ export function AgentsWorkspace({
   const [success, setSuccess] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
+  const availableModels = useMemo(
+    () => getModelsForProvider(form.provider),
+    [form.provider],
+  );
 
   useEffect(() => {
     function handleWindowClick() {
@@ -120,6 +128,7 @@ export function AgentsWorkspace({
           name: form.name,
           provider: form.provider,
           model: form.model,
+          apiKey: usesCustomApiKey(form.provider) ? form.apiKey : null,
           inboxId: form.inboxId || null,
           temperature: form.temperature,
           confidenceThreshold: form.confidenceThreshold,
@@ -135,6 +144,7 @@ export function AgentsWorkspace({
           name: string;
           provider: string;
           model: string;
+          apiKey: string | null;
           systemPrompt: string | null;
           inboxId: string | null;
           temperature: number;
@@ -157,6 +167,7 @@ export function AgentsWorkspace({
         name: data.agent.name,
         provider: data.agent.provider,
         model: data.agent.model,
+        apiKey: data.agent.apiKey,
         systemPrompt: data.agent.systemPrompt,
         inboxId: data.agent.inboxId,
         inboxName: data.agent.inbox?.name ?? null,
@@ -453,16 +464,18 @@ export function AgentsWorkspace({
                   <select
                     value={form.provider}
                     onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        provider: event.target.value,
-                      }))
-                    }
+                    setForm((current) => ({
+                      ...current,
+                      provider: event.target.value,
+                      model: getDefaultModelForProvider(event.target.value),
+                      apiKey: "",
+                    }))
+                  }
                     className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none"
                   >
                     {agentProviderOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -482,14 +495,42 @@ export function AgentsWorkspace({
                     }
                     className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none"
                   >
-                    {agentModelOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                    {availableModels.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              {usesCustomApiKey(form.provider) ? (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-300">
+                    API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={form.apiKey}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        apiKey: event.target.value,
+                      }))
+                    }
+                    placeholder="Paste your provider API key"
+                    className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none transition focus:border-white"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    This key will be used only for this agent&apos;s selected provider.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-[#101010] px-4 py-3 text-xs text-slate-400">
+                  Managed default models use server-side keys configured in your
+                  environment.
+                </div>
+              )}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-300">

@@ -102,6 +102,8 @@ model Workspace {
   knowledgeSources KnowledgeSource[]
   chatSessions     ChatSession[]
   agentAutomations AgentAutomation[]
+  ticketMessages   TicketMessage[]
+  automationLogs   AutomationLog[]
 }
 
 model User {
@@ -160,6 +162,7 @@ model AIAgent {
   name                String
   provider            String              @default("Groq")
   model               String              @default("llama-3.3-70b-versatile")
+  apiKey              String?
   systemPrompt        String?
   temperature         Float               @default(0.7)
   confidenceThreshold Float               @default(0.5)
@@ -171,6 +174,7 @@ model AIAgent {
   chatbots            Chatbot[]
   knowledgeSources    KnowledgeSource[]
   automations         AgentAutomation[]
+  logs                AutomationLog[]
 
   @@index([workspaceId])
   @@index([inboxId])
@@ -260,11 +264,27 @@ model Ticket {
   assignee      User?          @relation("AssignedTickets", fields: [assigneeId], references: [id], onDelete: SetNull)
   createdBy     User?          @relation("CreatedTickets", fields: [createdById], references: [id], onDelete: SetNull)
   ticketTags    TicketTag[]
+  messages      TicketMessage[]
+  logs          AutomationLog[]
 
   @@unique([workspaceId, ticketNumber])
   @@index([workspaceId])
   @@index([inboxId])
   @@index([assigneeId])
+}
+
+model TicketMessage {
+  id          String        @id @default(cuid())
+  workspaceId String
+  ticketId    String
+  sender      MessageSender
+  content     String
+  createdAt   DateTime      @default(now())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ticket      Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([ticketId])
 }
 
 model Tag {
@@ -358,4 +378,26 @@ model ChatMessage {
   session    ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
+}
+
+model AutomationLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  ticketId    String?
+  agentId     String?
+  action      String
+  status      String
+  model       String?
+  tokens      Int       @default(0)
+  durationMs  Int       @default(0)
+  summary     String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ticket      Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  agent       AIAgent?  @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([ticketId])
+  @@index([agentId])
+  @@index([createdAt])
 }

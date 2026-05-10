@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
   defaultAgentSystemPrompt,
-  agentModelOptions,
+  getDefaultModelForProvider,
+  getModelsForProvider,
+  usesCustomApiKey,
 } from "@/src/lib/agent-config";
 import { prisma } from "@/src/lib/prisma";
 
@@ -12,6 +14,7 @@ type AgentPayload = {
   inboxId?: string | null;
   provider?: string;
   model?: string;
+  apiKey?: string | null;
   systemPrompt?: string;
   confidenceThreshold?: number;
   temperature?: number;
@@ -49,10 +52,34 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as AgentPayload;
   const name = body.name?.trim();
+  const provider = body.provider?.trim() || "Default";
+  const model = body.model?.trim() || getDefaultModelForProvider(provider);
+  const availableModels = getModelsForProvider(provider);
 
   if (!name) {
     return NextResponse.json(
       { error: "Agent name is required." },
+      { status: 400 },
+    );
+  }
+
+  if (availableModels.length === 0) {
+    return NextResponse.json(
+      { error: "Selected provider is not supported." },
+      { status: 400 },
+    );
+  }
+
+  if (!availableModels.some((item) => item.value === model)) {
+    return NextResponse.json(
+      { error: "Selected model is not valid for this provider." },
+      { status: 400 },
+    );
+  }
+
+  if (usesCustomApiKey(provider) && !body.apiKey?.trim()) {
+    return NextResponse.json(
+      { error: "API key is required for this provider." },
       { status: 400 },
     );
   }
@@ -80,8 +107,9 @@ export async function POST(request: Request) {
     workspaceId: session.user.workspaceId,
     inboxId: body.inboxId || null,
     name,
-    provider: body.provider?.trim() || "Default",
-    model: body.model?.trim() || agentModelOptions[0],
+    provider,
+    model,
+    apiKey: usesCustomApiKey(provider) ? body.apiKey?.trim() || null : null,
     systemPrompt: body.systemPrompt?.trim() || defaultAgentSystemPrompt,
     confidenceThreshold:
       typeof body.confidenceThreshold === "number"

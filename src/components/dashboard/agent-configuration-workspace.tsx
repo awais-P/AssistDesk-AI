@@ -3,11 +3,13 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  agentModelOptions,
   agentProviderOptions,
   defaultAgentSystemPrompt,
   formatAgentRuntimeLabel,
   formatAgentShortId,
+  getDefaultModelForProvider,
+  getModelsForProvider,
+  usesCustomApiKey,
 } from "@/src/lib/agent-config";
 
 type AgentDetail = {
@@ -15,6 +17,7 @@ type AgentDetail = {
   name: string;
   provider: string;
   model: string;
+  apiKey: string | null;
   systemPrompt: string | null;
   temperature: number;
   confidenceThreshold: number;
@@ -240,6 +243,7 @@ export function AgentConfigurationWorkspace({
     name: initialAgent.name,
     provider: initialAgent.provider,
     model: initialAgent.model,
+    apiKey: initialAgent.apiKey || "",
     confidenceThreshold: initialAgent.confidenceThreshold,
     temperature: initialAgent.temperature,
     systemPrompt: initialAgent.systemPrompt || defaultAgentSystemPrompt,
@@ -279,6 +283,10 @@ export function AgentConfigurationWorkspace({
     useState<AutomationItem | null>(null);
   const [automationDraftDetail, setAutomationDraftDetail] = useState("");
   const [isSavingAutomation, setIsSavingAutomation] = useState(false);
+  const availableSettingsModels = useMemo(
+    () => getModelsForProvider(settings.provider),
+    [settings.provider],
+  );
 
   useEffect(() => {
     function handleWindowClick() {
@@ -420,6 +428,7 @@ export function AgentConfigurationWorkspace({
           name: settings.name,
           provider: settings.provider,
           model: settings.model,
+          apiKey: usesCustomApiKey(settings.provider) ? settings.apiKey : null,
           confidenceThreshold: settings.confidenceThreshold,
           temperature: settings.temperature,
           systemPrompt: settings.systemPrompt,
@@ -434,6 +443,7 @@ export function AgentConfigurationWorkspace({
           name: string;
           provider: string;
           model: string;
+          apiKey: string | null;
           systemPrompt: string | null;
           temperature: number;
           confidenceThreshold: number;
@@ -452,6 +462,7 @@ export function AgentConfigurationWorkspace({
         name: data.agent.name,
         provider: data.agent.provider,
         model: data.agent.model,
+        apiKey: data.agent.apiKey,
         systemPrompt: data.agent.systemPrompt || defaultAgentSystemPrompt,
         temperature: data.agent.temperature,
         confidenceThreshold: data.agent.confidenceThreshold,
@@ -463,6 +474,7 @@ export function AgentConfigurationWorkspace({
         name: nextAgent.name,
         provider: nextAgent.provider,
         model: nextAgent.model,
+        apiKey: nextAgent.apiKey || "",
         confidenceThreshold: nextAgent.confidenceThreshold,
         temperature: nextAgent.temperature,
         systemPrompt: nextAgent.systemPrompt,
@@ -476,13 +488,14 @@ export function AgentConfigurationWorkspace({
   }
 
   function handleResetSettings() {
-    setSettings({
-      name: agent.name,
-      provider: agent.provider,
-      model: agent.model,
-      confidenceThreshold: agent.confidenceThreshold,
-      temperature: agent.temperature,
-      systemPrompt: agent.systemPrompt,
+      setSettings({
+        name: agent.name,
+        provider: agent.provider,
+        model: agent.model,
+        apiKey: agent.apiKey || "",
+        confidenceThreshold: agent.confidenceThreshold,
+        temperature: agent.temperature,
+        systemPrompt: agent.systemPrompt,
     });
     setSettingsError("");
     setSettingsMessage("");
@@ -505,20 +518,44 @@ export function AgentConfigurationWorkspace({
     setPlaygroundInput("");
     setIsSendingMessage(true);
 
-    const sourceContext = sources[0]?.title
-      ? `I would answer using the knowledge from "${sources[0].title}".`
-      : "This agent does not have a trained source yet, so this is a prompt-only response.";
+    try {
+      const response = await fetch(`/api/ai-agents/${agent.id}/playground`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: trimmedInput,
+        }),
+      });
 
-    const agentReply: PlaygroundMessage = {
-      id: `${Date.now()}-assistant`,
-      sender: "assistant",
-      content: `${sourceContext} You asked: "${trimmedInput}".`,
-    };
+      const data = (await response.json()) as {
+        error?: string;
+        reply?: string;
+      };
 
-    setTimeout(() => {
+      const agentReply: PlaygroundMessage = {
+        id: `${Date.now()}-assistant`,
+        sender: "assistant",
+        content:
+          response.ok && data.reply
+            ? data.reply
+            : data.error ?? "Unable to test the agent right now.",
+      };
+
       setPlaygroundMessages((current) => [...current, agentReply]);
+    } catch {
+      setPlaygroundMessages((current) => [
+        ...current,
+        {
+          id: `${Date.now()}-assistant`,
+          sender: "assistant",
+          content: "Something went wrong while testing the agent.",
+        },
+      ]);
+    } finally {
       setIsSendingMessage(false);
-    }, 400);
+    }
   }
 
   function handleConfigureAutomation(item: AutomationItem) {
@@ -1391,13 +1428,15 @@ export function AgentConfigurationWorkspace({
               setSettings((current) => ({
                 ...current,
                 provider: event.target.value,
+                model: getDefaultModelForProvider(event.target.value),
+                apiKey: "",
               }))
             }
             className="w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-sm text-white outline-none"
           >
             {agentProviderOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -1417,14 +1456,43 @@ export function AgentConfigurationWorkspace({
             }
             className="w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-sm text-white outline-none"
           >
-            {agentModelOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
+            {availableSettingsModels.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
         </div>
       </div>
+
+      {usesCustomApiKey(settings.provider) ? (
+        <div>
+          <label className="mb-2 block text-sm font-medium text-white">
+            API Key
+          </label>
+          <input
+            type="password"
+            value={settings.apiKey}
+            onChange={(event) =>
+              setSettings((current) => ({
+                ...current,
+                apiKey: event.target.value,
+              }))
+            }
+            placeholder="Paste your provider API key"
+            className="w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-sm text-white outline-none transition focus:border-white"
+          />
+          <p className="mt-2 text-sm text-slate-400">
+            This key is stored for this agent so its Playground and ticket
+            automations can call the selected provider.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-white/10 bg-[#101010] px-4 py-3 text-sm text-slate-400">
+          Default provider models use server-side managed keys configured in
+          your environment.
+        </div>
+      )}
 
       <div>
         <div className="mb-2 flex items-center justify-between">

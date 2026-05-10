@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 
@@ -80,7 +81,7 @@ export async function createSession(userId: string) {
   return { token, expiresAt };
 }
 
-export async function getCurrentSession() {
+export const getCurrentSession = cache(async function getCurrentSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
 
@@ -108,7 +109,7 @@ export async function getCurrentSession() {
   }
 
   return session;
-}
+});
 
 export async function clearCurrentSession() {
   const cookieStore = await cookies();

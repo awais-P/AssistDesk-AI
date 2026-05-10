@@ -1,7 +1,11 @@
 import { hashPassword } from "./auth";
 import { prisma } from "./prisma";
 
-export async function ensureDemoData() {
+declare global {
+  var assistdeskDemoDataPromise: Promise<void> | undefined;
+}
+
+async function seedDemoData() {
   let workspace = await prisma.workspace.findFirst({
     where: {
       slug: "assistdesk-demo",
@@ -103,6 +107,23 @@ export async function ensureDemoData() {
     });
   }
 
+  const workspaceSetting = await prisma.workspaceSetting.findUnique({
+    where: {
+      workspaceId: workspace.id,
+    },
+  });
+
+  if (!workspaceSetting) {
+    await prisma.workspaceSetting.create({
+      data: {
+        workspaceId: workspace.id,
+        theme: "dark",
+        timezone: "Asia/Karachi",
+        supportSignature: "Best regards,\nAssistDesk Support Team",
+      },
+    });
+  }
+
   if (workspace.tags.length === 0) {
     await prisma.tag.createMany({
       data: [
@@ -115,6 +136,31 @@ export async function ensureDemoData() {
           workspaceId: workspace.id,
           name: "web",
           color: "#60a5fa",
+        },
+      ],
+    });
+  }
+
+  const cannedResponseCount = await prisma.cannedResponse.count({
+    where: {
+      workspaceId: workspace.id,
+    },
+  });
+
+  if (cannedResponseCount === 0) {
+    await prisma.cannedResponse.createMany({
+      data: [
+        {
+          workspaceId: workspace.id,
+          title: "ahmad",
+          body: "<p>Hi {{requester.name}}! hope you are doing well.</p>",
+          createdAt: new Date("2026-04-04T15:16:00Z"),
+        },
+        {
+          workspaceId: workspace.id,
+          title: "awais",
+          body: "<p>Hello, Hope you are well.</p>",
+          createdAt: new Date("2026-04-04T15:15:00Z"),
         },
       ],
     });
@@ -198,4 +244,15 @@ export async function ensureDemoData() {
       });
     }
   }
+}
+
+export async function ensureDemoData() {
+  if (!global.assistdeskDemoDataPromise) {
+    global.assistdeskDemoDataPromise = seedDemoData().catch((error) => {
+      global.assistdeskDemoDataPromise = undefined;
+      throw error;
+    });
+  }
+
+  await global.assistdeskDemoDataPromise;
 }

@@ -70,6 +70,7 @@ export default async function AgentDetailPage({
         name: agent.name,
         provider: agent.provider,
         model: agent.model,
+        apiKey: agent.apiKey,
         systemPrompt: agent.systemPrompt,
         temperature: agent.temperature,
         confidenceThreshold: agent.confidenceThreshold,

@@ -39,6 +39,7 @@ export default async function AIAgentsPage() {
         name: agent.name,
         provider: agent.provider,
         model: agent.model,
+        apiKey: agent.apiKey,
         systemPrompt: agent.systemPrompt,
         inboxId: agent.inboxId,
         inboxName: agent.inbox?.name ?? null,

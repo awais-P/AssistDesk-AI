@@ -85,18 +85,25 @@ export async function POST(request: Request) {
     );
   }
 
+  if (type === "FILE" && !body.fileName?.trim()) {
+    return NextResponse.json(
+      { error: "Please enter a file name for the file source." },
+      { status: 400 },
+    );
+  }
+
   const knowledgeSource = await prisma.knowledgeSource.create({
     data: {
       workspaceId: session.user.workspaceId,
       agentId: body.agentId || null,
       title,
       type,
-      status: "SYNCED",
+      status: "PENDING",
       sourceUrl: body.sourceUrl?.trim() || null,
       rawText: body.rawText?.trim() || null,
       fileName: body.fileName?.trim() || null,
       mimeType: body.mimeType?.trim() || null,
-      lastSyncedAt: new Date(),
+      lastSyncedAt: null,
     },
     include: {
       agent: true,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
-import { TicketPriority, TicketSource, TicketStatus } from "@/app/generated/prisma/enums";
+import { TicketPriority, TicketSource, TicketStatus } from "@/src/generated/enums";
 
 type CreateTicketPayload = {
   subject?: string;

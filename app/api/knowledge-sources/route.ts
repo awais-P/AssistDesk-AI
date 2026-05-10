@@ -18,7 +18,7 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
-
+  //TODO is the model made yet?
   const knowledgeSources = await prisma.knowledgeSource.findMany({
     where: {
       workspaceId: session.user.workspaceId,

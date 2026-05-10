@@ -120,12 +120,14 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
   const [typeFilter, setTypeFilter] = useState<(typeof typeOptions)[number]>("ALL");
   const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("ALL");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [createType, setCreateType] = useState<KnowledgeSourceType>("URL");
   const [title, setTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
   const [fileName, setFileName] = useState("");
   const [mimeType, setMimeType] = useState("");
+  const [statusValue, setStatusValue] = useState<SyncStatus>("PENDING");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -193,7 +195,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
     return data.knowledgeSource;
   }
 
-  async function handleCreateSource() {
+  async function handleSaveSource() {
     setError("");
     setIsSaving(true);
 
@@ -218,20 +220,24 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
         return;
       }
 
-      const response = await fetch("/api/knowledge-sources", {
-        method: "POST",
+      const response = await fetch(
+        editingSourceId ? `/api/knowledge-sources/${editingSourceId}` : "/api/knowledge-sources",
+        {
+          method: editingSourceId ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          title,
-          type: createType,
-          sourceUrl: createType === "URL" ? sourceUrl : undefined,
-          rawText: createType === "TEXT" ? rawText : undefined,
-          fileName: createType === "FILE" ? fileName : undefined,
-          mimeType: createType === "FILE" ? mimeType : undefined,
-        }),
-      });
+          body: JSON.stringify({
+            title,
+            type: createType,
+            status: statusValue,
+            sourceUrl: createType === "URL" ? sourceUrl : undefined,
+            rawText: createType === "TEXT" ? rawText : undefined,
+            fileName: createType === "FILE" ? fileName : undefined,
+            mimeType: createType === "FILE" ? mimeType : undefined,
+          }),
+        },
+      );
 
       const data = (await response.json()) as {
         error?: string;
@@ -252,23 +258,33 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
       };
 
       if (!response.ok || !data.knowledgeSource) {
-        setError(data.error ?? "Unable to create knowledge source.");
+        setError(data.error ?? "Unable to save knowledge source.");
         return;
       }
 
-      setSources((current) => [data.knowledgeSource as KnowledgeSourceItem, ...current]);
+      const nextSource = data.knowledgeSource as KnowledgeSourceItem;
+
+      setSources((current) => {
+        if (editingSourceId) {
+          return current.map((source) => (source.id === editingSourceId ? nextSource : source));
+        }
+
+        return [nextSource, ...current];
+      });
       setShowCreateModal(false);
+      setEditingSourceId(null);
       setTitle("");
       setSourceUrl("");
       setRawText("");
       setFileName("");
       setMimeType("");
       setCreateType("URL");
+      setStatusValue("PENDING");
     } catch (thrownError) {
       setError(
         thrownError instanceof Error
           ? thrownError.message
-          : "Unable to create knowledge source.",
+          : "Unable to save knowledge source.",
       );
     } finally {
       setIsSaving(false);
@@ -277,11 +293,33 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
 
   function openCreateModal() {
     setError("");
+    setEditingSourceId(null);
+    setCreateType("URL");
+    setTitle("");
+    setSourceUrl("");
+    setRawText("");
+    setFileName("");
+    setMimeType("");
+    setStatusValue("PENDING");
+    setShowCreateModal(true);
+  }
+
+  function openEditModal(source: KnowledgeSourceItem) {
+    setError("");
+    setEditingSourceId(source.id);
+    setCreateType(source.type);
+    setTitle(source.title);
+    setSourceUrl(source.sourceUrl ?? "");
+    setRawText(source.rawText ?? "");
+    setFileName(source.fileName ?? "");
+    setMimeType(source.mimeType ?? "");
+    setStatusValue(source.status);
     setShowCreateModal(true);
   }
 
   function closeCreateModal() {
     setShowCreateModal(false);
+    setEditingSourceId(null);
     setError("");
   }
 
@@ -464,6 +502,14 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                         <button
                           type="button"
                           disabled={isSaving || activeActionId === source.id}
+                          onClick={() => openEditModal(source)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSaving || activeActionId === source.id}
                           onClick={() => {
                             void handleAction(
                               source.id,
@@ -532,7 +578,9 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
           <div className="w-full max-w-2xl rounded-[24px] border border-white/10 bg-[#0b0b0b] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-lg font-semibold text-white">Add knowledge source</p>
+                <p className="text-lg font-semibold text-white">
+                  {editingSourceId ? "Edit knowledge source" : "Add knowledge source"}
+                </p>
                 <p className="mt-1 text-sm text-slate-400">
                   Create a URL, text note, or file metadata entry for this workspace.
                 </p>
@@ -567,6 +615,21 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                   <option value="URL">URL</option>
                   <option value="TEXT">TEXT</option>
                   <option value="FILE">FILE</option>
+                </select>
+              </label>
+
+              <label className="space-y-2 text-sm text-slate-300">
+                <span>Status</span>
+                <select
+                  value={statusValue}
+                  onChange={(event) => setStatusValue(event.target.value as SyncStatus)}
+                  className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
+                >
+                  {statusOptions.filter((option) => option !== "ALL").map((option) => (
+                    <option key={option} value={option}>
+                      {option.toLowerCase()}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -638,11 +701,11 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                 type="button"
                 disabled={isSaving}
                 onClick={() => {
-                  void handleCreateSource();
+                    void handleSaveSource();
                 }}
                 className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50"
               >
-                Save Source
+                {editingSourceId ? "Update Source" : "Save Source"}
               </button>
             </div>
           </div>

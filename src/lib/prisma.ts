@@ -34,18 +34,38 @@ function getPrismaClient() {
     return existingClient;
   }
 
-  prismaClient = createPrismaClient();
+  try {
+    prismaClient = createPrismaClient();
 
-  if (process.env.NODE_ENV !== "production") {
-    global.prisma = prismaClient;
+    if (process.env.NODE_ENV !== "production") {
+      global.prisma = prismaClient;
+    }
+
+    return prismaClient;
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "Prisma client could not be initialized:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    return null;
   }
-
-  return prismaClient;
 }
 
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, property) {
     const client = getPrismaClient();
+
+    if (!client) {
+      return (..._args: unknown[]) => {
+        throw new Error(
+          "Database is not configured. Please set DATABASE_URL in .env.local",
+        );
+      };
+    }
+
     const value = Reflect.get(client, property);
 
     if (typeof value === "function") {

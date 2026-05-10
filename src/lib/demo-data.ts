@@ -2,6 +2,13 @@ import { hashPassword } from "./auth";
 import { prisma } from "./prisma";
 
 export async function ensureDemoData() {
+  if (!process.env.DATABASE_URL) {
+    console.warn(
+      "DATABASE_URL is not configured. Skipping demo data seeding.",
+    );
+    return;
+  }
+
   let workspace = await prisma.workspace.findFirst({
     where: {
       slug: "assistdesk-demo",

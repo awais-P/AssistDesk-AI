@@ -23,8 +23,9 @@ type AgentModelConfig = {
 export const agentProviderOptions: AgentProviderOption[] = [
   {
     value: "Default",
-    label: "Default",
-    description: "Managed AssistDesk models using your server-side keys.",
+    label: "Default (OpenRouter)",
+    description:
+      "Managed AssistDesk OpenRouter models with automatic failover.",
     managed: true,
   },
   {
@@ -61,32 +62,32 @@ export const agentProviderOptions: AgentProviderOption[] = [
 
 export const agentModelCatalog: AgentModelConfig[] = [
   {
-    value: "groq/llama-3.1-8b-instant",
-    label: "Managed Llama 3.1 8B Instant",
-    provider: "Default",
-    managed: true,
-  },
-  {
-    value: "google/gemini-2.0-flash-lite",
-    label: "Managed Gemini 2.0 Flash Lite",
+    value: "openrouter/openrouter/free",
+    label: "OpenRouter Free Auto",
     provider: "Default",
     managed: true,
   },
   {
     value: "openrouter/google/gemma-3-27b-it:free",
-    label: "Managed Gemma 3 27B Free",
+    label: "OpenRouter Gemma 3 27B Free",
     provider: "Default",
     managed: true,
   },
   {
     value: "openrouter/meta-llama/llama-3.3-70b-instruct:free",
-    label: "Managed Llama 3.3 70B Instruct Free",
+    label: "OpenRouter Llama 3.3 70B Free",
     provider: "Default",
     managed: true,
   },
   {
-    value: "meta/llama-3.3-70b-instruct-fp8-fast",
-    label: "Legacy Managed Llama 3.3 FP8 Fast",
+    value: "openrouter/deepseek/deepseek-chat-v3-0324:free",
+    label: "OpenRouter DeepSeek Chat V3 Free",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    value: "openrouter/qwen/qwen-2.5-72b-instruct:free",
+    label: "OpenRouter Qwen 2.5 72B Free",
     provider: "Default",
     managed: true,
   },
@@ -162,6 +163,12 @@ export const agentModelOptions = agentModelCatalog
   .filter((model) => model.provider === "Default")
   .map((model) => model.value);
 
+export const managedOpenRouterFallbackModels = agentModelCatalog
+  .filter(
+    (model) => model.provider === "Default" && model.value.startsWith("openrouter/"),
+  )
+  .map((model) => model.value);
+
 export const defaultAgentSystemPrompt = `You are a helpful AI assistant specialized in answering questions and customer support using retrieved documents.
 You task is to provide accurate, relevant answers based on the matched content provided.
 You will receive a user question and a set of documents relevant to this query.
@@ -192,8 +199,23 @@ export function usesCustomApiKey(provider: string) {
   return !isManagedProvider(provider);
 }
 
+export function getManagedFallbackModels(model: string) {
+  if (!model.startsWith("openrouter/")) {
+    return [model];
+  }
+
+  const remainingModels = managedOpenRouterFallbackModels.filter(
+    (entry) => entry !== model,
+  );
+
+  return [model, ...remainingModels];
+}
+
 export function formatAgentRuntimeLabel(model: string) {
-  return model;
+  return (
+    agentModelCatalog.find((entry) => entry.value === model)?.label ??
+    model.replace("openrouter/", "")
+  );
 }
 
 export function formatAgentShortId(id: string) {

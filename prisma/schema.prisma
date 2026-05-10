@@ -70,6 +70,20 @@ enum AutomationTrigger {
   SCHEDULED
 }
 
+enum IntegrationType {
+  EMAIL
+  WHATSAPP
+  SLACK
+  VOICE
+}
+
+enum IntegrationStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
 enum ChatSessionStatus {
   ACTIVE
   ESCALATED
@@ -104,6 +118,7 @@ model Workspace {
   agentAutomations AgentAutomation[]
   ticketMessages   TicketMessage[]
   automationLogs   AutomationLog[]
+  integrations     Integration[]
 }
 
 model User {
@@ -151,6 +166,7 @@ model Inbox {
   workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tickets          Ticket[]
   agents           AIAgent[]
+  integrations     Integration[]
 
   @@index([workspaceId])
 }
@@ -175,6 +191,7 @@ model AIAgent {
   knowledgeSources    KnowledgeSource[]
   automations         AgentAutomation[]
   logs                AutomationLog[]
+  integrations        Integration[]
 
   @@index([workspaceId])
   @@index([inboxId])
@@ -400,4 +417,31 @@ model AutomationLog {
   @@index([ticketId])
   @@index([agentId])
   @@index([createdAt])
+}
+
+model Integration {
+  id                String            @id @default(cuid())
+  workspaceId       String
+  inboxId           String?
+  agentId           String?
+  type              IntegrationType
+  name              String
+  provider          String
+  status            IntegrationStatus @default(DISCONNECTED)
+  supportAddress    String?
+  forwardingAddress String?
+  webhookSecret     String?
+  config            Json?
+  isActive          Boolean           @default(true)
+  lastSyncedAt      DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inbox             Inbox?            @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  agent             AIAgent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([inboxId])
+  @@index([agentId])
+  @@index([type])
 }

@@ -22,12 +22,18 @@ function createPrismaClient() {
 
 const existingClient = global.prisma;
 
+function hasRequiredDelegates(client: PrismaClient) {
+  return (
+    "session" in client &&
+    "agentAutomation" in client &&
+    "ticketMessage" in client &&
+    "automationLog" in client &&
+    "integration" in client
+  );
+}
+
 export const prisma =
-  existingClient &&
-  "session" in existingClient &&
-  "agentAutomation" in existingClient &&
-  "ticketMessage" in existingClient &&
-  "automationLog" in existingClient
+  existingClient && hasRequiredDelegates(existingClient)
     ? existingClient
     : createPrismaClient();
 

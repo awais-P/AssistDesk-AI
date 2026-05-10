@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardPageHeader } from "./dashboard-page-header";
 
@@ -15,6 +15,7 @@ type TicketItem = {
   status: string;
   priority: string;
   createdAt: string;
+  inboxName: string | null;
   assigneeName: string | null;
   assigneeInitials: string;
   tags: string[];
@@ -22,9 +23,21 @@ type TicketItem = {
 
 type TicketsClientProps = {
   initialTickets: TicketItem[];
+  currentUser: {
+    id: string;
+    fullName: string;
+  };
 };
 
-type MenuName = "priority" | "status" | "source" | null;
+type MenuName =
+  | "priority"
+  | "status"
+  | "source"
+  | "assignee"
+  | "inbox"
+  | "tag"
+  | null;
+
 type ViewMode = "list" | "grid";
 
 const priorityOptions = ["ALL", "LOW", "MEDIUM", "HIGH", "URGENT"];
@@ -39,32 +52,50 @@ function formatTicketDate(date: string) {
   }).format(new Date(date));
 }
 
+function formatDetailedDate(date: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(date));
+}
+
 function formatOptionLabel(value: string) {
   if (value === "ALL") {
     return "All";
+  }
+
+  if (value === "IN_PROGRESS") {
+    return "Awaiting Customer Reply";
   }
 
   return value.toLowerCase().replaceAll("_", " ");
 }
 
 function formatSource(source: string) {
-  return source.toLowerCase().replace("_", " ");
+  return source.toLowerCase().replaceAll("_", " ");
 }
 
 function statusClass(status: string) {
   if (status === "OPEN") {
-    return "rounded-full border border-[#22355b] bg-[#10192d] px-2.5 py-1 text-xs font-medium text-white";
+    return "rounded-full border border-[#22355b] bg-[#10192d] px-2.5 py-1 text-xs font-medium capitalize text-white";
   }
 
   if (status === "IN_PROGRESS") {
-    return "rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200";
+    return "rounded-full border border-[#29438c] bg-[#16254d] px-2.5 py-1 text-xs font-medium text-blue-100";
   }
 
   if (status === "RESOLVED") {
     return "rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-200";
   }
 
-  return "rounded-full border border-white/10 bg-[#161616] px-2.5 py-1 text-xs font-medium capitalize text-white";
+  if (status === "CLOSED") {
+    return "rounded-full border border-white/10 bg-[#171717] px-2.5 py-1 text-xs font-medium text-slate-300";
+  }
+
+  return "rounded-full border border-white/10 bg-[#161616] px-2.5 py-1 text-xs font-medium text-white";
 }
 
 function priorityClass(priority: string) {
@@ -132,7 +163,7 @@ function FilterMenu({
   onSelect: (value: string) => void;
 }) {
   return (
-    <div className="absolute left-0 top-[calc(100%+8px)] z-20 min-w-[180px] rounded-xl border border-white/10 bg-[#0d0d0d] p-2 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
+    <div className="absolute left-0 top-[calc(100%+8px)] z-20 min-w-[190px] rounded-xl border border-white/10 bg-[#0d0d0d] p-2 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
       <p className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
         {label}
       </p>
@@ -161,7 +192,94 @@ function FilterMenu({
   );
 }
 
-export function TicketsClient({ initialTickets }: TicketsClientProps) {
+function TicketActionMenu({
+  onCopyId,
+  onViewDetails,
+  onAssignToMe,
+  onCloseTicket,
+  onDeleteTicket,
+  isBusy,
+}: {
+  onCopyId: () => void;
+  onViewDetails: () => void;
+  onAssignToMe: () => void;
+  onCloseTicket: () => void;
+  onDeleteTicket: () => void;
+  isBusy: boolean;
+}) {
+  const menuItems = [
+    { label: "Copy ticket ID", action: onCopyId, danger: false },
+    { label: "View details", action: onViewDetails, danger: false },
+    { label: "Assign to me", action: onAssignToMe, danger: false },
+    { label: "Close this ticket", action: onCloseTicket, danger: false },
+    { label: "Delete Ticket", action: onDeleteTicket, danger: true },
+  ];
+
+  return (
+    <div className="absolute right-0 top-11 z-30 min-w-[170px] rounded-xl border border-white/10 bg-[#131313] p-2 shadow-[0_18px_40px_rgba(0,0,0,0.42)]">
+      <p className="px-2 pb-2 pt-1 text-sm font-semibold text-white">Actions</p>
+      <div className="space-y-1">
+        {menuItems.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            disabled={isBusy}
+            onClick={item.action}
+            className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition ${
+              item.danger
+                ? "text-red-300 hover:bg-red-500/10"
+                : "text-slate-200 hover:bg-white/5"
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function mapTicketFromApi(ticket: {
+  id: string;
+  ticketNumber: number;
+  subject: string;
+  previewText: string | null;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  source: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  inbox?: { name: string | null } | null;
+  assignee?: { fullName: string | null } | null;
+  ticketTags?: Array<{ tag: { name: string } }>;
+}) {
+  return {
+    id: ticket.id,
+    ticketNumber: ticket.ticketNumber,
+    subject: ticket.subject,
+    previewText: ticket.previewText,
+    requesterName: ticket.requesterName,
+    requesterEmail: ticket.requesterEmail,
+    source: ticket.source,
+    status: ticket.status,
+    priority: ticket.priority,
+    createdAt: ticket.createdAt,
+    inboxName: ticket.inbox?.name ?? "Unassigned",
+    assigneeName: ticket.assignee?.fullName ?? "Unassigned",
+    assigneeInitials: (ticket.assignee?.fullName ?? "UN")
+      .split(" ")
+      .map((part) => part[0])
+      .slice(0, 2)
+      .join(""),
+    tags: ticket.ticketTags?.map((ticketTag) => ticketTag.tag.name) ?? [],
+  } satisfies TicketItem;
+}
+
+export function TicketsClient({
+  initialTickets,
+  currentUser,
+}: TicketsClientProps) {
   const router = useRouter();
   const [tickets, setTickets] = useState(
     [...initialTickets].sort((a, b) => b.ticketNumber - a.ticketNumber),
@@ -170,8 +288,12 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [sourceFilter, setSourceFilter] = useState<string>("ALL");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("ALL");
+  const [inboxFilter, setInboxFilter] = useState<string>("ALL");
+  const [tagFilter, setTagFilter] = useState<string>("ALL");
   const [view, setView] = useState<ViewMode>("list");
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
+  const [ticketMenuId, setTicketMenuId] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [subject, setSubject] = useState("");
   const [previewText, setPreviewText] = useState("");
@@ -181,7 +303,53 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
   const [createStatus, setCreateStatus] = useState("OPEN");
   const [createSource, setCreateSource] = useState("WEB");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [actioningTicketId, setActioningTicketId] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    function handleWindowClick() {
+      setOpenMenu(null);
+      setTicketMenuId("");
+    }
+
+    window.addEventListener("click", handleWindowClick);
+    return () => window.removeEventListener("click", handleWindowClick);
+  }, []);
+
+  const assigneeOptions = useMemo(
+    () => [
+      "ALL",
+      ...Array.from(
+        new Set(
+          tickets
+            .map((ticket) => ticket.assigneeName || "Unassigned")
+            .filter(Boolean),
+        ),
+      ),
+    ],
+    [tickets],
+  );
+
+  const inboxOptions = useMemo(
+    () => [
+      "ALL",
+      ...Array.from(
+        new Set(
+          tickets.map((ticket) => ticket.inboxName || "Unassigned").filter(Boolean),
+        ),
+      ),
+    ],
+    [tickets],
+  );
+
+  const tagOptions = useMemo(
+    () => [
+      "ALL",
+      ...Array.from(new Set(tickets.flatMap((ticket) => ticket.tags))).sort(),
+    ],
+    [tickets],
+  );
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((ticket) => {
@@ -200,13 +368,139 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
         statusFilter === "ALL" || ticket.status === statusFilter;
       const matchesSource =
         sourceFilter === "ALL" || ticket.source === sourceFilter;
+      const matchesAssignee =
+        assigneeFilter === "ALL" ||
+        (ticket.assigneeName || "Unassigned") === assigneeFilter;
+      const matchesInbox =
+        inboxFilter === "ALL" ||
+        (ticket.inboxName || "Unassigned") === inboxFilter;
+      const matchesTag =
+        tagFilter === "ALL" || ticket.tags.includes(tagFilter);
 
-      return matchesSearch && matchesPriority && matchesStatus && matchesSource;
+      return (
+        matchesSearch &&
+        matchesPriority &&
+        matchesStatus &&
+        matchesSource &&
+        matchesAssignee &&
+        matchesInbox &&
+        matchesTag
+      );
     });
-  }, [tickets, search, priorityFilter, sourceFilter, statusFilter]);
+  }, [
+    tickets,
+    search,
+    priorityFilter,
+    statusFilter,
+    sourceFilter,
+    assigneeFilter,
+    inboxFilter,
+    tagFilter,
+  ]);
+
+  async function patchTicket(
+    ticketId: string,
+    payload: Record<string, unknown>,
+  ) {
+    const response = await fetch(`/api/tickets/${ticketId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = (await response.json()) as {
+      error?: string;
+      ticket?: Parameters<typeof mapTicketFromApi>[0];
+    };
+
+    if (!response.ok || !data.ticket) {
+      throw new Error(data.error ?? "Unable to update the ticket.");
+    }
+
+    const nextTicket = mapTicketFromApi(data.ticket);
+
+    setTickets((current) =>
+      current.map((ticket) => (ticket.id === ticketId ? nextTicket : ticket)),
+    );
+
+    return nextTicket;
+  }
+
+  async function handleTicketAction(
+    ticket: TicketItem,
+    action: "copy" | "view" | "assign" | "close" | "delete",
+  ) {
+    setError("");
+    setSuccess("");
+    setTicketMenuId("");
+
+    if (action === "view") {
+      router.push(`/dashboard/tickets/${ticket.id}`);
+      return;
+    }
+
+    if (action === "copy") {
+      try {
+        await navigator.clipboard.writeText(`#${ticket.ticketNumber}`);
+        setSuccess(`Copied #${ticket.ticketNumber} to your clipboard.`);
+      } catch {
+        setError("Unable to copy the ticket ID right now.");
+      }
+      return;
+    }
+
+    setActioningTicketId(ticket.id);
+
+    try {
+      if (action === "assign") {
+        const updatedTicket = await patchTicket(ticket.id, { assignToMe: true });
+        setSuccess(`Ticket #${updatedTicket.ticketNumber} assigned to you.`);
+      }
+
+      if (action === "close") {
+        const updatedTicket = await patchTicket(ticket.id, { status: "CLOSED" });
+        setSuccess(`Ticket #${updatedTicket.ticketNumber} closed successfully.`);
+      }
+
+      if (action === "delete") {
+        const shouldDelete = window.confirm(
+          `Delete ticket #${ticket.ticketNumber}? This cannot be undone.`,
+        );
+
+        if (!shouldDelete) {
+          setActioningTicketId("");
+          return;
+        }
+
+        const response = await fetch(`/api/tickets/${ticket.id}`, {
+          method: "DELETE",
+        });
+
+        const data = (await response.json()) as { error?: string };
+
+        if (!response.ok) {
+          throw new Error(data.error ?? "Unable to delete this ticket.");
+        }
+
+        setTickets((current) => current.filter((item) => item.id !== ticket.id));
+        setSuccess(`Ticket #${ticket.ticketNumber} deleted successfully.`);
+      }
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Unable to process that ticket action.",
+      );
+    } finally {
+      setActioningTicketId("");
+    }
+  }
 
   async function handleCreateTicket() {
     setError("");
+    setSuccess("");
 
     if (!subject.trim()) {
       setError("Please enter a subject for the ticket.");
@@ -231,19 +525,7 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
 
     const data = (await response.json()) as {
       error?: string;
-      ticket?: {
-        id: string;
-        ticketNumber: number;
-        subject: string;
-        previewText: string | null;
-        requesterName: string | null;
-        requesterEmail: string | null;
-        source: string;
-        status: string;
-        priority: string;
-        createdAt: string;
-        assignee?: { fullName: string | null } | null;
-      };
+      ticket?: Parameters<typeof mapTicketFromApi>[0];
     };
 
     if (!response.ok || !data.ticket) {
@@ -251,25 +533,7 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
       return;
     }
 
-    const newTicket: TicketItem = {
-      id: data.ticket.id,
-      ticketNumber: data.ticket.ticketNumber,
-      subject: data.ticket.subject,
-      previewText: data.ticket.previewText,
-      requesterName: data.ticket.requesterName,
-      requesterEmail: data.ticket.requesterEmail,
-      source: data.ticket.source,
-      status: data.ticket.status,
-      priority: data.ticket.priority,
-      createdAt: data.ticket.createdAt,
-      assigneeName: data.ticket.assignee?.fullName ?? "Unassigned",
-      assigneeInitials: (data.ticket.assignee?.fullName ?? "UN")
-        .split(" ")
-        .map((part) => part[0])
-        .slice(0, 2)
-        .join(""),
-      tags: [],
-    };
+    const newTicket = mapTicketFromApi(data.ticket);
 
     setTickets((current) =>
       [...current, newTicket].sort((a, b) => b.ticketNumber - a.ticketNumber),
@@ -282,7 +546,7 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
     setCreatePriority("MEDIUM");
     setCreateStatus("OPEN");
     setCreateSource("WEB");
-    setSearch("");
+    setSuccess(`Ticket #${newTicket.ticketNumber} created successfully.`);
 
     startTransition(() => {
       router.refresh();
@@ -294,8 +558,19 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
     setPriorityFilter("ALL");
     setStatusFilter("ALL");
     setSourceFilter("ALL");
+    setAssigneeFilter("ALL");
+    setInboxFilter("ALL");
+    setTagFilter("ALL");
     setOpenMenu(null);
   }
+
+  const hasActiveFilters =
+    priorityFilter !== "ALL" ||
+    statusFilter !== "ALL" ||
+    sourceFilter !== "ALL" ||
+    assigneeFilter !== "ALL" ||
+    inboxFilter !== "ALL" ||
+    tagFilter !== "ALL";
 
   return (
     <div className="px-5 py-4 md:px-6">
@@ -316,88 +591,79 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
             className="h-9 min-w-[220px] rounded-lg border border-white/10 bg-[#0d0d0d] px-4 text-sm text-white outline-none transition focus:border-white"
           />
 
-          <div className="relative">
-            <TicketToolbarButton
-              label="Priority"
-              value={formatOptionLabel(priorityFilter)}
-              isActive={openMenu === "priority" || priorityFilter !== "ALL"}
-              onClick={() =>
-                setOpenMenu((current) =>
-                  current === "priority" ? null : "priority",
-                )
-              }
-            />
-            {openMenu === "priority" ? (
-              <FilterMenu
-                label="Priority"
-                options={priorityOptions}
-                selectedValue={priorityFilter}
-                onSelect={(value) => {
-                  setPriorityFilter(value);
-                  setOpenMenu(null);
-                }}
+          {[
+            {
+              key: "priority" as const,
+              label: "Priority",
+              value: priorityFilter,
+              options: priorityOptions,
+              setValue: setPriorityFilter,
+            },
+            {
+              key: "status" as const,
+              label: "Status",
+              value: statusFilter,
+              options: statusOptions,
+              setValue: setStatusFilter,
+            },
+            {
+              key: "source" as const,
+              label: "State",
+              value: sourceFilter,
+              options: sourceOptions,
+              setValue: setSourceFilter,
+            },
+            {
+              key: "assignee" as const,
+              label: "Assignee",
+              value: assigneeFilter,
+              options: assigneeOptions,
+              setValue: setAssigneeFilter,
+            },
+            {
+              key: "inbox" as const,
+              label: "Inbox",
+              value: inboxFilter,
+              options: inboxOptions,
+              setValue: setInboxFilter,
+            },
+            {
+              key: "tag" as const,
+              label: "Tags",
+              value: tagFilter,
+              options: tagOptions,
+              setValue: setTagFilter,
+            },
+          ].map((item) => (
+            <div key={item.key} className="relative">
+              <TicketToolbarButton
+                label={item.label}
+                value={formatOptionLabel(item.value)}
+                isActive={openMenu === item.key || item.value !== "ALL"}
+                onClick={() =>
+                  setOpenMenu((current) => (current === item.key ? null : item.key))
+                }
               />
-            ) : null}
-          </div>
-
-          <div className="relative">
-            <TicketToolbarButton
-              label="Status"
-              value={formatOptionLabel(statusFilter)}
-              isActive={openMenu === "status" || statusFilter !== "ALL"}
-              onClick={() =>
-                setOpenMenu((current) =>
-                  current === "status" ? null : "status",
-                )
-              }
-            />
-            {openMenu === "status" ? (
-              <FilterMenu
-                label="Status"
-                options={statusOptions}
-                selectedValue={statusFilter}
-                onSelect={(value) => {
-                  setStatusFilter(value);
-                  setOpenMenu(null);
-                }}
-              />
-            ) : null}
-          </div>
-
-          <div className="relative">
-            <TicketToolbarButton
-              label="Source"
-              value={formatOptionLabel(sourceFilter)}
-              isActive={openMenu === "source" || sourceFilter !== "ALL"}
-              onClick={() =>
-                setOpenMenu((current) =>
-                  current === "source" ? null : "source",
-                )
-              }
-            />
-            {openMenu === "source" ? (
-              <FilterMenu
-                label="Source"
-                options={sourceOptions}
-                selectedValue={sourceFilter}
-                onSelect={(value) => {
-                  setSourceFilter(value);
-                  setOpenMenu(null);
-                }}
-              />
-            ) : null}
-          </div>
+              {openMenu === item.key ? (
+                <FilterMenu
+                  label={item.label}
+                  options={item.options}
+                  selectedValue={item.value}
+                  onSelect={(value) => {
+                    item.setValue(value);
+                    setOpenMenu(null);
+                  }}
+                />
+              ) : null}
+            </div>
+          ))}
         </div>
 
         <div className="flex flex-wrap gap-2.5 xl:justify-end">
           <TicketToolbarButton
             label="Filter"
             value={`${filteredTickets.length}`}
-            isActive={
-              priorityFilter !== "ALL" ||
-              statusFilter !== "ALL" ||
-              sourceFilter !== "ALL"
-            }
+            isActive={hasActiveFilters}
             onClick={clearFilters}
           />
 
@@ -426,16 +692,31 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
         </div>
       </div>
 
+      {error ? (
+        <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {error}
+        </p>
+      ) : null}
+
+      {success ? (
+        <p className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          {success}
+        </p>
+      ) : null}
+
       <div
         className={`mt-5 ${
           view === "grid" ? "grid gap-4 lg:grid-cols-2" : "space-y-3"
         }`}
       >
-        {filteredTickets.map((ticket) =>
-          view === "grid" ? (
-            <section
+        {filteredTickets.map((ticket) => {
+          const isBusy = actioningTicketId === ticket.id;
+
+          return view === "grid" ? (
+            <article
               key={ticket.id}
-              className="rounded-2xl border border-white/10 bg-[#080808] p-5"
+              onClick={() => router.push(`/dashboard/tickets/${ticket.id}`)}
+              className="relative cursor-pointer rounded-2xl border border-white/10 bg-[#080808] p-5 transition hover:border-white/20 hover:bg-[#0d0d0d]"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -454,9 +735,34 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
                     {ticket.previewText ?? "No preview available"}
                   </p>
                 </div>
-                <button type="button" className="text-lg text-slate-500">
-                  ...
-                </button>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setTicketMenuId((current) =>
+                        current === ticket.id ? "" : ticket.id,
+                      );
+                    }}
+                    className="rounded-lg border border-white/10 bg-[#111111] px-3 py-2 text-lg text-slate-400 transition hover:bg-[#1a1a1a]"
+                  >
+                    ...
+                  </button>
+
+                  {ticketMenuId === ticket.id ? (
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <TicketActionMenu
+                        isBusy={isBusy}
+                        onCopyId={() => void handleTicketAction(ticket, "copy")}
+                        onViewDetails={() => void handleTicketAction(ticket, "view")}
+                        onAssignToMe={() => void handleTicketAction(ticket, "assign")}
+                        onCloseTicket={() => void handleTicketAction(ticket, "close")}
+                        onDeleteTicket={() => void handleTicketAction(ticket, "delete")}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -500,11 +806,12 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
                   </p>
                 </div>
               </div>
-            </section>
+            </article>
           ) : (
-            <section
+            <article
               key={ticket.id}
-              className="rounded-2xl border border-white/10 bg-[#080808]"
+              onClick={() => router.push(`/dashboard/tickets/${ticket.id}`)}
+              className="relative cursor-pointer rounded-2xl border border-white/10 bg-[#080808] transition hover:border-white/20 hover:bg-[#0d0d0d]"
             >
               <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex-1">
@@ -560,13 +867,37 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
                 </div>
 
                 <div className="flex min-w-[210px] flex-col items-start gap-16 text-sm lg:items-end">
-                  <button type="button" className="text-lg text-slate-400">
-                    ...
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setTicketMenuId((current) =>
+                          current === ticket.id ? "" : ticket.id,
+                        );
+                      }}
+                      className="rounded-lg border border-white/10 bg-[#111111] px-3 py-2 text-lg text-slate-400 transition hover:bg-[#1a1a1a]"
+                    >
+                      ...
+                    </button>
+
+                    {ticketMenuId === ticket.id ? (
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <TicketActionMenu
+                          isBusy={isBusy}
+                          onCopyId={() => void handleTicketAction(ticket, "copy")}
+                          onViewDetails={() => void handleTicketAction(ticket, "view")}
+                          onAssignToMe={() => void handleTicketAction(ticket, "assign")}
+                          onCloseTicket={() => void handleTicketAction(ticket, "close")}
+                          onDeleteTicket={() => void handleTicketAction(ticket, "delete")}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
 
                   <div className="space-y-3 text-left lg:text-right">
                     <p className="text-slate-400">
-                      {formatTicketDate(ticket.createdAt)}
+                      {formatDetailedDate(ticket.createdAt)}
                     </p>
                     <div className="flex items-center gap-3 lg:justify-end">
                       <span className="text-slate-400">Assigned to:</span>
@@ -580,9 +911,9 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
                   </div>
                 </div>
               </div>
-            </section>
-          ),
-        )}
+            </article>
+          );
+        })}
 
         {filteredTickets.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/10 bg-[#080808] p-10 text-center text-sm text-slate-400">
@@ -717,7 +1048,7 @@ export function TicketsClient({ initialTickets }: TicketsClientProps) {
               <button
                 type="button"
                 disabled={isPending}
-                onClick={handleCreateTicket}
+                onClick={() => void handleCreateTicket()}
                 className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#050505] disabled:bg-neutral-400"
               >
                 {isPending ? "Saving..." : "Create Ticket"}

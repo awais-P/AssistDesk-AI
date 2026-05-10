@@ -3,6 +3,7 @@ import {
   generateGroundedAgentReply,
   type RuntimeKnowledgeSource,
 } from "./knowledge-runtime";
+import { getManagedFallbackModels } from "./agent-config";
 
 type AgentRuntimeConfig = {
   provider: string;
@@ -76,6 +77,12 @@ function getProviderApiKey(config: AgentRuntimeConfig) {
   }
 
   return config.apiKey || null;
+}
+
+function stripManagedPrefix(model: string) {
+  return model.startsWith("openrouter/")
+    ? model.replace("openrouter/", "")
+    : model;
 }
 
 async function callOpenAiCompatibleModel({
@@ -282,6 +289,7 @@ export async function generateAgentReply({
 
   try {
     let result: { reply: string; tokens: number };
+    let resolvedModel = agent.model;
 
     if (agent.provider === "Anthropic") {
       result = await callAnthropicModel({
@@ -325,29 +333,44 @@ export async function generateAgentReply({
         systemPrompt: messages.systemPrompt,
         userPrompt: messages.userPrompt,
       });
-    } else if (agent.provider === "Default" && agent.model.startsWith("groq/")) {
-      result = await callOpenAiCompatibleModel({
-        endpoint: "https://api.groq.com/openai/v1/chat/completions",
-        apiKey,
-        model: agent.model.replace("groq/", ""),
-        systemPrompt: messages.systemPrompt,
-        userPrompt: messages.userPrompt,
-      });
-    } else if (
-      agent.provider === "Default" &&
-      agent.model.startsWith("google/")
-    ) {
-      result = await callGoogleModel({
-        apiKey,
-        model: agent.model.replace("google/", ""),
-        systemPrompt: messages.systemPrompt,
-        userPrompt: messages.userPrompt,
-      });
+    } else if (agent.provider === "Default") {
+      const candidateModels = getManagedFallbackModels(agent.model);
+      let lastError: Error | null = null;
+      let successfulResult: { reply: string; tokens: number } | null = null;
+
+      for (const candidateModel of candidateModels) {
+        try {
+          successfulResult = await callOpenAiCompatibleModel({
+            endpoint: "https://openrouter.ai/api/v1/chat/completions",
+            apiKey,
+            model: stripManagedPrefix(candidateModel),
+            systemPrompt: messages.systemPrompt,
+            userPrompt: messages.userPrompt,
+            extraHeaders: {
+              "HTTP-Referer": "http://localhost:3000",
+              "X-Title": "AssistDesk",
+            },
+          });
+          resolvedModel = candidateModel;
+          break;
+        } catch (error) {
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error("Managed OpenRouter request failed.");
+        }
+      }
+
+      if (!successfulResult) {
+        throw lastError || new Error("No managed OpenRouter model was available.");
+      }
+
+      result = successfulResult;
     } else {
       result = await callOpenAiCompatibleModel({
         endpoint: "https://openrouter.ai/api/v1/chat/completions",
         apiKey,
-        model: agent.model.replace("openrouter/", ""),
+        model: agent.model,
         systemPrompt: messages.systemPrompt,
         userPrompt: messages.userPrompt,
         extraHeaders: {
@@ -362,7 +385,7 @@ export async function generateAgentReply({
       confidence: messages.fallback.confidence,
       tokens: result.tokens || fallbackTokens,
       providerUsed: agent.provider,
-      modelUsed: agent.model,
+      modelUsed: resolvedModel,
       usedFallback: !result.reply,
       usedSourceIds,
     };

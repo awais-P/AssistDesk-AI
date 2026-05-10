@@ -16,6 +16,7 @@ export default async function TicketsPage() {
       workspaceId: session.user.workspaceId,
     },
     include: {
+      inbox: true,
       assignee: true,
       ticketTags: {
         include: {
@@ -39,6 +40,7 @@ export default async function TicketsPage() {
     status: ticket.status,
     priority: ticket.priority,
     createdAt: ticket.createdAt.toISOString(),
+    inboxName: ticket.inbox?.name ?? "Unassigned",
     assigneeName: ticket.assignee?.fullName ?? "Unassigned",
     assigneeInitials: (ticket.assignee?.fullName ?? "UN")
       .split(" ")
@@ -48,5 +50,13 @@ export default async function TicketsPage() {
     tags: ticket.ticketTags.map((ticketTag) => ticketTag.tag.name),
   }));
 
-  return <TicketsClient initialTickets={initialTickets} />;
+  return (
+    <TicketsClient
+      initialTickets={initialTickets}
+      currentUser={{
+        id: session.user.id,
+        fullName: session.user.fullName,
+      }}
+    />
+  );
 }

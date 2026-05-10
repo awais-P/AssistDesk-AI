@@ -126,6 +126,15 @@ export const dashboardItems: DashboardItem[] = [
     group: "Settings",
   },
   {
+    href: "/dashboard/integrations",
+    title: "Integrations",
+    section: "integrations",
+    description:
+      "Connect channels like email, WhatsApp, Slack, and future external support entry points.",
+    moduleLabel: "Module 1 / Module 11",
+    group: "Settings",
+  },
+  {
     href: "/dashboard/profile",
     title: "Profile",
     section: "profile",

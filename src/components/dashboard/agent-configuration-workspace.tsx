@@ -1489,8 +1489,8 @@ export function AgentConfigurationWorkspace({
         </div>
       ) : (
         <div className="rounded-xl border border-white/10 bg-[#101010] px-4 py-3 text-sm text-slate-400">
-          Default provider models use server-side managed keys configured in
-          your environment.
+          Default provider models use your server-side OpenRouter key and can
+          automatically fall through to another managed free model if needed.
         </div>
       )}
 

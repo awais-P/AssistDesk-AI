@@ -98,6 +98,7 @@ export async function POST(request: Request) {
       id: ticket.id,
     },
     include: {
+      inbox: true,
       assignee: true,
       ticketTags: {
         include: {

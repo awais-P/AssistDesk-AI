@@ -107,6 +107,33 @@ async function seedDemoData() {
     });
   }
 
+  const integrationCount = await prisma.integration.count({
+    where: {
+      workspaceId: workspace.id,
+    },
+  });
+
+  if (integrationCount === 0) {
+    await prisma.integration.create({
+      data: {
+        workspaceId: workspace.id,
+        inboxId: inbox.id,
+        agentId: agent.id,
+        type: "EMAIL",
+        name: "Primary Email Integration",
+        provider: "Forwarded Inbox",
+        status: "CONNECTED",
+        supportAddress: "support@assistdesk.local",
+        forwardingAddress: "forwarding@assistdesk.local",
+        webhookSecret: "assistdesk-demo-email-secret",
+        config: {
+          autoCreateTickets: true,
+          syncReplies: true,
+        },
+      },
+    });
+  }
+
   const workspaceSetting = await prisma.workspaceSetting.findUnique({
     where: {
       workspaceId: workspace.id,

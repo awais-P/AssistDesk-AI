@@ -527,8 +527,8 @@ export function AgentsWorkspace({
                 </div>
               ) : (
                 <div className="rounded-xl border border-white/10 bg-[#101010] px-4 py-3 text-xs text-slate-400">
-                  Managed default models use server-side keys configured in your
-                  environment.
+                  Managed default models use your server-side OpenRouter key and
+                  automatically try the next available free model if one fails.
                 </div>
               )}
 

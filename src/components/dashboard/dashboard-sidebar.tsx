@@ -19,6 +19,7 @@ const iconMap: Record<string, string> = {
   Tags: "#",
   "API Keys": "K",
   Settings: "S",
+  Integrations: "N",
   Profile: "P",
 };
 

@@ -114,6 +114,14 @@ function splitIntoPassages(value: string, maxLength = 650) {
   return passages.length > 0 ? passages : [normalized.slice(0, maxLength)];
 }
 
+function splitIntoSentences(value: string) {
+  return value
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
 function scorePassage(question: string, passage: string) {
   const questionTokens = tokenize(question);
 
@@ -138,6 +146,40 @@ function scorePassage(question: string, passage: string) {
   }
 
   return Math.min(1, score);
+}
+
+function detectGreeting(question: string) {
+  const normalized = question.trim().toLowerCase();
+  return /^(hi|hello|hey|oi|assalam|salam)\b/.test(normalized);
+}
+
+function buildExtractiveAnswer(question: string, matches: RetrievedMatch[]) {
+  const candidates = matches.flatMap((match) =>
+    splitIntoSentences(match.excerpt).map((sentence) => ({
+      sentence,
+      title: match.title,
+      score: scorePassage(question, sentence),
+    })),
+  );
+
+  const ranked = candidates
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .filter(
+      (candidate, index, array) =>
+        array.findIndex(
+          (entry) =>
+            entry.sentence.toLowerCase() === candidate.sentence.toLowerCase(),
+        ) === index,
+    )
+    .slice(0, 3);
+
+  if (ranked.length === 0) {
+    return "";
+  }
+
+  const answerLines = ranked.map((item) => `- ${item.sentence}`);
+  return `Based on the connected knowledge sources:\n${answerLines.join("\n")}`;
 }
 
 export async function fetchKnowledgeSourceText(sourceUrl: string) {
@@ -290,6 +332,17 @@ export function generateGroundedAgentReply({
   const confidence = topMatch?.score ?? 0;
 
   if (!topMatch) {
+    if (detectGreeting(question)) {
+      return {
+        reply:
+          "Hello. I’m ready to help. Ask me a support question related to the connected knowledge sources and I’ll answer from that information.",
+        confidence: 1,
+        matches,
+        tokens: estimateTokenUsage(question),
+        usedSourceIds: [],
+      };
+    }
+
     return {
       reply:
         "I could not find any matching information in the connected knowledge sources yet. Add a text source or a readable URL source and try again.",
@@ -303,24 +356,28 @@ export function generateGroundedAgentReply({
   const usedSourceIds = Array.from(new Set(matches.map((match) => match.sourceId)));
 
   if (confidence < confidenceThreshold) {
+    const partialAnswer =
+      buildExtractiveAnswer(question, matches) ||
+      `Most relevant source: **${topMatch.title}**\n${topMatch.excerpt}`;
+
     return {
-      reply: `I found some partially related information, but not enough to answer confidently.\n\nMost relevant source: **${topMatch.title}**\n${topMatch.excerpt}`,
+      reply: `I found some partially related information, but not enough to answer confidently.\n\n${partialAnswer}`,
       confidence,
       matches,
-      tokens: estimateTokenUsage(question, topMatch.excerpt),
+      tokens: estimateTokenUsage(question, partialAnswer),
       usedSourceIds,
     };
   }
 
-  const sections = matches.map(
-    (match) => `**${match.title}**\n${match.excerpt}`,
-  );
+  const conciseAnswer =
+    buildExtractiveAnswer(question, matches) ||
+    `Based on the connected knowledge sources:\n- ${topMatch.excerpt}`;
 
   return {
-    reply: `Based on the connected knowledge sources, here is the most relevant information:\n\n${sections.join("\n\n")}`,
+    reply: conciseAnswer,
     confidence,
     matches,
-    tokens: estimateTokenUsage(question, ...sections),
+    tokens: estimateTokenUsage(question, conciseAnswer),
     usedSourceIds,
   };
 }

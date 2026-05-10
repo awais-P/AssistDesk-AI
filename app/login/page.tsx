@@ -76,11 +76,10 @@ export default function LoginPage() {
 
               <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
                 <p className="text-sm font-medium text-white">
-                  Module 7 starting point
+                  AI-Powered Support Platform
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-400">
-                  This login takes you into the dashboard shell where all the
-                  major sections and tabs can be accessed.
+                  Manage tickets, chatbots, AI agents, and knowledge bases all in one unified dashboard. Deploy intelligent customer support without complexity.
                 </p>
               </div>
             </div>

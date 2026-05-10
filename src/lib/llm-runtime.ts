@@ -23,7 +23,7 @@ type AgentLlmReply = {
   usedSourceIds: string[];
 };
 
-function buildMessages({
+async function buildMessages({
   systemPrompt,
   question,
   sources,
@@ -32,7 +32,7 @@ function buildMessages({
   question: string;
   sources: RuntimeKnowledgeSource[];
 }) {
-  const grounded = generateGroundedAgentReply({
+  const grounded = await generateGroundedAgentReply({
     question,
     confidenceThreshold: 0,
     sources,
@@ -263,7 +263,7 @@ export async function generateAgentReply({
   question: string;
   sources: RuntimeKnowledgeSource[];
 }): Promise<AgentLlmReply> {
-  const messages = buildMessages({
+  const messages = await buildMessages({
     systemPrompt: agent.systemPrompt || "You are a helpful support assistant.",
     question,
     sources,

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardPageHeader } from "./dashboard-page-header";
 
 type KnowledgeSourceType = "FILE" | "URL" | "TEXT";
@@ -14,7 +15,12 @@ type KnowledgeSourceItem = {
   sourceUrl: string | null;
   fileName: string | null;
   mimeType: string | null;
+  storagePath: string | null;
+  fileSize: number | null;
   rawText: string | null;
+  chunkCount: number;
+  vectorIndexedAt: string | null;
+  processingError: string | null;
   createdAt: string;
   updatedAt: string;
   lastSyncedAt: string | null;
@@ -33,7 +39,12 @@ type KnowledgeBaseClientProps = {
     sourceUrl: string | null;
     fileName: string | null;
     mimeType: string | null;
+    storagePath: string | null;
+    fileSize: number | null;
     rawText: string | null;
+    chunkCount: number;
+    vectorIndexedAt: Date | null;
+    processingError: string | null;
     createdAt: Date;
     updatedAt: Date;
     lastSyncedAt: Date | null;
@@ -41,7 +52,12 @@ type KnowledgeBaseClientProps = {
   }>;
 };
 
-const typeOptions: Array<KnowledgeSourceType | "ALL"> = ["ALL", "URL", "TEXT", "FILE"];
+const typeOptions: Array<KnowledgeSourceType | "ALL"> = [
+  "ALL",
+  "URL",
+  "TEXT",
+  "FILE",
+];
 const statusOptions: Array<SyncStatus | "ALL"> = [
   "ALL",
   "PENDING",
@@ -58,6 +74,18 @@ function formatDate(value: string | null) {
     month: "short",
     day: "2-digit",
     year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "Not available";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(new Date(value));
 }
 
@@ -103,22 +131,38 @@ function typePillClass(type: KnowledgeSourceType) {
 
 function trimPreview(value: string | null, length = 120) {
   if (!value) return "";
-
   return value.length > length ? `${value.slice(0, length)}...` : value;
 }
 
-export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps) {
+function formatFileSize(size: number | null) {
+  if (!size) return "No file uploaded";
+
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function mapSource(source: KnowledgeBaseClientProps["initialSources"][number]): KnowledgeSourceItem {
+  return {
+    ...source,
+    createdAt: source.createdAt.toISOString(),
+    updatedAt: source.updatedAt.toISOString(),
+    lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
+    vectorIndexedAt: source.vectorIndexedAt?.toISOString() ?? null,
+  };
+}
+
+export function KnowledgeBaseClient({
+  initialSources,
+}: KnowledgeBaseClientProps) {
   const [sources, setSources] = useState<KnowledgeSourceItem[]>(
-    [...initialSources].map((source) => ({
-      ...source,
-      createdAt: source.createdAt.toISOString(),
-      updatedAt: source.updatedAt.toISOString(),
-      lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
-    })),
+    initialSources.map(mapSource),
   );
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<(typeof typeOptions)[number]>("ALL");
-  const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]>("ALL");
+  const [typeFilter, setTypeFilter] =
+    useState<(typeof typeOptions)[number]>("ALL");
+  const [statusFilter, setStatusFilter] =
+    useState<(typeof statusOptions)[number]>("ALL");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [createType, setCreateType] = useState<KnowledgeSourceType>("URL");
@@ -127,7 +171,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
   const [rawText, setRawText] = useState("");
   const [fileName, setFileName] = useState("");
   const [mimeType, setMimeType] = useState("");
-  const [statusValue, setStatusValue] = useState<SyncStatus>("PENDING");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -152,48 +196,50 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
     });
   }, [search, sources, statusFilter, typeFilter]);
 
-  const summary = useMemo(() => {
-    return {
+  const summary = useMemo(
+    () => ({
       total: sources.length,
       synced: sources.filter((source) => source.status === "SYNCED").length,
       pending: sources.filter((source) => source.status === "PENDING").length,
       failed: sources.filter((source) => source.status === "FAILED").length,
-    };
-  }, [sources]);
+    }),
+    [sources],
+  );
 
-  async function refreshSource(id: string, payload: Record<string, unknown>) {
-    const response = await fetch(`/api/knowledge-sources/${id}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+  const hasProcessingSources = useMemo(
+    () => sources.some((source) => source.status === "PROCESSING"),
+    [sources],
+  );
+
+  async function refreshSources() {
+    const response = await fetch("/api/knowledge-sources", {
+      method: "GET",
+      cache: "no-store",
     });
 
     const data = (await response.json()) as {
       error?: string;
-      knowledgeSource?: {
-        id: string;
-        title: string;
-        type: KnowledgeSourceType;
-        status: SyncStatus;
-        sourceUrl: string | null;
-        fileName: string | null;
-        mimeType: string | null;
-        rawText: string | null;
-        createdAt: string;
-        updatedAt: string;
-        lastSyncedAt: string | null;
-        agent: { id: string; name: string } | null;
-      };
+      knowledgeSources?: Array<KnowledgeSourceItem>;
     };
 
-    if (!response.ok || !data.knowledgeSource) {
-      throw new Error(data.error ?? "Unable to update knowledge source.");
+    if (!response.ok || !data.knowledgeSources) {
+      throw new Error(data.error ?? "Unable to refresh knowledge sources.");
     }
 
-    return data.knowledgeSource;
+    setSources(data.knowledgeSources);
   }
+
+  useEffect(() => {
+    if (!hasProcessingSources) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshSources().catch(() => undefined);
+    }, 4000);
+
+    return () => window.clearInterval(interval);
+  }, [hasProcessingSources]);
 
   async function handleSaveSource() {
     setError("");
@@ -215,46 +261,53 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
         return;
       }
 
-      if (createType === "FILE" && !fileName.trim()) {
-        setError("Please enter a file name.");
+      if (createType === "FILE" && !selectedFile && !editingSourceId) {
+        setError("Please upload a file for this source.");
         return;
       }
 
-      const response = await fetch(
-        editingSourceId ? `/api/knowledge-sources/${editingSourceId}` : "/api/knowledge-sources",
-        {
-          method: editingSourceId ? "PATCH" : "POST",
-          headers: {
-            "Content-Type": "application/json",
+      let response: Response;
+
+      if (createType === "FILE") {
+        const formData = new FormData();
+        formData.set("title", title);
+        formData.set("type", createType);
+        if (fileName.trim()) formData.set("fileName", fileName.trim());
+        if (mimeType.trim()) formData.set("mimeType", mimeType.trim());
+        if (selectedFile) formData.set("file", selectedFile);
+
+        response = await fetch(
+          editingSourceId
+            ? `/api/knowledge-sources/${editingSourceId}`
+            : "/api/knowledge-sources",
+          {
+            method: editingSourceId ? "PATCH" : "POST",
+            body: formData,
           },
-          body: JSON.stringify({
-            title,
-            type: createType,
-            status: statusValue,
-            sourceUrl: createType === "URL" ? sourceUrl : undefined,
-            rawText: createType === "TEXT" ? rawText : undefined,
-            fileName: createType === "FILE" ? fileName : undefined,
-            mimeType: createType === "FILE" ? mimeType : undefined,
-          }),
-        },
-      );
+        );
+      } else {
+        response = await fetch(
+          editingSourceId
+            ? `/api/knowledge-sources/${editingSourceId}`
+            : "/api/knowledge-sources",
+          {
+            method: editingSourceId ? "PATCH" : "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title,
+              type: createType,
+              sourceUrl: createType === "URL" ? sourceUrl : undefined,
+              rawText: createType === "TEXT" ? rawText : undefined,
+            }),
+          },
+        );
+      }
 
       const data = (await response.json()) as {
         error?: string;
-        knowledgeSource?: {
-          id: string;
-          title: string;
-          type: KnowledgeSourceType;
-          status: SyncStatus;
-          sourceUrl: string | null;
-          fileName: string | null;
-          mimeType: string | null;
-          rawText: string | null;
-          createdAt: string;
-          updatedAt: string;
-          lastSyncedAt: string | null;
-          agent: { id: string; name: string } | null;
-        };
+        knowledgeSource?: KnowledgeSourceItem;
       };
 
       if (!response.ok || !data.knowledgeSource) {
@@ -262,24 +315,19 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
         return;
       }
 
-      const nextSource = data.knowledgeSource as KnowledgeSourceItem;
+      const nextSource = data.knowledgeSource;
 
       setSources((current) => {
         if (editingSourceId) {
-          return current.map((source) => (source.id === editingSourceId ? nextSource : source));
+          return current.map((source) =>
+            source.id === editingSourceId ? nextSource : source,
+          );
         }
 
         return [nextSource, ...current];
       });
-      setShowCreateModal(false);
-      setEditingSourceId(null);
-      setTitle("");
-      setSourceUrl("");
-      setRawText("");
-      setFileName("");
-      setMimeType("");
-      setCreateType("URL");
-      setStatusValue("PENDING");
+
+      closeCreateModal();
     } catch (thrownError) {
       setError(
         thrownError instanceof Error
@@ -300,7 +348,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
     setRawText("");
     setFileName("");
     setMimeType("");
-    setStatusValue("PENDING");
+    setSelectedFile(null);
     setShowCreateModal(true);
   }
 
@@ -313,13 +361,14 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
     setRawText(source.rawText ?? "");
     setFileName(source.fileName ?? "");
     setMimeType(source.mimeType ?? "");
-    setStatusValue(source.status);
+    setSelectedFile(null);
     setShowCreateModal(true);
   }
 
   function closeCreateModal() {
     setShowCreateModal(false);
     setEditingSourceId(null);
+    setSelectedFile(null);
     setError("");
   }
 
@@ -332,11 +381,26 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
 
     try {
       if (payload) {
-        const updated = await refreshSource(id, payload);
+        const response = await fetch(`/api/knowledge-sources/${id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = (await response.json()) as {
+          error?: string;
+          knowledgeSource?: KnowledgeSourceItem;
+        };
+
+        if (!response.ok || !data.knowledgeSource) {
+          throw new Error(data.error ?? fallbackMessage);
+        }
 
         setSources((current) =>
           current.map((source) =>
-            source.id === id ? ({ ...source, ...updated } as KnowledgeSourceItem) : source,
+            source.id === id ? data.knowledgeSource! : source,
           ),
         );
       } else {
@@ -352,8 +416,10 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
 
         setSources((current) => current.filter((source) => source.id !== id));
       }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : fallbackMessage);
+    } catch (thrownError) {
+      setError(
+        thrownError instanceof Error ? thrownError.message : fallbackMessage,
+      );
     } finally {
       setActiveActionId(null);
     }
@@ -369,9 +435,9 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
       />
 
       <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-        Manage workspace-scoped URLs, text snippets, and file metadata that can
-        later feed assistant retrieval. The workflow is intentionally simple for
-        the FYP demo, but it stays fully database-backed.
+        Manage workspace-scoped URLs, text notes, and uploaded files that feed
+        your agents. Sources are processed in the background, chunked into
+        searchable knowledge, and then made available to the current runtime.
       </p>
 
       <div className="mt-6 grid gap-3 md:grid-cols-4">
@@ -407,7 +473,9 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
         <div className="flex flex-col gap-3 sm:flex-row">
           <select
             value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}
+            onChange={(event) =>
+              setTypeFilter(event.target.value as typeof typeFilter)
+            }
             className="h-10 rounded-xl border border-white/10 bg-[#0d0d0d] px-4 text-sm text-white outline-none transition focus:border-white"
           >
             {typeOptions.map((option) => (
@@ -449,7 +517,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                 <th className="px-5 py-4 font-semibold">Status</th>
                 <th className="px-5 py-4 font-semibold">Source</th>
                 <th className="px-5 py-4 font-semibold">Agent</th>
-                <th className="px-5 py-4 font-semibold">Created</th>
+                <th className="px-5 py-4 font-semibold">Indexed</th>
                 <th className="px-5 py-4 font-semibold">Synced</th>
                 <th className="px-5 py-4 font-semibold">Actions</th>
               </tr>
@@ -457,7 +525,10 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
             <tbody className="divide-y divide-white/10">
               {filteredSources.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-sm text-slate-400">
+                  <td
+                    colSpan={8}
+                    className="px-5 py-12 text-center text-sm text-slate-400"
+                  >
                     No knowledge sources match your current filters.
                   </td>
                 </tr>
@@ -465,40 +536,72 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                 filteredSources.map((source) => (
                   <tr key={source.id} className="align-top text-sm text-slate-200">
                     <td className="px-5 py-4">
-                      <p className="font-semibold text-white">{source.title}</p>
+                      <Link
+                        href={`/dashboard/knowledge-base/${source.id}`}
+                        className="font-semibold text-white transition hover:text-slate-200"
+                      >
+                        {source.title}
+                      </Link>
                       <p className="mt-1 text-xs text-slate-500">
-                        {trimPreview(source.rawText || source.sourceUrl || source.fileName, 70) ||
-                          "No preview available"}
+                        {trimPreview(
+                          source.rawText ||
+                            source.sourceUrl ||
+                            source.fileName ||
+                            source.processingError,
+                          70,
+                        ) || "No preview available"}
                       </p>
                     </td>
                     <td className="px-5 py-4">
-                      <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${typePillClass(source.type)}`}>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium ${typePillClass(source.type)}`}
+                      >
                         {formatType(source.type)}
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusPillClass(source.status)}`}>
-                        {formatStatus(source.status)}
-                      </span>
+                      <div className="space-y-2">
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusPillClass(source.status)}`}
+                        >
+                          {formatStatus(source.status)}
+                        </span>
+                        {source.processingError ? (
+                          <p className="max-w-[16rem] text-xs text-red-200">
+                            {trimPreview(source.processingError, 80)}
+                          </p>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-5 py-4 text-slate-300">
                       {source.type === "URL"
                         ? source.sourceUrl ?? "No URL"
                         : source.type === "FILE"
-                          ? [source.fileName, source.mimeType].filter(Boolean).join(" • ") || "No file metadata"
+                          ? [source.fileName, source.mimeType, formatFileSize(source.fileSize)]
+                              .filter(Boolean)
+                              .join(" • ") || "No file metadata"
                           : trimPreview(source.rawText, 90) || "No text content"}
                     </td>
                     <td className="px-5 py-4 text-slate-300">
                       {source.agent?.name ?? "Unassigned"}
                     </td>
                     <td className="px-5 py-4 text-slate-300">
-                      {formatDate(source.createdAt)}
+                      <p>{source.chunkCount} chunks</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatDateTime(source.vectorIndexedAt)}
+                      </p>
                     </td>
                     <td className="px-5 py-4 text-slate-300">
                       {formatDate(source.lastSyncedAt)}
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/dashboard/knowledge-base/${source.id}`}
+                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/10"
+                        >
+                          View
+                        </Link>
                         <button
                           type="button"
                           disabled={isSaving || activeActionId === source.id}
@@ -514,7 +617,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                             void handleAction(
                               source.id,
                               { status: "PROCESSING" },
-                              "Unable to mark as processing.",
+                              "Unable to process this source.",
                             );
                           }}
                           className="rounded-lg border border-white/10 bg-[#121212] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#1b1b1b] disabled:opacity-50"
@@ -528,7 +631,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                             void handleAction(
                               source.id,
                               { status: "SYNCED" },
-                              "Unable to mark as synced.",
+                              "Unable to sync this source.",
                             );
                           }}
                           className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/15 disabled:opacity-50"
@@ -542,7 +645,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                             void handleAction(
                               source.id,
                               { status: "PENDING" },
-                              "Unable to retry sync.",
+                              "Unable to retry this source.",
                             );
                           }}
                           className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-100 transition hover:bg-amber-500/15 disabled:opacity-50"
@@ -556,7 +659,7 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                             void handleAction(
                               source.id,
                               null,
-                              "Unable to delete source.",
+                              "Unable to delete this source.",
                             );
                           }}
                           className="rounded-lg border border-white/10 bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#262626] disabled:opacity-50"
@@ -579,10 +682,13 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-lg font-semibold text-white">
-                  {editingSourceId ? "Edit knowledge source" : "Add knowledge source"}
+                  {editingSourceId
+                    ? "Edit knowledge source"
+                    : "Add knowledge source"}
                 </p>
                 <p className="mt-1 text-sm text-slate-400">
-                  Create a URL, text note, or file metadata entry for this workspace.
+                  Create a URL, text note, or uploaded file source for this
+                  workspace knowledge base.
                 </p>
               </div>
               <button
@@ -609,27 +715,14 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
                 <span>Type</span>
                 <select
                   value={createType}
-                  onChange={(event) => setCreateType(event.target.value as KnowledgeSourceType)}
+                  onChange={(event) =>
+                    setCreateType(event.target.value as KnowledgeSourceType)
+                  }
                   className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
                 >
                   <option value="URL">URL</option>
                   <option value="TEXT">TEXT</option>
                   <option value="FILE">FILE</option>
-                </select>
-              </label>
-
-              <label className="space-y-2 text-sm text-slate-300">
-                <span>Status</span>
-                <select
-                  value={statusValue}
-                  onChange={(event) => setStatusValue(event.target.value as SyncStatus)}
-                  className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
-                >
-                  {statusOptions.filter((option) => option !== "ALL").map((option) => (
-                    <option key={option} value={option}>
-                      {option.toLowerCase()}
-                    </option>
-                  ))}
                 </select>
               </label>
 
@@ -659,6 +752,21 @@ export function KnowledgeBaseClient({ initialSources }: KnowledgeBaseClientProps
 
               {createType === "FILE" ? (
                 <>
+                  <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
+                    <span>Upload file</span>
+                    <input
+                      type="file"
+                      onChange={(event) =>
+                        setSelectedFile(event.target.files?.[0] ?? null)
+                      }
+                      className="block w-full rounded-xl border border-dashed border-white/15 bg-[#111111] px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-black"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Best supported for this phase: TXT, MD, CSV, JSON, HTML,
+                      and XML.
+                    </p>
+                  </label>
+
                   <label className="space-y-2 text-sm text-slate-300">
                     <span>File name</span>
                     <input

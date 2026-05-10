@@ -114,6 +114,7 @@ model Workspace {
   apiKeys          ApiKey[]
   settings         WorkspaceSetting?
   knowledgeSources KnowledgeSource[]
+  knowledgeChunks  KnowledgeChunk[]
   chatSessions     ChatSession[]
   agentAutomations AgentAutomation[]
   ticketMessages   TicketMessage[]
@@ -249,15 +250,39 @@ model KnowledgeSource {
   sourceUrl    String?
   fileName     String?
   mimeType     String?
+  storagePath  String?
+  fileSize     Int?
   rawText      String?
+  chunkCount   Int                 @default(0)
+  vectorIndexedAt DateTime?
+  processingError String?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   lastSyncedAt DateTime?
   workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agent        AIAgent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  chunks       KnowledgeChunk[]
 
   @@index([workspaceId])
   @@index([agentId])
+}
+
+model KnowledgeChunk {
+  id          String    @id @default(cuid())
+  workspaceId String
+  sourceId    String
+  chunkIndex  Int
+  content     String
+  embedding   Json
+  tokenCount  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  source      KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, chunkIndex])
+  @@index([workspaceId])
+  @@index([sourceId])
 }
 
 model Ticket {

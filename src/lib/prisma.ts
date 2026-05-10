@@ -28,7 +28,8 @@ function hasRequiredDelegates(client: PrismaClient) {
     "agentAutomation" in client &&
     "ticketMessage" in client &&
     "automationLog" in client &&
-    "integration" in client
+    "integration" in client &&
+    "knowledgeChunk" in client
   );
 }
 

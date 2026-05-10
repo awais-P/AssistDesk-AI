@@ -1,4 +1,8 @@
 import { prisma } from "./prisma";
+import {
+  fetchKnowledgeSourceText,
+  retrieveVectorMatches,
+} from "./knowledge-indexing";
 
 export type RuntimeKnowledgeSource = {
   id: string;
@@ -51,32 +55,6 @@ const stopWords = new Set([
   "you",
   "your",
 ]);
-
-function decodeHtmlEntities(value: string) {
-  return value
-    .replaceAll("&nbsp;", " ")
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'");
-}
-
-function stripHtml(html: string) {
-  const withBreaks = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|br)>/gi, "\n");
-
-  return decodeHtmlEntities(withBreaks)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\r/g, "")
-    .replace(/\t/g, " ")
-    .replace(/[ ]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 function tokenize(value: string) {
   return value
@@ -149,15 +127,13 @@ function scorePassage(question: string, passage: string) {
 }
 
 function detectGreeting(question: string) {
-  const normalized = question.trim().toLowerCase();
-  return /^(hi|hello|hey|oi|assalam|salam)\b/.test(normalized);
+  return /^(hi|hello|hey|oi|assalam|salam)\b/.test(question.trim().toLowerCase());
 }
 
 function buildExtractiveAnswer(question: string, matches: RetrievedMatch[]) {
   const candidates = matches.flatMap((match) =>
     splitIntoSentences(match.excerpt).map((sentence) => ({
       sentence,
-      title: match.title,
       score: scorePassage(question, sentence),
     })),
   );
@@ -178,65 +154,52 @@ function buildExtractiveAnswer(question: string, matches: RetrievedMatch[]) {
     return "";
   }
 
-  const answerLines = ranked.map((item) => `- ${item.sentence}`);
-  return `Based on the connected knowledge sources:\n${answerLines.join("\n")}`;
+  return `Based on the connected knowledge sources:\n${ranked
+    .map((item) => `- ${item.sentence}`)
+    .join("\n")}`;
 }
 
-export async function fetchKnowledgeSourceText(sourceUrl: string) {
-  let parsedUrl: URL;
+async function retrieveExtractiveMatches(
+  question: string,
+  sources: RuntimeKnowledgeSource[],
+) {
+  const matches: RetrievedMatch[] = [];
 
-  try {
-    parsedUrl = new URL(sourceUrl);
-  } catch {
-    throw new Error("Please enter a valid URL.");
+  for (const source of sources) {
+    if (!source.rawText || source.status === "DELETED") {
+      continue;
+    }
+
+    const passages = splitIntoPassages(source.rawText);
+
+    for (const passage of passages) {
+      const score = scorePassage(question, passage);
+
+      if (score <= 0) {
+        continue;
+      }
+
+      matches.push({
+        sourceId: source.id,
+        title: source.title,
+        excerpt: passage.length > 360 ? `${passage.slice(0, 360)}...` : passage,
+        score,
+      });
+    }
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
-
-  try {
-    const response = await fetch(parsedUrl.toString(), {
-      headers: {
-        "User-Agent": "AssistDeskBot/1.0 (+https://assistdesk.local)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Unable to fetch this URL (${response.status}).`);
-    }
-
-    const html = await response.text();
-    const text = stripHtml(html).slice(0, 50000);
-
-    if (text.length < 120) {
-      throw new Error("The page did not return enough readable content.");
-    }
-
-    return text;
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("The URL took too long to respond.");
-    }
-
-    throw error instanceof Error
-      ? error
-      : new Error("Unable to fetch the URL content.");
-  } finally {
-    clearTimeout(timeout);
-  }
+  return matches.sort((left, right) => right.score - left.score).slice(0, 3);
 }
 
 export async function hydrateKnowledgeSources(
   sources: RuntimeKnowledgeSource[],
 ) {
-  const hydratedSources = await Promise.all(
+  return Promise.all(
     sources.map(async (source) => {
       if (
         source.type !== "URL" ||
         !source.sourceUrl ||
-        (source.rawText && source.status === "SYNCED")
+        (source.rawText && source.rawText.trim().length > 0)
       ) {
         return source;
       }
@@ -260,13 +223,17 @@ export async function hydrateKnowledgeSources(
           rawText: fetchedText,
           status: "SYNCED",
         };
-      } catch {
+      } catch (error) {
         await prisma.knowledgeSource.update({
           where: {
             id: source.id,
           },
           data: {
             status: "FAILED",
+            processingError:
+              error instanceof Error
+                ? error.message
+                : "Unable to hydrate this URL source.",
           },
         });
 
@@ -277,40 +244,29 @@ export async function hydrateKnowledgeSources(
       }
     }),
   );
-
-  return hydratedSources;
 }
 
-export function retrieveKnowledgeMatches(
+export async function retrieveKnowledgeMatches(
   question: string,
   sources: RuntimeKnowledgeSource[],
 ) {
-  const matches: RetrievedMatch[] = [];
+  const vectorMatches = await retrieveVectorMatches({
+    question,
+    sourceIds: sources.map((source) => source.id),
+  });
 
-  for (const source of sources) {
-    if (!source.rawText || source.status !== "SYNCED") {
-      continue;
-    }
-
-    const passages = splitIntoPassages(source.rawText);
-
-    for (const passage of passages) {
-      const score = scorePassage(question, passage);
-
-      if (score <= 0) {
-        continue;
-      }
-
-      matches.push({
-        sourceId: source.id,
-        title: source.title,
-        excerpt: passage.slice(0, 360),
-        score,
-      });
-    }
+  if (vectorMatches.length > 0) {
+    return vectorMatches
+      .map((match) => ({
+        sourceId: match.sourceId,
+        title: match.title,
+        excerpt: match.excerpt,
+        score: Math.min(1, match.score),
+      }))
+      .slice(0, 3);
   }
 
-  return matches.sort((left, right) => right.score - left.score).slice(0, 3);
+  return retrieveExtractiveMatches(question, sources);
 }
 
 export function estimateTokenUsage(...parts: Array<string | null | undefined>) {
@@ -318,7 +274,7 @@ export function estimateTokenUsage(...parts: Array<string | null | undefined>) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-export function generateGroundedAgentReply({
+export async function generateGroundedAgentReply({
   question,
   confidenceThreshold,
   sources,
@@ -327,7 +283,7 @@ export function generateGroundedAgentReply({
   confidenceThreshold: number;
   sources: RuntimeKnowledgeSource[];
 }) {
-  const matches = retrieveKnowledgeMatches(question, sources);
+  const matches = await retrieveKnowledgeMatches(question, sources);
   const topMatch = matches[0];
   const confidence = topMatch?.score ?? 0;
 
@@ -381,3 +337,5 @@ export function generateGroundedAgentReply({
     usedSourceIds,
   };
 }
+
+export { fetchKnowledgeSourceText };

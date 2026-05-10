@@ -6,6 +6,7 @@ import { prisma } from "@/src/lib/prisma";
 type KnowledgeSourcePayload = {
   title?: string;
   type?: "URL" | "TEXT" | "FILE";
+  status?: "PENDING" | "PROCESSING" | "SYNCED" | "FAILED" | "DELETED";
   sourceUrl?: string;
   rawText?: string;
   fileName?: string;
@@ -19,7 +20,7 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
-
+  //TODO is the model made yet?
   const knowledgeSources = await prisma.knowledgeSource.findMany({
     where: {
       workspaceId: session.user.workspaceId,
@@ -28,7 +29,7 @@ export async function GET() {
       agent: true,
     },
     orderBy: {
-      createdAt: "asc",
+      createdAt: "desc",
     },
   });
 
@@ -86,12 +87,36 @@ export async function POST(request: Request) {
     );
   }
 
-  let sourceStatus: "SYNCED" | "FAILED" = "SYNCED";
+  if (type === "FILE" && !body.fileName?.trim()) {
+    return NextResponse.json(
+      { error: "Please enter a file name for the file source." },
+      { status: 400 },
+    );
+  }
+
+  const requestedStatus =
+    body.status &&
+    ["PENDING", "PROCESSING", "SYNCED", "FAILED", "DELETED"].includes(
+      body.status,
+    )
+      ? body.status
+      : null;
+
+  let sourceStatus:
+    | "PENDING"
+    | "PROCESSING"
+    | "SYNCED"
+    | "FAILED"
+    | "DELETED" =
+    type === "FILE" ? requestedStatus ?? "PENDING" : requestedStatus ?? "SYNCED";
   let rawText = body.rawText?.trim() || null;
+  let lastSyncedAt: Date | null = sourceStatus === "SYNCED" ? new Date() : null;
 
   if (type === "URL") {
     try {
       rawText = await fetchKnowledgeSourceText(body.sourceUrl!.trim());
+      sourceStatus = "SYNCED";
+      lastSyncedAt = new Date();
     } catch (error) {
       return NextResponse.json(
         {
@@ -116,7 +141,7 @@ export async function POST(request: Request) {
       rawText,
       fileName: body.fileName?.trim() || null,
       mimeType: body.mimeType?.trim() || null,
-      lastSyncedAt: new Date(),
+      lastSyncedAt,
     },
     include: {
       agent: true,

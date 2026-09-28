@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { hydrateKnowledgeSources } from "@/src/lib/knowledge-runtime";
-import { generateAgentReply } from "@/src/lib/llm-runtime";
+import {
+  type ConversationTurn,
+  generateAgentReply,
+  toRuntimeAgent,
+} from "@/src/lib/llm-runtime";
 import { prisma } from "@/src/lib/prisma";
 
 type PlaygroundRouteContext = {
@@ -12,7 +16,27 @@ type PlaygroundRouteContext = {
 
 type PlaygroundPayload = {
   message?: string;
+  history?: Array<{ role?: string; content?: string }>;
 };
+
+function parseHistory(history: PlaygroundPayload["history"]): ConversationTurn[] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history
+    .filter(
+      (turn) =>
+        (turn?.role === "user" || turn?.role === "assistant") &&
+        typeof turn.content === "string" &&
+        turn.content.trim(),
+    )
+    .slice(-12)
+    .map((turn) => ({
+      role: turn.role as "user" | "assistant",
+      content: (turn.content as string).slice(0, 4000),
+    }));
+}
 
 export async function POST(
   request: Request,
@@ -24,7 +48,7 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const body = (await request.json()) as PlaygroundPayload;
+  const body = (await request.json().catch(() => ({}))) as PlaygroundPayload;
   const message = body.message?.trim();
 
   if (!message) {
@@ -41,6 +65,7 @@ export async function POST(
       id,
       workspaceId: session.user.workspaceId,
     },
+    omit: { apiKey: false },
     include: {
       knowledgeSources: {
         orderBy: {
@@ -70,15 +95,11 @@ export async function POST(
   );
 
   const response = await generateAgentReply({
-    agent: {
-      provider: agent.provider,
-      model: agent.model,
-      apiKey: agent.apiKey,
-      systemPrompt: agent.systemPrompt,
-      confidenceThreshold: agent.confidenceThreshold,
-    },
+    agent: toRuntimeAgent(agent),
     question: message,
     sources: hydratedSources,
+    history: parseHistory(body.history),
+    channel: "PLAYGROUND",
   });
 
   await prisma.automationLog.create({
@@ -92,10 +113,12 @@ export async function POST(
           : response.confidence >= agent.confidenceThreshold
             ? "SUCCESS"
             : "LOW_CONFIDENCE",
-      model: agent.model,
+      model: response.modelUsed,
       tokens: response.tokens,
       durationMs: Date.now() - startedAt,
-      summary: `Playground test completed with confidence ${response.confidence.toFixed(2)}.`,
+      summary: response.usedFallback
+        ? `Playground used the knowledge-base fallback: ${response.errorMessage ?? "no AI reply"}`
+        : `Playground test completed with confidence ${response.confidence.toFixed(2)}.`,
     },
   });
 
@@ -103,5 +126,10 @@ export async function POST(
     reply: response.reply,
     confidence: response.confidence,
     usedSourceIds: response.usedSourceIds,
+    usedFallback: response.usedFallback,
+    fallbackReason: response.errorMessage,
+    modelUsed: response.modelUsed,
+    latencyMs: response.latencyMs,
+    tokens: response.tokens,
   });
 }

@@ -83,8 +83,8 @@ async function seedDemoData() {
         workspaceId: workspace.id,
         inboxId: inbox.id,
         name: "Support Assistant",
-        provider: "Groq",
-        model: "llama-3.3-70b-versatile",
+        provider: "Default",
+        model: "groq/llama-3.3-70b-versatile",
         systemPrompt:
           "You are AssistDesk support assistant. Keep answers clear and helpful.",
         status: "ACTIVE",

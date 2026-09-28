@@ -27,6 +27,9 @@ export async function DELETE(
     },
     select: {
       id: true,
+      chatbots: {
+        select: { name: true },
+      },
     },
   });
 
@@ -34,6 +37,17 @@ export async function DELETE(
     return NextResponse.json(
       { error: "AI agent not found in this workspace." },
       { status: 404 },
+    );
+  }
+
+  if (agent.chatbots.length > 0) {
+    const names = agent.chatbots.map((chatbot) => chatbot.name).join(", ");
+
+    return NextResponse.json(
+      {
+        error: `This agent powers ${agent.chatbots.length} chatbot(s): ${names}. Link those chatbots to another agent or delete them first, so live widgets don't break.`,
+      },
+      { status: 409 },
     );
   }
 

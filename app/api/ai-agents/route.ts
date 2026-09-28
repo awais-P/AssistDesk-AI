@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
+  MAX_AGENT_MAX_TOKENS,
+  MIN_AGENT_MAX_TOKENS,
+  clampAgentNumber,
   defaultAgentSystemPrompt,
   getDefaultModelForProvider,
   getModelsForProvider,
+  normalizeAgentTone,
+  normalizeResponseLength,
   usesCustomApiKey,
 } from "@/src/lib/agent-config";
+import { serializeAgent } from "@/src/lib/agent-serializer";
 import { prisma } from "@/src/lib/prisma";
+import { encryptSecret } from "@/src/lib/secrets";
 
 type AgentPayload = {
   id?: string;
@@ -18,8 +25,13 @@ type AgentPayload = {
   systemPrompt?: string;
   confidenceThreshold?: number;
   temperature?: number;
-  status?: "DRAFT" | "ACTIVE" | "ARCHIVED";
+  maxTokens?: number;
+  tone?: string;
+  responseLength?: string;
+  status?: string;
 };
+
+const agentStatuses = new Set(["DRAFT", "ACTIVE", "ARCHIVED"]);
 
 export async function GET() {
   const session = await getCurrentSession();
@@ -32,6 +44,7 @@ export async function GET() {
     where: {
       workspaceId: session.user.workspaceId,
     },
+    omit: { apiKey: false },
     include: {
       inbox: true,
     },
@@ -40,7 +53,9 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ agents });
+  return NextResponse.json({
+    agents: agents.map((agent) => ({ ...serializeAgent(agent), inbox: agent.inbox })),
+  });
 }
 
 export async function POST(request: Request) {
@@ -50,7 +65,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const body = (await request.json()) as AgentPayload;
+  const body = (await request.json().catch(() => ({}))) as AgentPayload;
   const name = body.name?.trim();
   const provider = body.provider?.trim() || "Default";
   const model = body.model?.trim() || getDefaultModelForProvider(provider);
@@ -59,6 +74,13 @@ export async function POST(request: Request) {
   if (!name) {
     return NextResponse.json(
       { error: "Agent name is required." },
+      { status: 400 },
+    );
+  }
+
+  if (name.length > 80) {
+    return NextResponse.json(
+      { error: "Agent name must be 80 characters or fewer." },
       { status: 400 },
     );
   }
@@ -77,9 +99,48 @@ export async function POST(request: Request) {
     );
   }
 
-  if (usesCustomApiKey(provider) && !body.apiKey?.trim()) {
+  if (body.status && !agentStatuses.has(body.status)) {
     return NextResponse.json(
-      { error: "API key is required for this provider." },
+      { error: "Agent status must be DRAFT, ACTIVE or ARCHIVED." },
+      { status: 400 },
+    );
+  }
+
+  const existingAgent = body.id
+    ? await prisma.aIAgent.findFirst({
+        where: {
+          id: body.id,
+          workspaceId: session.user.workspaceId,
+        },
+        select: {
+          id: true,
+          apiKey: true,
+          provider: true,
+          status: true,
+        },
+      })
+    : null;
+
+  if (body.id && !existingAgent) {
+    return NextResponse.json(
+      { error: "AI agent not found in this workspace." },
+      { status: 404 },
+    );
+  }
+
+  // A blank key on edit keeps the stored key, as long as the provider did not change.
+  const submittedKey = body.apiKey?.trim() || "";
+  const keptKey =
+    existingAgent && existingAgent.provider === provider ? existingAgent.apiKey : null;
+  const storedKey = usesCustomApiKey(provider)
+    ? submittedKey
+      ? encryptSecret(submittedKey)
+      : keptKey
+    : null;
+
+  if (usesCustomApiKey(provider) && !storedKey) {
+    return NextResponse.json(
+      { error: `Paste your ${provider} API key to use this provider.` },
       { status: 400 },
     );
   }
@@ -103,60 +164,64 @@ export async function POST(request: Request) {
     }
   }
 
+  const systemPrompt = body.systemPrompt?.trim() || defaultAgentSystemPrompt;
+
+  if (systemPrompt.length > 8192) {
+    return NextResponse.json(
+      { error: "System prompt must be 8192 characters or fewer." },
+      { status: 400 },
+    );
+  }
+
   const data = {
     workspaceId: session.user.workspaceId,
     inboxId: body.inboxId || null,
     name,
     provider,
     model,
-    apiKey: usesCustomApiKey(provider) ? body.apiKey?.trim() || null : null,
-    systemPrompt: body.systemPrompt?.trim() || defaultAgentSystemPrompt,
-    confidenceThreshold:
-      typeof body.confidenceThreshold === "number"
-        ? body.confidenceThreshold
-        : 0.5,
-    temperature:
-      typeof body.temperature === "number" ? body.temperature : 0.7,
-    status: body.status || ("ACTIVE" as const),
+    apiKey: storedKey,
+    systemPrompt,
+    confidenceThreshold: clampAgentNumber(body.confidenceThreshold, {
+      min: 0,
+      max: 1,
+      fallback: 0.5,
+    }),
+    temperature: clampAgentNumber(body.temperature, { min: 0, max: 1, fallback: 0.7 }),
+    maxTokens: Math.round(
+      clampAgentNumber(body.maxTokens, {
+        min: MIN_AGENT_MAX_TOKENS,
+        max: MAX_AGENT_MAX_TOKENS,
+        fallback: 512,
+      }),
+    ),
+    tone: normalizeAgentTone(body.tone),
+    responseLength: normalizeResponseLength(body.responseLength),
+    status: (body.status || existingAgent?.status || "ACTIVE") as
+      | "DRAFT"
+      | "ACTIVE"
+      | "ARCHIVED",
   };
 
-  let agent;
+  const agent = existingAgent
+    ? await prisma.aIAgent.update({
+        where: {
+          id: existingAgent.id,
+        },
+        data,
+        omit: { apiKey: false },
+        include: {
+          inbox: true,
+        },
+      })
+    : await prisma.aIAgent.create({
+        data,
+        omit: { apiKey: false },
+        include: {
+          inbox: true,
+        },
+      });
 
-  if (body.id) {
-    const existingAgent = await prisma.aIAgent.findFirst({
-      where: {
-        id: body.id,
-        workspaceId: session.user.workspaceId,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!existingAgent) {
-      return NextResponse.json(
-        { error: "AI agent not found in this workspace." },
-        { status: 404 },
-      );
-    }
-
-    agent = await prisma.aIAgent.update({
-      where: {
-        id: body.id,
-      },
-      data,
-      include: {
-        inbox: true,
-      },
-    });
-  } else {
-    agent = await prisma.aIAgent.create({
-      data,
-      include: {
-        inbox: true,
-      },
-    });
-  }
-
-  return NextResponse.json({ agent });
+  return NextResponse.json({
+    agent: { ...serializeAgent(agent), inbox: agent.inbox },
+  });
 }

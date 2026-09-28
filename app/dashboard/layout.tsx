@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/src/lib/auth";
 import { DashboardSidebar } from "@/src/components/dashboard/dashboard-sidebar";
+import { PresenceHeartbeat } from "@/src/components/dashboard/presence-heartbeat";
 
 export default async function DashboardLayout({
   children,
@@ -15,6 +16,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <PresenceHeartbeat />
       <div className="grid min-h-screen lg:grid-cols-[255px_1fr]">
         <DashboardSidebar
           user={{

@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { CannedResponsesWorkspace } from "@/src/components/dashboard/canned-responses-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
-import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 
 export default async function CannedResponsesPage() {
-  const [, session] = await Promise.all([ensureDemoData(), getCurrentSession()]);
+  const session = await getCurrentSession();
 
   if (!session) {
     redirect("/login");
@@ -15,9 +14,16 @@ export default async function CannedResponsesPage() {
     where: {
       workspaceId: session.user.workspaceId,
     },
+    select: {
+      id: true,
+      title: true,
+      body: true,
+      createdAt: true,
+    },
     orderBy: {
       createdAt: "desc",
     },
+    take: 100,
   });
 
   return (

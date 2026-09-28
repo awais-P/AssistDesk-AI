@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
+import { sendTicketReplyEmail } from "@/src/lib/mailer";
 import { prisma } from "@/src/lib/prisma";
 
 type TicketMessagesRouteContext = {
@@ -77,15 +78,22 @@ export async function POST(
     },
   });
 
+  const delivery =
+    mode === "reply"
+      ? await sendTicketReplyEmail({ ticketId: id, ticketMessageId: message.id, content })
+      : null;
+
   await prisma.automationLog.create({
     data: {
       workspaceId: session.user.workspaceId,
       ticketId: id,
       action: mode === "reply" ? "AGENT_REPLY" : "INTERNAL_NOTE",
-      status: "SUCCESS",
+      status: delivery && delivery.status !== "SENT" ? delivery.status : "SUCCESS",
       summary:
         mode === "reply"
-          ? "A manual agent reply was sent on the ticket."
+          ? delivery?.status === "SENT"
+            ? "A manual agent reply was emailed to the requester."
+            : `A manual agent reply was saved but not emailed: ${delivery?.error ?? "unknown reason"}`
           : "An internal note was added to the ticket.",
     },
   });
@@ -95,6 +103,8 @@ export async function POST(
       ...message,
       content,
       mode,
+      deliveryStatus: delivery?.status ?? null,
+      deliveryError: delivery?.error ?? null,
     },
   });
 }

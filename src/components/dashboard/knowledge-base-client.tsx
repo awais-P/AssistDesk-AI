@@ -2,10 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  MAX_CRAWL_PAGES_UI,
+  MAX_KNOWLEDGE_FILE_MB,
+  knowledgeFileAcceptAttribute,
+  knowledgeFileExtensions,
+  knowledgeFileTypesLabel,
+} from "@/src/lib/knowledge-file-types";
 import { DashboardPageHeader } from "./dashboard-page-header";
 
 type KnowledgeSourceType = "FILE" | "URL" | "TEXT";
 type SyncStatus = "PENDING" | "PROCESSING" | "SYNCED" | "FAILED" | "DELETED";
+type CrawlMode = "SINGLE" | "CRAWL";
+
+const DEFAULT_CRAWL_PAGES = 10;
 
 type KnowledgeSourceItem = {
   id: string;
@@ -18,6 +28,9 @@ type KnowledgeSourceItem = {
   storagePath: string | null;
   fileSize: number | null;
   rawText: string | null;
+  crawlMode: string;
+  maxPages: number;
+  pageCount: number;
   chunkCount: number;
   vectorIndexedAt: string | null;
   processingError: string | null;
@@ -42,6 +55,9 @@ type KnowledgeBaseClientProps = {
     storagePath: string | null;
     fileSize: number | null;
     rawText: string | null;
+    crawlMode: string;
+    maxPages: number;
+    pageCount: number;
     chunkCount: number;
     vectorIndexedAt: Date | null;
     processingError: string | null;
@@ -152,6 +168,122 @@ function mapSource(source: KnowledgeBaseClientProps["initialSources"][number]): 
   };
 }
 
+/** Mirrors the server-side upload rules so users get instant feedback. */
+function validateKnowledgeFile(file: File) {
+  const dotIndex = file.name.lastIndexOf(".");
+  const extension = dotIndex >= 0 ? file.name.slice(dotIndex).toLowerCase() : "";
+
+  if (!knowledgeFileExtensions.includes(extension)) {
+    return `"${file.name}" is not a supported file type. Upload ${knowledgeFileTypesLabel}.`;
+  }
+
+  if (file.size === 0) {
+    return `"${file.name}" is empty. Choose a file that has content.`;
+  }
+
+  if (file.size > MAX_KNOWLEDGE_FILE_MB * 1024 * 1024) {
+    return `"${file.name}" is ${formatFileSize(file.size)}. Files must be ${MAX_KNOWLEDGE_FILE_MB} MB or smaller.`;
+  }
+
+  return "";
+}
+
+function KnowledgeFileDropZone({
+  id,
+  file,
+  disabled,
+  onFileSelected,
+}: {
+  id: string;
+  file: File | null;
+  disabled?: boolean;
+  onFileSelected: (file: File | null) => void;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+
+  return (
+    <div>
+      <input
+        id={id}
+        type="file"
+        accept={knowledgeFileAcceptAttribute}
+        disabled={disabled}
+        onChange={(event) => {
+          onFileSelected(event.target.files?.[0] ?? null);
+          // Allow picking the same file again after a validation error.
+          event.target.value = "";
+        }}
+        className="peer sr-only"
+      />
+      <label
+        htmlFor={id}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (!disabled) setIsDragging(true);
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          if (
+            event.relatedTarget instanceof Node &&
+            event.currentTarget.contains(event.relatedTarget)
+          ) {
+            return;
+          }
+          setIsDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setIsDragging(false);
+          if (!disabled) {
+            onFileSelected(event.dataTransfer.files?.[0] ?? null);
+          }
+        }}
+        className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-7 text-center transition peer-focus-visible:border-white ${
+          isDragging
+            ? "border-white bg-white/[0.06]"
+            : "border-white/15 bg-[#111111] hover:border-white/30"
+        } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-6 w-6 text-slate-400"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          aria-hidden="true"
+        >
+          <path d="M12 16V4" />
+          <path d="m7 9 5-5 5 5" />
+          <path d="M5 20h14" />
+        </svg>
+        <span className="mt-3 text-sm font-semibold text-white">
+          {isDragging ? "Drop the file to upload" : "Drag and drop a file, or click to browse"}
+        </span>
+        <span className="mt-1 text-xs text-slate-500">
+          {knowledgeFileTypesLabel} · up to {MAX_KNOWLEDGE_FILE_MB} MB
+        </span>
+      </label>
+
+      {file ? (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-sm">
+          <div className="min-w-0">
+            <p className="truncate font-medium text-white">{file.name}</p>
+            <p className="mt-0.5 text-xs text-slate-500">{formatFileSize(file.size)}</p>
+          </div>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onFileSelected(null)}
+            className="shrink-0 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-[#262626] disabled:opacity-60"
+          >
+            Remove
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function KnowledgeBaseClient({
   initialSources,
 }: KnowledgeBaseClientProps) {
@@ -169,10 +301,13 @@ export function KnowledgeBaseClient({
   const [title, setTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [rawText, setRawText] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [mimeType, setMimeType] = useState("");
+  const [crawlMode, setCrawlMode] = useState<CrawlMode>("SINGLE");
+  const [maxPages, setMaxPages] = useState(DEFAULT_CRAWL_PAGES);
+  const [existingFileName, setExistingFileName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [modalError, setModalError] = useState("");
+  const [success, setSuccess] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
 
@@ -242,38 +377,54 @@ export function KnowledgeBaseClient({
   }, [hasProcessingSources]);
 
   async function handleSaveSource() {
-    setError("");
+    if (isSaving) {
+      return;
+    }
+
+    setModalError("");
+    setSuccess("");
+
+    if (!title.trim()) {
+      setModalError("Please enter a title for the knowledge source.");
+      return;
+    }
+
+    if (createType === "URL") {
+      try {
+        new URL(sourceUrl.trim());
+      } catch {
+        setModalError("Enter a full website URL, for example https://example.com/docs.");
+        return;
+      }
+
+      if (
+        crawlMode === "CRAWL" &&
+        (!Number.isInteger(maxPages) || maxPages < 2 || maxPages > MAX_CRAWL_PAGES_UI)
+      ) {
+        setModalError(`Max pages must be a whole number between 2 and ${MAX_CRAWL_PAGES_UI}.`);
+        return;
+      }
+    }
+
+    if (createType === "TEXT" && !rawText.trim()) {
+      setModalError("Please enter the text content.");
+      return;
+    }
+
+    if (createType === "FILE" && !selectedFile && !editingSourceId) {
+      setModalError("Choose a file to upload for this source.");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
-      if (!title.trim()) {
-        setError("Please enter a title for the knowledge source.");
-        return;
-      }
-
-      if (createType === "URL" && !sourceUrl.trim()) {
-        setError("Please enter a source URL.");
-        return;
-      }
-
-      if (createType === "TEXT" && !rawText.trim()) {
-        setError("Please enter the text content.");
-        return;
-      }
-
-      if (createType === "FILE" && !selectedFile && !editingSourceId) {
-        setError("Please upload a file for this source.");
-        return;
-      }
-
       let response: Response;
 
       if (createType === "FILE") {
         const formData = new FormData();
         formData.set("title", title);
         formData.set("type", createType);
-        if (fileName.trim()) formData.set("fileName", fileName.trim());
-        if (mimeType.trim()) formData.set("mimeType", mimeType.trim());
         if (selectedFile) formData.set("file", selectedFile);
 
         response = await fetch(
@@ -298,20 +449,29 @@ export function KnowledgeBaseClient({
             body: JSON.stringify({
               title,
               type: createType,
-              sourceUrl: createType === "URL" ? sourceUrl : undefined,
+              sourceUrl: createType === "URL" ? sourceUrl.trim() : undefined,
+              crawlMode: createType === "URL" ? crawlMode : undefined,
+              maxPages:
+                createType === "URL"
+                  ? crawlMode === "CRAWL"
+                    ? maxPages
+                    : 1
+                  : undefined,
               rawText: createType === "TEXT" ? rawText : undefined,
             }),
           },
         );
       }
 
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         error?: string;
         knowledgeSource?: KnowledgeSourceItem;
       };
 
       if (!response.ok || !data.knowledgeSource) {
-        setError(data.error ?? "Unable to save knowledge source.");
+        setModalError(
+          data.error ?? "Unable to save knowledge source. Check the details and try again.",
+        );
         return;
       }
 
@@ -327,40 +487,74 @@ export function KnowledgeBaseClient({
         return [nextSource, ...current];
       });
 
+      setSuccess(
+        nextSource.status === "PROCESSING"
+          ? `"${nextSource.title}" saved. It is being processed in the background; this list updates automatically.`
+          : `"${nextSource.title}" saved.`,
+      );
       closeCreateModal();
     } catch (thrownError) {
-      setError(
+      setModalError(
         thrownError instanceof Error
           ? thrownError.message
-          : "Unable to save knowledge source.",
+          : "Unable to save knowledge source. Check your connection and try again.",
       );
     } finally {
       setIsSaving(false);
     }
   }
 
+  function handleFileSelected(file: File | null) {
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    const problem = validateKnowledgeFile(file);
+
+    if (problem) {
+      setSelectedFile(null);
+      setModalError(problem);
+      return;
+    }
+
+    setModalError("");
+    setSelectedFile(file);
+
+    // Default the title to the file name so users can upload in one step.
+    if (!title.trim()) {
+      setTitle(file.name.replace(/\.[^.]+$/, ""));
+    }
+  }
+
   function openCreateModal() {
-    setError("");
+    setModalError("");
     setEditingSourceId(null);
     setCreateType("URL");
     setTitle("");
     setSourceUrl("");
     setRawText("");
-    setFileName("");
-    setMimeType("");
+    setCrawlMode("SINGLE");
+    setMaxPages(DEFAULT_CRAWL_PAGES);
+    setExistingFileName("");
     setSelectedFile(null);
     setShowCreateModal(true);
   }
 
   function openEditModal(source: KnowledgeSourceItem) {
-    setError("");
+    setModalError("");
     setEditingSourceId(source.id);
     setCreateType(source.type);
     setTitle(source.title);
     setSourceUrl(source.sourceUrl ?? "");
     setRawText(source.rawText ?? "");
-    setFileName(source.fileName ?? "");
-    setMimeType(source.mimeType ?? "");
+    setCrawlMode(source.crawlMode === "CRAWL" ? "CRAWL" : "SINGLE");
+    setMaxPages(
+      source.crawlMode === "CRAWL" && source.maxPages >= 2
+        ? source.maxPages
+        : DEFAULT_CRAWL_PAGES,
+    );
+    setExistingFileName(source.fileName ?? "");
     setSelectedFile(null);
     setShowCreateModal(true);
   }
@@ -369,7 +563,7 @@ export function KnowledgeBaseClient({
     setShowCreateModal(false);
     setEditingSourceId(null);
     setSelectedFile(null);
-    setError("");
+    setModalError("");
   }
 
   async function handleAction(
@@ -377,6 +571,19 @@ export function KnowledgeBaseClient({
     payload: Record<string, unknown> | null,
     fallbackMessage: string,
   ) {
+    if (!payload) {
+      const source = sources.find((entry) => entry.id === id);
+      const shouldDelete = window.confirm(
+        `Delete "${source?.title ?? "this source"}"? Agents will stop using its content. This cannot be undone.`,
+      );
+
+      if (!shouldDelete) {
+        return;
+      }
+    }
+
+    setError("");
+    setSuccess("");
     setActiveActionId(id);
 
     try {
@@ -389,7 +596,7 @@ export function KnowledgeBaseClient({
           body: JSON.stringify(payload),
         });
 
-        const data = (await response.json()) as {
+        const data = (await response.json().catch(() => ({}))) as {
           error?: string;
           knowledgeSource?: KnowledgeSourceItem;
         };
@@ -398,23 +605,27 @@ export function KnowledgeBaseClient({
           throw new Error(data.error ?? fallbackMessage);
         }
 
+        const updatedSource = data.knowledgeSource;
+
         setSources((current) =>
-          current.map((source) =>
-            source.id === id ? data.knowledgeSource! : source,
-          ),
+          current.map((source) => (source.id === id ? updatedSource : source)),
         );
+        setSuccess(`"${updatedSource.title}" queued for processing.`);
       } else {
         const response = await fetch(`/api/knowledge-sources/${id}`, {
           method: "DELETE",
         });
 
-        const data = (await response.json()) as { error?: string };
+        const data = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
 
         if (!response.ok) {
           throw new Error(data.error ?? fallbackMessage);
         }
 
         setSources((current) => current.filter((source) => source.id !== id));
+        setSuccess("Knowledge source deleted.");
       }
     } catch (thrownError) {
       setError(
@@ -502,8 +713,17 @@ export function KnowledgeBaseClient({
       </div>
 
       {error ? (
-        <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+        <div
+          role="alert"
+          className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+        >
           {error}
+        </div>
+      ) : null}
+
+      {success ? (
+        <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          {success}
         </div>
       ) : null}
 
@@ -574,9 +794,21 @@ export function KnowledgeBaseClient({
                       </div>
                     </td>
                     <td className="px-5 py-4 text-slate-300">
-                      {source.type === "URL"
-                        ? source.sourceUrl ?? "No URL"
-                        : source.type === "FILE"
+                      {source.type === "URL" ? (
+                        <>
+                          <p className="break-all">{source.sourceUrl ?? "No URL"}</p>
+                          {source.pageCount > 1 ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              {source.pageCount} pages
+                            </p>
+                          ) : source.crawlMode === "CRAWL" &&
+                            source.status === "PROCESSING" ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Crawling up to {source.maxPages} pages...
+                            </p>
+                          ) : null}
+                        </>
+                      ) : source.type === "FILE"
                           ? [source.fileName, source.mimeType, formatFileSize(source.fileSize)]
                               .filter(Boolean)
                               .join(" • ") || "No file metadata"
@@ -678,7 +910,7 @@ export function KnowledgeBaseClient({
 
       {showCreateModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[24px] border border-white/10 bg-[#0b0b0b] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-white/10 bg-[#0b0b0b] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-lg font-semibold text-white">
@@ -715,10 +947,12 @@ export function KnowledgeBaseClient({
                 <span>Type</span>
                 <select
                   value={createType}
-                  onChange={(event) =>
-                    setCreateType(event.target.value as KnowledgeSourceType)
-                  }
-                  className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
+                  disabled={Boolean(editingSourceId)}
+                  onChange={(event) => {
+                    setCreateType(event.target.value as KnowledgeSourceType);
+                    setModalError("");
+                  }}
+                  className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white disabled:opacity-60"
                 >
                   <option value="URL">URL</option>
                   <option value="TEXT">TEXT</option>
@@ -727,15 +961,83 @@ export function KnowledgeBaseClient({
               </label>
 
               {createType === "URL" ? (
-                <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-                  <span>Source URL</span>
-                  <input
-                    type="url"
-                    value={sourceUrl}
-                    onChange={(event) => setSourceUrl(event.target.value)}
-                    className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
-                  />
-                </label>
+                <>
+                  <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
+                    <span>Source URL</span>
+                    <input
+                      type="url"
+                      value={sourceUrl}
+                      onChange={(event) => setSourceUrl(event.target.value)}
+                      placeholder="https://example.com/docs"
+                      className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
+                    />
+                  </label>
+
+                  <fieldset className="space-y-2 text-sm text-slate-300 md:col-span-2">
+                    <legend className="mb-2">What should we read?</legend>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(
+                        [
+                          {
+                            value: "SINGLE",
+                            label: "Single page",
+                            description: "Only the URL above.",
+                          },
+                          {
+                            value: "CRAWL",
+                            label: "Crawl website",
+                            description: "Follow links on the same site.",
+                          },
+                        ] as const
+                      ).map((option) => (
+                        <label
+                          key={option.value}
+                          className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition ${
+                            crawlMode === option.value
+                              ? "border-white bg-[#151515]"
+                              : "border-white/10 bg-[#111111] hover:border-white/20"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="knowledge-source-crawl-mode"
+                            value={option.value}
+                            checked={crawlMode === option.value}
+                            onChange={() => setCrawlMode(option.value)}
+                            className="mt-1 accent-white"
+                          />
+                          <span>
+                            <span className="block font-semibold text-white">
+                              {option.label}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-slate-400">
+                              {option.description}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  {crawlMode === "CRAWL" ? (
+                    <label className="space-y-2 text-sm text-slate-300">
+                      <span>Max pages</span>
+                      <input
+                        type="number"
+                        min={2}
+                        max={MAX_CRAWL_PAGES_UI}
+                        step={1}
+                        value={Number.isFinite(maxPages) ? maxPages : ""}
+                        onChange={(event) => setMaxPages(event.target.valueAsNumber)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
+                      />
+                      <span className="block text-xs text-slate-500">
+                        Between 2 and {MAX_CRAWL_PAGES_UI}. Crawling runs in the
+                        background and can take a minute.
+                      </span>
+                    </label>
+                  ) : null}
+                </>
               ) : null}
 
               {createType === "TEXT" ? (
@@ -751,49 +1053,29 @@ export function KnowledgeBaseClient({
               ) : null}
 
               {createType === "FILE" ? (
-                <>
-                  <label className="space-y-2 text-sm text-slate-300 md:col-span-2">
-                    <span>Upload file</span>
-                    <input
-                      type="file"
-                      onChange={(event) =>
-                        setSelectedFile(event.target.files?.[0] ?? null)
-                      }
-                      className="block w-full rounded-xl border border-dashed border-white/15 bg-[#111111] px-4 py-3 text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-black"
-                    />
+                <div className="space-y-2 text-sm text-slate-300 md:col-span-2">
+                  <p>{editingSourceId ? "Replace file (optional)" : "Upload file"}</p>
+                  <KnowledgeFileDropZone
+                    id="knowledge-source-file"
+                    file={selectedFile}
+                    disabled={isSaving}
+                    onFileSelected={handleFileSelected}
+                  />
+                  {editingSourceId && existingFileName && !selectedFile ? (
                     <p className="text-xs text-slate-500">
-                      Best supported for this phase: TXT, MD, CSV, JSON, HTML,
-                      and XML.
+                      Current file: {existingFileName}. Leave empty to keep it.
                     </p>
-                  </label>
-
-                  <label className="space-y-2 text-sm text-slate-300">
-                    <span>File name</span>
-                    <input
-                      type="text"
-                      value={fileName}
-                      onChange={(event) => setFileName(event.target.value)}
-                      className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
-                    />
-                  </label>
-
-                  <label className="space-y-2 text-sm text-slate-300">
-                    <span>MIME type</span>
-                    <input
-                      type="text"
-                      value={mimeType}
-                      onChange={(event) => setMimeType(event.target.value)}
-                      placeholder="application/pdf"
-                      className="h-10 w-full rounded-xl border border-white/10 bg-[#111111] px-4 text-sm text-white outline-none focus:border-white"
-                    />
-                  </label>
-                </>
+                  ) : null}
+                </div>
               ) : null}
             </div>
 
-            {error ? (
-              <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                {error}
+            {modalError ? (
+              <div
+                role="alert"
+                className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+              >
+                {modalError}
               </div>
             ) : null}
 
@@ -813,7 +1095,13 @@ export function KnowledgeBaseClient({
                 }}
                 className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50"
               >
-                {editingSourceId ? "Update Source" : "Save Source"}
+                {isSaving
+                  ? createType === "FILE" && selectedFile
+                    ? "Uploading..."
+                    : "Saving..."
+                  : editingSourceId
+                    ? "Update Source"
+                    : "Save Source"}
               </button>
             </div>
           </div>

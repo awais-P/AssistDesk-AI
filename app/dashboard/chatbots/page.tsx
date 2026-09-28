@@ -15,16 +15,47 @@ export default async function ChatbotsPage() {
       where: {
         workspaceId: session.user.workspaceId,
       },
-      include: {
-        agent: true,
+      select: {
+        id: true,
+        name: true,
+        widgetId: true,
+        agentId: true,
+        allowedDomains: true,
+        primaryColor: true,
+        welcomeMessage: true,
+        isActive: true,
+        maxAiMessages: true,
+        aiRepliesEnabled: true,
+        replyMode: true,
+        fallbackDelaySeconds: true,
+        additionalPrompt: true,
+        avatarUrl: true,
+        conversationStarters: true,
+        widgetPosition: true,
+        requireName: true,
+        requireEmail: true,
+        requirePhone: true,
+        emailNotifications: true,
+        agent: {
+          select: {
+            name: true,
+            status: true,
+          },
+        },
       },
       orderBy: {
         createdAt: "asc",
       },
+      take: 100,
     }),
     prisma.aIAgent.findMany({
       where: {
         workspaceId: session.user.workspaceId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
       },
       orderBy: {
         createdAt: "asc",
@@ -40,15 +71,28 @@ export default async function ChatbotsPage() {
         widgetId: chatbot.widgetId,
         agentId: chatbot.agentId,
         agentName: chatbot.agent.name,
+        agentStatus: chatbot.agent.status,
         allowedDomains: chatbot.allowedDomains,
         primaryColor: chatbot.primaryColor,
         welcomeMessage: chatbot.welcomeMessage,
         isActive: chatbot.isActive,
         maxAiMessages: chatbot.maxAiMessages,
+        aiRepliesEnabled: chatbot.aiRepliesEnabled,
+        replyMode: chatbot.replyMode,
+        fallbackDelaySeconds: chatbot.fallbackDelaySeconds,
+        additionalPrompt: chatbot.additionalPrompt,
+        avatarUrl: chatbot.avatarUrl,
+        conversationStarters: chatbot.conversationStarters,
+        widgetPosition: chatbot.widgetPosition,
+        requireName: chatbot.requireName,
+        requireEmail: chatbot.requireEmail,
+        requirePhone: chatbot.requirePhone,
+        emailNotifications: chatbot.emailNotifications,
       }))}
       agentOptions={agents.map((agent) => ({
         id: agent.id,
         name: agent.name,
+        status: agent.status,
       }))}
     />
   );

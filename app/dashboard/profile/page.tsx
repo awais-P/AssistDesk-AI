@@ -14,8 +14,17 @@ export default async function ProfilePage() {
     where: {
       id: session.user.id,
     },
-    include: {
-      workspace: true,
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      username: true,
+      role: true,
+      workspace: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
 

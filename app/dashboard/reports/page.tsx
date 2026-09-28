@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { ReportsWorkspace } from "@/src/components/dashboard/reports-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
-import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 
 export default async function ReportsPage() {
-  const [, session] = await Promise.all([ensureDemoData(), getCurrentSession()]);
+  const session = await getCurrentSession();
 
   if (!session) {
     redirect("/login");
@@ -16,13 +15,25 @@ export default async function ReportsPage() {
       where: {
         workspaceId: session.user.workspaceId,
       },
-      include: {
-        assignee: true,
+      select: {
+        id: true,
+        source: true,
+        status: true,
+        assignee: {
+          select: {
+            fullName: true,
+          },
+        },
       },
+      take: 500,
     }),
     prisma.user.findMany({
       where: {
         workspaceId: session.user.workspaceId,
+      },
+      select: {
+        id: true,
+        role: true,
       },
     }),
   ]);

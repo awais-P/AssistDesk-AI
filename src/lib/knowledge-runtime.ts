@@ -1,4 +1,3 @@
-import { prisma } from "./prisma";
 import {
   fetchKnowledgeSourceText,
   retrieveVectorMatches,
@@ -191,59 +190,15 @@ async function retrieveExtractiveMatches(
   return matches.sort((left, right) => right.score - left.score).slice(0, 3);
 }
 
+/**
+ * Returns the sources that can be used for answering. URL content is fetched by the
+ * background indexing job, never at chat time (a customer message must not trigger
+ * outbound crawling).
+ */
 export async function hydrateKnowledgeSources(
   sources: RuntimeKnowledgeSource[],
 ) {
-  return Promise.all(
-    sources.map(async (source) => {
-      if (
-        source.type !== "URL" ||
-        !source.sourceUrl ||
-        (source.rawText && source.rawText.trim().length > 0)
-      ) {
-        return source;
-      }
-
-      try {
-        const fetchedText = await fetchKnowledgeSourceText(source.sourceUrl);
-
-        await prisma.knowledgeSource.update({
-          where: {
-            id: source.id,
-          },
-          data: {
-            rawText: fetchedText,
-            status: "SYNCED",
-            lastSyncedAt: new Date(),
-          },
-        });
-
-        return {
-          ...source,
-          rawText: fetchedText,
-          status: "SYNCED",
-        };
-      } catch (error) {
-        await prisma.knowledgeSource.update({
-          where: {
-            id: source.id,
-          },
-          data: {
-            status: "FAILED",
-            processingError:
-              error instanceof Error
-                ? error.message
-                : "Unable to hydrate this URL source.",
-          },
-        });
-
-        return {
-          ...source,
-          status: "FAILED",
-        };
-      }
-    }),
-  );
+  return sources.filter((source) => source.status !== "DELETED");
 }
 
 export async function retrieveKnowledgeMatches(

@@ -7,7 +7,14 @@ type TicketMessageItem = {
   id: string;
   sender: "USER" | "AI" | "AGENT" | "SYSTEM";
   content: string;
+  deliveryStatus: string | null;
+  deliveryError: string | null;
   createdAt: string;
+};
+
+type DeliveryNotice = {
+  tone: "success" | "warning" | "error";
+  text: string;
 };
 
 type TicketLogItem = {
@@ -245,6 +252,64 @@ function applyResponseVariables(template: string, ticket: TicketDetail) {
     .replaceAll("{{created_date}}", formatDateTime(ticket.createdAt));
 }
 
+function replyDeliveryNotice(
+  deliveryStatus: string | null | undefined,
+  deliveryError: string | null | undefined,
+  requesterEmail: string | null,
+  closeAfterReply: boolean,
+): DeliveryNotice {
+  const closedSuffix = closeAfterReply ? " The ticket was closed." : "";
+
+  if (deliveryStatus === "SENT") {
+    return {
+      tone: "success",
+      text: `Reply emailed to ${requesterEmail || "the requester"}.${closedSuffix}`,
+    };
+  }
+
+  if (deliveryStatus === "NOT_CONFIGURED") {
+    return {
+      tone: "warning",
+      text: `Reply saved but not emailed: no email sender is configured. Set one up in Inboxes → Email sender.${closedSuffix}`,
+    };
+  }
+
+  if (deliveryStatus === "FAILED") {
+    return {
+      tone: "error",
+      text: `Reply saved but the email could not be sent: ${
+        deliveryError || "unknown error"
+      }${closedSuffix}`,
+    };
+  }
+
+  if (deliveryStatus === "NO_RECIPIENT") {
+    return {
+      tone: "warning",
+      text: `Saved. This ticket has no requester email.${closedSuffix}`,
+    };
+  }
+
+  return {
+    tone: "success",
+    text: closeAfterReply
+      ? "Ticket response sent and ticket closed."
+      : "Reply sent successfully.",
+  };
+}
+
+function deliveryNoticeClass(tone: DeliveryNotice["tone"]) {
+  if (tone === "error") {
+    return "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200";
+  }
+
+  if (tone === "warning") {
+    return "mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200";
+  }
+
+  return "mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200";
+}
+
 function senderIcon(message: TicketMessageItem) {
   if (message.sender === "USER") {
     return (
@@ -300,6 +365,7 @@ export function TicketDetailWorkspace({
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [deliveryNotice, setDeliveryNotice] = useState<DeliveryNotice | null>(null);
 
   const participants = useMemo(() => {
     const people = [
@@ -339,6 +405,7 @@ export function TicketDetailWorkspace({
   async function updateTicket(payload: Record<string, unknown>) {
     setError("");
     setSuccess("");
+    setDeliveryNotice(null);
 
     const response = await fetch(`/api/tickets/${ticket.id}`, {
       method: "PATCH",
@@ -365,6 +432,7 @@ export function TicketDetailWorkspace({
   async function handleSendMessage(closeAfterReply = false) {
     setError("");
     setSuccess("");
+    setDeliveryNotice(null);
 
     if (!composerValue.trim()) {
       setError(
@@ -390,7 +458,13 @@ export function TicketDetailWorkspace({
         }),
       });
 
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as {
+        error?: string;
+        message?: {
+          deliveryStatus?: string | null;
+          deliveryError?: string | null;
+        };
+      };
 
       if (!response.ok) {
         setError(data.error ?? "Unable to send the ticket response.");
@@ -400,13 +474,23 @@ export function TicketDetailWorkspace({
 
       setComposerValue("");
       await refreshTicket();
-      setSuccess(
-        closeAfterReply
-          ? "Ticket response sent and ticket closed."
-          : composerMode === "reply"
-            ? "Reply sent successfully."
+
+      if (composerMode === "reply") {
+        setDeliveryNotice(
+          replyDeliveryNotice(
+            data.message?.deliveryStatus,
+            data.message?.deliveryError,
+            ticket.requesterEmail,
+            closeAfterReply,
+          ),
+        );
+      } else {
+        setSuccess(
+          closeAfterReply
+            ? "Ticket response sent and ticket closed."
             : "Internal note added successfully.",
-      );
+        );
+      }
     } catch {
       setError("Something went wrong while sending the ticket response.");
     } finally {
@@ -417,6 +501,7 @@ export function TicketDetailWorkspace({
   async function handleGenerateDraft() {
     setError("");
     setSuccess("");
+    setDeliveryNotice(null);
     setIsGeneratingDraft(true);
 
     try {
@@ -570,6 +655,23 @@ export function TicketDetailWorkspace({
                               {timelineLabel(message, ticket, currentUser.fullName)}
                             </span>{" "}
                             {timelineAction(message)}
+                            {(message.sender === "AGENT" || message.sender === "AI") &&
+                            message.deliveryStatus ? (
+                              <span
+                                title={
+                                  message.deliveryStatus === "SENT"
+                                    ? undefined
+                                    : message.deliveryError || undefined
+                                }
+                                className={`ml-2 inline-flex rounded-full px-2 py-0.5 align-middle text-xs font-medium ${
+                                  message.deliveryStatus === "SENT"
+                                    ? "bg-emerald-500/10 text-emerald-200"
+                                    : "bg-amber-500/10 text-amber-200"
+                                }`}
+                              >
+                                {message.deliveryStatus === "SENT" ? "Emailed" : "Not emailed"}
+                              </span>
+                            ) : null}
                           </p>
                           <p className="text-sm text-slate-400">
                             {formatDateTime(message.createdAt)}
@@ -755,6 +857,12 @@ export function TicketDetailWorkspace({
             {success ? (
               <p className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
                 {success}
+              </p>
+            ) : null}
+
+            {deliveryNotice ? (
+              <p role="status" className={deliveryNoticeClass(deliveryNotice.tone)}>
+                {deliveryNotice.text}
               </p>
             ) : null}
 

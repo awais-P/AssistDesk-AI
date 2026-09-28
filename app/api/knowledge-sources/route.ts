@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
-  fetchKnowledgeSourceText,
   queueKnowledgeSourceProcessing,
   saveKnowledgeSourceFile,
+  validateKnowledgeUpload,
 } from "@/src/lib/knowledge-indexing";
 import { prisma } from "@/src/lib/prisma";
+import { assertPublicUrl } from "@/src/lib/safe-fetch";
+import { type CrawlMode, clampMaxPages } from "@/src/lib/web-crawler";
 
 type KnowledgeSourceType = "URL" | "TEXT" | "FILE";
 
@@ -17,6 +19,8 @@ type JsonKnowledgeSourcePayload = {
   fileName?: string;
   mimeType?: string;
   agentId?: string | null;
+  crawlMode?: string;
+  maxPages?: number;
 };
 
 type ParsedKnowledgeSourcePayload = {
@@ -27,6 +31,8 @@ type ParsedKnowledgeSourcePayload = {
   fileName: string | null;
   mimeType: string | null;
   agentId: string | null;
+  crawlMode: CrawlMode;
+  maxPages: number;
   uploadedFile: File | null;
 };
 
@@ -60,6 +66,8 @@ async function parseKnowledgeSourcePayload(
       fileName: normalizeTextValue(formData.get("fileName")),
       mimeType: normalizeTextValue(formData.get("mimeType")),
       agentId: normalizeTextValue(formData.get("agentId")),
+      crawlMode: formData.get("crawlMode") === "CRAWL" ? "CRAWL" : "SINGLE",
+      maxPages: Number(formData.get("maxPages") || 1),
       uploadedFile: uploadedFile instanceof File ? uploadedFile : null,
     };
   }
@@ -74,6 +82,8 @@ async function parseKnowledgeSourcePayload(
     fileName: body.fileName?.trim() || null,
     mimeType: body.mimeType?.trim() || null,
     agentId: body.agentId?.trim() || null,
+    crawlMode: body.crawlMode === "CRAWL" ? "CRAWL" : "SINGLE",
+    maxPages: Number(body.maxPages || 1),
     uploadedFile: null,
   };
 }
@@ -130,6 +140,13 @@ export async function POST(request: Request) {
   try {
     const payload = await parseKnowledgeSourcePayload(request);
 
+    if (!["URL", "TEXT", "FILE"].includes(payload.type)) {
+      return NextResponse.json(
+        { error: "Knowledge source type must be URL, TEXT or FILE." },
+        { status: 400 },
+      );
+    }
+
     if (!payload.title || !payload.type) {
       return NextResponse.json(
         { error: "Knowledge source title and type are required." },
@@ -160,10 +177,13 @@ export async function POST(request: Request) {
       );
     }
 
-    let initialRawText = payload.rawText;
-
     if (payload.type === "URL" && payload.sourceUrl) {
-      initialRawText = await fetchKnowledgeSourceText(payload.sourceUrl);
+      // Fail fast on invalid or internal URLs; the page itself is fetched by the indexer.
+      await assertPublicUrl(payload.sourceUrl);
+    }
+
+    if (payload.uploadedFile) {
+      validateKnowledgeUpload(payload.uploadedFile);
     }
 
     const created = await prisma.knowledgeSource.create({
@@ -174,7 +194,10 @@ export async function POST(request: Request) {
         type: payload.type,
         status: "PROCESSING",
         sourceUrl: payload.sourceUrl,
-        rawText: initialRawText,
+        rawText: payload.type === "TEXT" ? payload.rawText : null,
+        crawlMode: payload.type === "URL" ? payload.crawlMode : "SINGLE",
+        maxPages:
+          payload.type === "URL" ? clampMaxPages(payload.maxPages, payload.crawlMode) : 1,
         fileName: payload.fileName,
         mimeType: payload.mimeType,
         processingError: null,

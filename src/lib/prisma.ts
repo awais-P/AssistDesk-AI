@@ -1,10 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../app/generated/prisma/client";
 
-declare global {
-  var prisma: PrismaClient | undefined;
-}
-
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
@@ -17,12 +13,23 @@ function createPrismaClient() {
   return new PrismaClient({
     adapter,
     log: ["warn", "error"],
+    // Secrets are never returned unless a query opts in with `omit: { field: false }`.
+    omit: {
+      aIAgent: { apiKey: true },
+      inbox: { smtpPassword: true },
+    } as const,
   });
+}
+
+type AppPrismaClient = ReturnType<typeof createPrismaClient>;
+
+declare global {
+  var prisma: AppPrismaClient | undefined;
 }
 
 const existingClient = global.prisma;
 
-function hasRequiredDelegates(client: PrismaClient) {
+function hasRequiredDelegates(client: AppPrismaClient) {
   return (
     "session" in client &&
     "agentAutomation" in client &&

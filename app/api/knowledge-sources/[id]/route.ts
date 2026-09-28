@@ -6,6 +6,7 @@ import {
   saveKnowledgeSourceFile,
 } from "@/src/lib/knowledge-indexing";
 import { prisma } from "@/src/lib/prisma";
+import { clampMaxPages } from "@/src/lib/web-crawler";
 
 type KnowledgeSourceRouteContext = {
   params: Promise<{
@@ -191,6 +192,14 @@ export async function PATCH(
         data.status = normalizeTextValue(formData.get("status"));
       }
 
+      if (typeof formData.get("crawlMode") === "string") {
+        data.crawlMode = formData.get("crawlMode") === "CRAWL" ? "CRAWL" : "SINGLE";
+      }
+
+      if (typeof formData.get("maxPages") === "string") {
+        data.maxPages = Number(formData.get("maxPages"));
+      }
+
       replacementFile = uploadedFile instanceof File ? uploadedFile : null;
     } else {
       const body = (await request.json()) as Record<string, unknown>;
@@ -202,6 +211,29 @@ export async function PATCH(
       if (typeof body.mimeType === "string") data.mimeType = body.mimeType.trim() || null;
       if (typeof body.agentId !== "undefined") data.agentId = body.agentId || null;
       if (typeof body.status === "string") data.status = body.status.trim();
+      if (typeof body.crawlMode === "string") {
+        data.crawlMode = body.crawlMode === "CRAWL" ? "CRAWL" : "SINGLE";
+      }
+      if (typeof body.maxPages !== "undefined") data.maxPages = Number(body.maxPages);
+    }
+
+    if (typeof data.crawlMode !== "undefined" || typeof data.maxPages !== "undefined") {
+      const mode = (data.crawlMode as "SINGLE" | "CRAWL" | undefined) ??
+        ((await prisma.knowledgeSource.findUnique({
+          where: { id },
+          select: { crawlMode: true },
+        }))?.crawlMode === "CRAWL"
+          ? "CRAWL"
+          : "SINGLE");
+      data.crawlMode = mode;
+      data.maxPages = clampMaxPages(data.maxPages, mode);
+    }
+
+    if (typeof data.title !== "undefined" && !data.title) {
+      return NextResponse.json(
+        { error: "Knowledge source title cannot be empty." },
+        { status: 400 },
+      );
     }
 
     await validateAgent(session.user.workspaceId, (data.agentId as string | null) ?? null);
@@ -222,6 +254,8 @@ export async function PATCH(
 
     if (
       typeof data.sourceUrl !== "undefined" ||
+      typeof data.crawlMode !== "undefined" ||
+      typeof data.maxPages !== "undefined" ||
       typeof data.rawText !== "undefined" ||
       typeof data.fileName !== "undefined" ||
       typeof data.mimeType !== "undefined"
@@ -230,10 +264,12 @@ export async function PATCH(
     }
 
     if (typeof data.status === "string") {
-      if (["PROCESSING", "PENDING", "SYNCED"].includes(data.status)) {
-        data.status = "PROCESSING";
+      // Clients can only request a re-sync; lifecycle states are owned by the indexer.
+      if (["PROCESSING", "PENDING", "SYNCED", "FAILED"].includes(data.status)) {
         shouldQueue = true;
       }
+
+      delete data.status;
     }
 
     if (shouldQueue) {

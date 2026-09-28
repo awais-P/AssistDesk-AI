@@ -1,0 +1,4 @@
+# Test fixtures and documents must never get line-ending conversion
+*.pdf binary
+*.docx binary
+tests/fixtures/** binary

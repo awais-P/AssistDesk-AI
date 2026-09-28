@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { hydrateKnowledgeSources } from "@/src/lib/knowledge-runtime";
-import { generateAgentReply } from "@/src/lib/llm-runtime";
+import { generateAgentReply, toRuntimeAgent } from "@/src/lib/llm-runtime";
 import { prisma } from "@/src/lib/prisma";
 
 type TicketDraftRouteContext = {
@@ -83,6 +83,7 @@ export async function POST(
             inboxId: ticket.inboxId,
             status: "ACTIVE",
           },
+          omit: { apiKey: false },
           include: {
             knowledgeSources: {
               orderBy: {
@@ -97,6 +98,7 @@ export async function POST(
         workspaceId: session.user.workspaceId,
         status: "ACTIVE",
       },
+      omit: { apiKey: false },
       include: {
         knowledgeSources: {
           orderBy: {
@@ -129,15 +131,10 @@ export async function POST(
     : "Draft a concise, helpful reply for the requester using only the connected knowledge and ticket context.";
 
   const reply = await generateAgentReply({
-    agent: {
-      provider: agent.provider,
-      model: agent.model,
-      apiKey: agent.apiKey,
-      systemPrompt: agent.systemPrompt,
-      confidenceThreshold: agent.confidenceThreshold,
-    },
+    agent: toRuntimeAgent(agent),
     question: `${buildTicketThread(ticket)}\n\n${guidance}`,
     sources: hydratedSources,
+    channel: "EMAIL",
   });
 
   await prisma.automationLog.create({

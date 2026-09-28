@@ -1,6 +1,7 @@
 import { ensureAgentAutomationDefaults } from "./agent-automations";
 import { estimateTokenUsage, hydrateKnowledgeSources } from "./knowledge-runtime";
-import { generateAgentReply } from "./llm-runtime";
+import { generateAgentReply, toRuntimeAgent } from "./llm-runtime";
+import { sendTicketReplyEmail } from "./mailer";
 import { prisma } from "./prisma";
 
 function normalize(value: string | null | undefined) {
@@ -220,6 +221,7 @@ export async function processIncomingTicket(ticketId: string) {
             inboxId: ticket.inboxId,
             status: "ACTIVE",
           },
+          omit: { apiKey: false },
           include: {
             knowledgeSources: {
               orderBy: {
@@ -234,6 +236,7 @@ export async function processIncomingTicket(ticketId: string) {
         workspaceId: ticket.workspaceId,
         status: "ACTIVE",
       },
+      omit: { apiKey: false },
       include: {
         knowledgeSources: {
           orderBy: {
@@ -359,28 +362,32 @@ export async function processIncomingTicket(ticketId: string) {
       );
 
       const response = await generateAgentReply({
-        agent: {
-          provider: agent.provider,
-          model: agent.model,
-          apiKey: agent.apiKey,
-          systemPrompt: agent.systemPrompt,
-          confidenceThreshold: agent.confidenceThreshold,
-        },
+        agent: toRuntimeAgent(agent),
         question: context,
         sources: hydratedSources,
+        channel: "EMAIL",
       });
 
-      await prisma.ticketMessage.create({
+      const isConfident = response.confidence >= agent.confidenceThreshold;
+      const aiMessage = await prisma.ticketMessage.create({
         data: {
           workspaceId: ticket.workspaceId,
           ticketId: ticket.id,
-          sender: response.confidence >= agent.confidenceThreshold ? "AI" : "SYSTEM",
-          content:
-            response.confidence >= agent.confidenceThreshold
-              ? response.reply
-              : `AI confidence was too low for a full automatic answer.\n\n${response.reply}`,
+          sender: isConfident ? "AI" : "SYSTEM",
+          content: isConfident
+            ? response.reply
+            : `AI confidence was too low for a full automatic answer.\n\n${response.reply}`,
         },
       });
+
+      // Only confident answers are emailed; low-confidence drafts stay internal for a human.
+      if (isConfident && !response.usedFallback) {
+        await sendTicketReplyEmail({
+          ticketId: ticket.id,
+          ticketMessageId: aiMessage.id,
+          content: response.reply,
+        });
+      }
 
       ticketUpdate.status = "IN_PROGRESS";
 

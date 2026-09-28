@@ -14,7 +14,14 @@ export default async function LogsPage() {
     where: {
       workspaceId: session.user.workspaceId,
     },
-    include: {
+    select: {
+      id: true,
+      action: true,
+      status: true,
+      model: true,
+      tokens: true,
+      durationMs: true,
+      createdAt: true,
       ticket: {
         select: {
           ticketNumber: true,

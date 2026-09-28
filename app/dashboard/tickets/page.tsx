@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { TicketsClient } from "@/src/components/dashboard/tickets-client";
 import { getCurrentSession } from "@/src/lib/auth";
-import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 
 export default async function TicketsPage() {
-  const [, session] = await Promise.all([ensureDemoData(), getCurrentSession()]);
+  const session = await getCurrentSession();
 
   if (!session) {
     redirect("/login");
@@ -15,18 +14,41 @@ export default async function TicketsPage() {
     where: {
       workspaceId: session.user.workspaceId,
     },
-    include: {
-      inbox: true,
-      assignee: true,
+    select: {
+      id: true,
+      ticketNumber: true,
+      subject: true,
+      previewText: true,
+      requesterName: true,
+      requesterEmail: true,
+      source: true,
+      status: true,
+      priority: true,
+      createdAt: true,
+      inbox: {
+        select: {
+          name: true,
+        },
+      },
+      assignee: {
+        select: {
+          fullName: true,
+        },
+      },
       ticketTags: {
-        include: {
-          tag: true,
+        select: {
+          tag: {
+            select: {
+              name: true,
+            },
+          },
         },
       },
     },
     orderBy: {
       ticketNumber: "asc",
     },
+    take: 50,
   });
 
   const initialTickets = tickets.map((ticket) => ({

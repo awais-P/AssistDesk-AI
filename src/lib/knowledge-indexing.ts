@@ -1,6 +1,18 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  MAX_KNOWLEDGE_FILE_BYTES,
+  describeUnsupportedFile,
+  detectDocumentKind,
+  extractDocumentText,
+} from "./document-extract";
 import { prisma } from "./prisma";
+import {
+  type CrawlMode,
+  clampMaxPages,
+  combineCrawledPages,
+  crawlWebsite,
+} from "./web-crawler";
 
 type StoredKnowledgeFile = {
   fileName: string;
@@ -19,11 +31,8 @@ type IndexingSource = {
   mimeType: string | null;
   storagePath: string | null;
   rawText: string | null;
-};
-
-type ProcessingResult = {
-  rawText: string;
-  chunkCount: number;
+  crawlMode: string;
+  maxPages: number;
 };
 
 type RetrievedChunkMatch = {
@@ -34,7 +43,8 @@ type RetrievedChunkMatch = {
 };
 
 const MAX_URL_TEXT_LENGTH = 50_000;
-const MAX_FILE_TEXT_LENGTH = 80_000;
+const MAX_CRAWL_TEXT_LENGTH = 250_000;
+const MAX_FILE_TEXT_LENGTH = 250_000;
 const EMBEDDING_DIMENSIONS = 96;
 const KB_STORAGE_ROOT = path.join(process.cwd(), "storage", "knowledge-base");
 const stopWords = new Set([
@@ -92,33 +102,6 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\r/g, "").replace(/\t/g, " ").replace(/[ ]{2,}/g, " ").trim();
 }
 
-function decodeHtmlEntities(value: string) {
-  return value
-    .replaceAll("&nbsp;", " ")
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'");
-}
-
-function stripHtml(html: string) {
-  const withBreaks = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-    .replace(
-      /<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|br|tr)>/gi,
-      "\n",
-    );
-
-  return decodeHtmlEntities(withBreaks)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ ]{2,}/g, " ")
-    .trim();
-}
-
 function tokenize(value: string) {
   return normalizeWhitespace(value)
     .toLowerCase()
@@ -135,24 +118,6 @@ function textToRelativeStoragePath(workspaceId: string, fileName: string) {
 
 function resolveStoragePath(storagePath: string) {
   return path.join(process.cwd(), ...storagePath.split("/"));
-}
-
-function isTextBasedFile(fileName: string | null, mimeType: string | null) {
-  const normalizedName = (fileName || "").toLowerCase();
-  const normalizedMime = (mimeType || "").toLowerCase();
-
-  if (
-    normalizedMime.startsWith("text/") ||
-    normalizedMime.includes("json") ||
-    normalizedMime.includes("xml") ||
-    normalizedMime.includes("javascript")
-  ) {
-    return true;
-  }
-
-  return [".txt", ".md", ".csv", ".json", ".html", ".htm", ".xml"].some(
-    (extension) => normalizedName.endsWith(extension),
-  );
 }
 
 function hashTokenToIndex(token: string, dimensions: number) {
@@ -253,48 +218,55 @@ export function chunkKnowledgeText(text: string) {
 }
 
 export async function fetchKnowledgeSourceText(sourceUrl: string) {
-  let parsedUrl: URL;
+  const { text } = await fetchUrlSourceText({
+    sourceUrl,
+    crawlMode: "SINGLE",
+    maxPages: 1,
+  });
 
-  try {
-    parsedUrl = new URL(sourceUrl);
-  } catch {
-    throw new Error("Please enter a valid URL.");
+  return text;
+}
+
+export async function fetchUrlSourceText({
+  sourceUrl,
+  crawlMode,
+  maxPages,
+}: {
+  sourceUrl: string;
+  crawlMode: string;
+  maxPages: number;
+}) {
+  const mode: CrawlMode = crawlMode === "CRAWL" ? "CRAWL" : "SINGLE";
+  const result = await crawlWebsite({
+    url: sourceUrl,
+    mode,
+    maxPages: clampMaxPages(maxPages, mode),
+  });
+  const text =
+    mode === "SINGLE"
+      ? result.pages[0].text.slice(0, MAX_URL_TEXT_LENGTH)
+      : combineCrawledPages(result.pages, MAX_CRAWL_TEXT_LENGTH);
+
+  if (text.length < 120) {
+    throw new Error("The page did not return enough readable content.");
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  return {
+    text,
+    pageCount: result.pages.length,
+    engine: result.engine,
+  };
+}
 
-  try {
-    const response = await fetch(parsedUrl.toString(), {
-      headers: {
-        "User-Agent": "AssistDeskBot/1.0 (+https://assistdesk.local)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-      signal: controller.signal,
-    });
+export function validateKnowledgeUpload(file: File) {
+  if (file.size > MAX_KNOWLEDGE_FILE_BYTES) {
+    throw new Error(
+      `${file.name} is larger than ${Math.round(MAX_KNOWLEDGE_FILE_BYTES / 1024 / 1024)} MB. Upload a smaller file.`,
+    );
+  }
 
-    if (!response.ok) {
-      throw new Error(`Unable to fetch this URL (${response.status}).`);
-    }
-
-    const html = await response.text();
-    const text = stripHtml(html).slice(0, MAX_URL_TEXT_LENGTH);
-
-    if (text.length < 120) {
-      throw new Error("The page did not return enough readable content.");
-    }
-
-    return text;
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("The URL took too long to respond.");
-    }
-
-    throw error instanceof Error
-      ? error
-      : new Error("Unable to fetch the URL content.");
-  } finally {
-    clearTimeout(timeout);
+  if (!detectDocumentKind(file.name, file.type)) {
+    throw new Error(describeUnsupportedFile(file.name));
   }
 }
 
@@ -305,6 +277,8 @@ export async function saveKnowledgeSourceFile({
   workspaceId: string;
   file: File;
 }): Promise<StoredKnowledgeFile> {
+  validateKnowledgeUpload(file);
+
   const workspaceDirectory = path.join(KB_STORAGE_ROOT, workspaceId);
   const safeFileName = `${Date.now()}-${sanitizeFileName(file.name || "source")}`;
   const storagePath = textToRelativeStoragePath(workspaceId, safeFileName);
@@ -339,24 +313,14 @@ async function extractTextFromStoredFile(source: IndexingSource) {
     throw new Error("No stored file is attached to this knowledge source.");
   }
 
-  if (!isTextBasedFile(source.fileName, source.mimeType)) {
-    throw new Error(
-      "Automatic extraction currently supports TXT, MD, CSV, JSON, HTML, and XML files.",
-    );
-  }
+  const buffer = await readFile(resolveStoragePath(source.storagePath));
+  const text = await extractDocumentText({
+    buffer,
+    fileName: source.fileName,
+    mimeType: source.mimeType,
+  });
 
-  const absolutePath = resolveStoragePath(source.storagePath);
-  const buffer = await readFile(absolutePath);
-  const text = buffer.toString("utf8");
-  const normalized = source.mimeType?.includes("html") || source.fileName?.toLowerCase().endsWith(".html")
-    ? stripHtml(text)
-    : normalizeWhitespace(text);
-
-  if (!normalized) {
-    throw new Error("The uploaded file did not contain readable text.");
-  }
-
-  return normalized.slice(0, MAX_FILE_TEXT_LENGTH);
+  return text.slice(0, MAX_FILE_TEXT_LENGTH);
 }
 
 async function createKnowledgeChunks({
@@ -394,7 +358,9 @@ async function createKnowledgeChunks({
   return chunks.length;
 }
 
-async function buildSourceText(source: IndexingSource) {
+async function buildSourceText(
+  source: IndexingSource,
+): Promise<{ text: string; pageCount: number }> {
   if (source.type === "TEXT") {
     const content = normalizeWhitespace(source.rawText || "");
 
@@ -402,24 +368,24 @@ async function buildSourceText(source: IndexingSource) {
       throw new Error("This text source does not contain any knowledge content yet.");
     }
 
-    return content;
+    return { text: content, pageCount: 0 };
   }
 
   if (source.type === "URL") {
-    const existingText = normalizeWhitespace(source.rawText || "");
-
-    if (existingText.length > 120) {
-      return existingText;
-    }
-
     if (!source.sourceUrl) {
       throw new Error("This URL source does not have a website address.");
     }
 
-    return fetchKnowledgeSourceText(source.sourceUrl);
+    const result = await fetchUrlSourceText({
+      sourceUrl: source.sourceUrl,
+      crawlMode: source.crawlMode,
+      maxPages: source.maxPages,
+    });
+
+    return { text: result.text, pageCount: result.pageCount };
   }
 
-  return extractTextFromStoredFile(source);
+  return { text: await extractTextFromStoredFile(source), pageCount: 0 };
 }
 
 export async function processKnowledgeSourceById(sourceId: string) {
@@ -437,6 +403,8 @@ export async function processKnowledgeSourceById(sourceId: string) {
       mimeType: true,
       storagePath: true,
       rawText: true,
+      crawlMode: true,
+      maxPages: true,
     },
   });
 
@@ -455,7 +423,7 @@ export async function processKnowledgeSourceById(sourceId: string) {
   });
 
   try {
-    const rawText = await buildSourceText(source);
+    const { text: rawText, pageCount } = await buildSourceText(source);
     const chunkCount = await createKnowledgeChunks({
       workspaceId: source.workspaceId,
       sourceId: source.id,
@@ -469,6 +437,7 @@ export async function processKnowledgeSourceById(sourceId: string) {
       data: {
         rawText,
         status: "SYNCED",
+        pageCount,
         chunkCount,
         vectorIndexedAt: new Date(),
         lastSyncedAt: new Date(),

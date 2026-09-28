@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
-import { defaultChatbotWelcomeMessage } from "@/src/lib/chatbot-config";
+import {
+  type ChatbotReplyMode,
+  chatbotReplyModeOptions,
+  defaultChatbotSettings,
+  defaultChatbotWelcomeMessage,
+  sanitizeHexColor,
+  type WidgetPosition,
+  widgetPositionOptions,
+} from "@/src/lib/chatbot-config";
 import { prisma } from "@/src/lib/prisma";
-import { createWidgetId, normalizeDomain } from "@/src/lib/setup";
+import { createWidgetId, isValidDomain, normalizeDomain } from "@/src/lib/setup";
+import { isTrustedUploadUrl } from "@/src/lib/uploads";
 
 type ChatbotPayload = {
   id?: string;
@@ -13,7 +22,29 @@ type ChatbotPayload = {
   welcomeMessage?: string;
   isActive?: boolean;
   maxAiMessages?: number;
+  aiRepliesEnabled?: boolean;
+  replyMode?: string;
+  additionalPrompt?: string;
+  widgetPosition?: string;
+  requireName?: boolean;
+  requireEmail?: boolean;
+  requirePhone?: boolean;
+  emailNotifications?: boolean;
+  avatarUrl?: string | null;
+  conversationStarters?: string[];
+  fallbackDelaySeconds?: number;
 };
+
+const chatbotAgentSelect = {
+  select: { id: true, name: true, status: true, model: true },
+} as const;
+
+const allowedReplyModes = new Set(
+  chatbotReplyModeOptions.map((option) => option.value as string),
+);
+const allowedWidgetPositions = new Set(
+  widgetPositionOptions.map((option) => option.value as string),
+);
 
 export async function GET() {
   const session = await getCurrentSession();
@@ -27,7 +58,7 @@ export async function GET() {
       workspaceId: session.user.workspaceId,
     },
     include: {
-      agent: true,
+      agent: chatbotAgentSelect,
     },
     orderBy: {
       createdAt: "asc",
@@ -44,7 +75,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const body = (await request.json()) as ChatbotPayload;
+  const body = (await request.json().catch(() => ({}))) as ChatbotPayload;
   const name = body.name?.trim();
   const agentId = body.agentId?.trim();
 
@@ -72,15 +103,69 @@ export async function POST(request: Request) {
     );
   }
 
-  const allowedDomains =
-    body.allowedDomains?.map(normalizeDomain).filter(Boolean) ?? [];
+  const allowedDomains = Array.from(
+    new Set(
+      (Array.isArray(body.allowedDomains) ? body.allowedDomains : [])
+        .filter((domain): domain is string => typeof domain === "string")
+        .map(normalizeDomain)
+        .filter(Boolean),
+    ),
+  );
 
   if (allowedDomains.length === 0) {
     return NextResponse.json(
-      { error: "Please add at least one allowed domain." },
+      { error: "Please add at least one allowed domain, for example example.com." },
       { status: 400 },
     );
   }
+
+  const invalidDomain = allowedDomains.find((domain) => !isValidDomain(domain));
+
+  if (invalidDomain) {
+    return NextResponse.json(
+      {
+        error: `"${invalidDomain}" is not a valid domain. Use a format like example.com or shop.example.com.`,
+      },
+      { status: 400 },
+    );
+  }
+
+  if (
+    typeof body.primaryColor === "string" &&
+    !/^#[0-9a-fA-F]{6}$/.test(body.primaryColor.trim())
+  ) {
+    return NextResponse.json(
+      { error: "Primary color must be a hex color like #3b82f6." },
+      { status: 400 },
+    );
+  }
+
+  const avatarUrl =
+    typeof body.avatarUrl === "string" && body.avatarUrl.trim() ? body.avatarUrl.trim() : null;
+
+  if (avatarUrl && !isTrustedUploadUrl(avatarUrl)) {
+    return NextResponse.json(
+      { error: "Upload the avatar image again; external image links are not accepted." },
+      { status: 400 },
+    );
+  }
+
+  const conversationStarters = (
+    Array.isArray(body.conversationStarters) ? body.conversationStarters : []
+  )
+    .filter((starter): starter is string => typeof starter === "string")
+    .map((starter) => starter.trim().slice(0, 80))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const replyMode: ChatbotReplyMode =
+    body.replyMode && allowedReplyModes.has(body.replyMode)
+      ? (body.replyMode as ChatbotReplyMode)
+      : defaultChatbotSettings.replyMode;
+  const widgetPosition: WidgetPosition =
+    body.widgetPosition && allowedWidgetPositions.has(body.widgetPosition)
+      ? (body.widgetPosition as WidgetPosition)
+      : defaultChatbotSettings.widgetPosition;
 
   const baseData = {
     workspaceId: session.user.workspaceId,
@@ -89,13 +174,41 @@ export async function POST(request: Request) {
     welcomeMessage:
       body.welcomeMessage?.trim() || defaultChatbotWelcomeMessage,
     allowedDomains,
-    primaryColor: body.primaryColor?.trim() || "#4f8cff",
-    isActive:
-      typeof body.isActive === "boolean" ? body.isActive : true,
+    primaryColor: sanitizeHexColor(body.primaryColor || "#3b82f6"),
+    isActive: typeof body.isActive === "boolean" ? body.isActive : true,
     maxAiMessages:
       typeof body.maxAiMessages === "number" && body.maxAiMessages > 0
-        ? body.maxAiMessages
+        ? Math.min(1000, Math.round(body.maxAiMessages))
         : 20,
+    aiRepliesEnabled:
+      typeof body.aiRepliesEnabled === "boolean"
+        ? body.aiRepliesEnabled
+        : defaultChatbotSettings.aiRepliesEnabled,
+    replyMode,
+    additionalPrompt: body.additionalPrompt?.trim() || null,
+    widgetPosition,
+    requireName:
+      typeof body.requireName === "boolean"
+        ? body.requireName
+        : defaultChatbotSettings.requireName,
+    requireEmail:
+      typeof body.requireEmail === "boolean"
+        ? body.requireEmail
+        : defaultChatbotSettings.requireEmail,
+    requirePhone:
+      typeof body.requirePhone === "boolean"
+        ? body.requirePhone
+        : defaultChatbotSettings.requirePhone,
+    emailNotifications:
+      typeof body.emailNotifications === "boolean"
+        ? body.emailNotifications
+        : defaultChatbotSettings.emailNotifications,
+    avatarUrl,
+    conversationStarters,
+    fallbackDelaySeconds:
+      typeof body.fallbackDelaySeconds === "number" && Number.isFinite(body.fallbackDelaySeconds)
+        ? Math.min(600, Math.max(10, Math.round(body.fallbackDelaySeconds)))
+        : 60,
   };
 
   let chatbot;
@@ -124,7 +237,7 @@ export async function POST(request: Request) {
       },
       data: baseData,
       include: {
-        agent: true,
+        agent: chatbotAgentSelect,
       },
     });
   } else {
@@ -134,7 +247,7 @@ export async function POST(request: Request) {
         widgetId: createWidgetId(name, session.user.workspaceId),
       },
       include: {
-        agent: true,
+        agent: chatbotAgentSelect,
       },
     });
   }

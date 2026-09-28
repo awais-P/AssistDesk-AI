@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { UsersWorkspace } from "@/src/components/dashboard/users-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
-import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 
 export default async function UsersPage() {
-  const [, session] = await Promise.all([ensureDemoData(), getCurrentSession()]);
+  const session = await getCurrentSession();
 
   if (!session) {
     redirect("/login");
@@ -16,9 +15,18 @@ export default async function UsersPage() {
       where: {
         workspaceId: session.user.workspaceId,
       },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
       orderBy: {
         createdAt: "asc",
       },
+      take: 100,
     }),
     prisma.session.findMany({
       where: {

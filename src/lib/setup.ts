@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "./prisma";
 
 export type WorkspaceSetupState = {
@@ -135,9 +136,22 @@ export function normalizeDomain(value: string) {
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "");
+    .replace(/^www\./, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/:\d+$/, "");
 }
 
+// Subdomains of an allowed domain are accepted automatically, so no wildcards needed.
+const DOMAIN_PATTERN = /^(localhost|([a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(\.\d{1,3}){3})$/;
+
+export function isValidDomain(value: string) {
+  return DOMAIN_PATTERN.test(value);
+}
+
+/**
+ * Widget IDs are public (they appear in the embed snippet), so they include a random
+ * suffix: unguessable and unique even when two chatbots share a name.
+ */
 export function createWidgetId(name: string, workspaceId: string) {
   const base = name
     .toLowerCase()
@@ -145,6 +159,7 @@ export function createWidgetId(name: string, workspaceId: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 24);
+  const random = randomBytes(6).toString("hex");
 
-  return `${base || "assistdesk-widget"}-${workspaceId.slice(-6)}`;
+  return `${base || "assistdesk-widget"}-${workspaceId.slice(-4)}${random}`;
 }

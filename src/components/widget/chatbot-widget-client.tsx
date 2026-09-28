@@ -1,0 +1,989 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import { defaultChatbotWelcomeMessage } from "@/src/lib/chatbot-config";
+import { WIDGET_MESSAGE_TYPE, WIDGET_TOKEN_HEADER } from "@/src/lib/widget-constants";
+
+type WidgetAttachment = {
+  url: string;
+  name: string;
+  mimeType: string;
+  size: number;
+};
+
+type WidgetMessage = {
+  id: string;
+  sender: string;
+  content: string;
+  attachments: WidgetAttachment[];
+  authorName: string | null;
+  createdAt: string;
+};
+
+type WidgetConfig = {
+  id: string;
+  name: string;
+  widgetId: string;
+  welcomeMessage: string | null;
+  primaryColor: string;
+  avatarUrl: string | null;
+  conversationStarters: string[];
+  isActive: boolean;
+  widgetPosition: string;
+  requireName: boolean;
+  requireEmail: boolean;
+  requirePhone: boolean;
+  emailNotifications: boolean;
+  agentName: string;
+  online: boolean;
+  operatorsOnline: boolean;
+  isPreview: boolean;
+};
+
+type ContactState = {
+  name: string;
+  email: string;
+  phone: string;
+};
+
+type ChatbotWidgetClientProps = {
+  widgetId: string;
+  token: string;
+  isPreview: boolean;
+};
+
+type SpeechRecognitionResultEvent = {
+  resultIndex: number;
+  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+const POLL_INTERVAL_MS = 4000;
+const MAX_MESSAGE_LENGTH = 2000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PHONE_PATTERN = /^[+()\d\s-]{6,20}$/;
+const emojis = [
+  "😀", "😂", "😊", "😍", "🤔", "😅", "😢", "😡",
+  "👍", "👎", "👏", "🙏", "🙌", "💪", "👋", "🤝",
+  "❤️", "🔥", "🎉", "✅", "❌", "⭐", "💡", "📦",
+  "💳", "📅", "📞", "📧", "🚚", "🛒", "⏰", "❓",
+];
+
+const iconButtonClass =
+  "flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40";
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function getMissingContactFields(config: WidgetConfig, contact: ContactState) {
+  const missing: string[] = [];
+
+  if (config.requireName && !contact.name.trim()) missing.push("name");
+  if (config.requireEmail && !contact.email.trim()) missing.push("email");
+  if (config.requirePhone && !contact.phone.trim()) missing.push("phone number");
+
+  return missing;
+}
+
+function validateContact(contact: ContactState) {
+  if (contact.email.trim() && !EMAIL_PATTERN.test(contact.email.trim())) {
+    return "Please enter a valid email, like name@example.com.";
+  }
+
+  if (contact.phone.trim() && !PHONE_PATTERN.test(contact.phone.trim())) {
+    return "Please enter a valid phone number (digits, spaces, + and - only).";
+  }
+
+  return "";
+}
+
+function usePersistedState<T>(key: string, initialValue: T) {
+  const [state, setState] = useState(initialValue);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    try {
+      const rawValue = window.localStorage.getItem(key);
+
+      if (rawValue) {
+        setState(JSON.parse(rawValue) as T);
+      }
+    } catch {}
+
+    setIsHydrated(true);
+  }, [key]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(key, JSON.stringify(state));
+    } catch {}
+  }, [isHydrated, key, state]);
+
+  return [state, setState, isHydrated] as const;
+}
+
+function mergeMessages(current: WidgetMessage[], incoming: WidgetMessage[]) {
+  const byId = new Map(
+    current.filter((message) => !message.id.startsWith("pending-")).map((message) => [message.id, message]),
+  );
+
+  for (const message of incoming) {
+    byId.set(message.id, message);
+  }
+
+  const pending = current.filter((message) => message.id.startsWith("pending-"));
+
+  return [...Array.from(byId.values()), ...pending].sort(
+    (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+  );
+}
+
+function MessageBody({ message }: { message: WidgetMessage }) {
+  if (message.sender === "USER") {
+    return <p className="whitespace-pre-wrap break-words">{message.content}</p>;
+  }
+
+  return (
+    <div className="break-words [&>*+*]:mt-2">
+      <ReactMarkdown
+        components={{
+          a: ({ children, href }) => (
+            <a href={href} target="_blank" rel="noreferrer" className="font-medium underline">
+              {children}
+            </a>
+          ),
+          ul: ({ children }) => <ul className="list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal space-y-1 pl-5">{children}</ol>,
+          code: ({ children }) => (
+            <code className="rounded bg-slate-200/70 px-1 py-0.5 text-[0.85em]">{children}</code>
+          ),
+          h1: ({ children }) => <p className="font-semibold">{children}</p>,
+          h2: ({ children }) => <p className="font-semibold">{children}</p>,
+          h3: ({ children }) => <p className="font-semibold">{children}</p>,
+          img: () => null,
+        }}
+      >
+        {message.content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function AttachmentList({ attachments }: { attachments: WidgetAttachment[] }) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {attachments.map((attachment) =>
+        attachment.mimeType.startsWith("image/") ? (
+          <a key={attachment.url} href={attachment.url} target="_blank" rel="noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={attachment.url}
+              alt={attachment.name}
+              className="max-h-44 rounded-xl border border-slate-200 object-cover"
+            />
+          </a>
+        ) : (
+          <a
+            key={attachment.url}
+            href={attachment.url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+          >
+            <span aria-hidden="true">📎</span>
+            <span className="truncate">{attachment.name}</span>
+            <span className="text-slate-400">{formatFileSize(attachment.size)}</span>
+          </a>
+        ),
+      )}
+    </div>
+  );
+}
+
+export function ChatbotWidgetClient({
+  widgetId,
+  token,
+  isPreview,
+}: ChatbotWidgetClientProps) {
+  const [config, setConfig] = useState<WidgetConfig | null>(null);
+  const [messages, setMessages] = useState<WidgetMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+  const [contactError, setContactError] = useState("");
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<WidgetAttachment[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [operatorsOnline, setOperatorsOnline] = useState(false);
+  const [contactDismissed, setContactDismissed] = useState(false);
+  const [contactDraft, setContactDraft] = useState<ContactState>({ name: "", email: "", phone: "" });
+  const [sessionId, setSessionId] = usePersistedState<string | null>(
+    `assistdesk-widget-session-${widgetId}`,
+    null,
+  );
+  const [contact, setContact, contactHydrated] = usePersistedState<ContactState>(
+    `assistdesk-widget-contact-${widgetId}`,
+    { name: "", email: "", phone: "" },
+  );
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+
+  const widgetFetch = useCallback(
+    (path: string, init?: RequestInit) =>
+      fetch(path, {
+        ...init,
+        headers: { ...(init?.headers ?? {}), [WIDGET_TOKEN_HEADER]: token },
+      }),
+    [token],
+  );
+
+  useEffect(() => {
+    if (contactHydrated) {
+      setContactDraft(contact);
+    }
+    // Only seed the form once, after the saved contact has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactHydrated]);
+
+  useEffect(() => {
+    const speechWindow = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    setSpeechSupported(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
+
+    return () => recognitionRef.current?.stop();
+  }, []);
+
+  useEffect(() => {
+    async function loadConfig() {
+      setIsLoadingConfig(true);
+
+      try {
+        const response = await widgetFetch(`/api/widget/${widgetId}`);
+        const data = (await response.json()) as {
+          error?: string;
+          chatbot?: WidgetConfig;
+        };
+
+        if (!response.ok || !data.chatbot) {
+          setError(data.error ?? "Unable to load the chat right now. Please reload the page.");
+          return;
+        }
+
+        setConfig(data.chatbot);
+        setOperatorsOnline(data.chatbot.operatorsOnline);
+        window.parent.postMessage(
+          {
+            type: WIDGET_MESSAGE_TYPE,
+            action: "config",
+            primaryColor: data.chatbot.primaryColor,
+            position: data.chatbot.widgetPosition,
+            avatarUrl: data.chatbot.avatarUrl,
+          },
+          "*",
+        );
+      } catch {
+        setError("Something went wrong while loading the chat. Check your connection and reload.");
+      } finally {
+        setIsLoadingConfig(false);
+      }
+    }
+
+    void loadConfig();
+  }, [widgetFetch, widgetId]);
+
+  const loadHistory = useCallback(async () => {
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      const response = await widgetFetch(
+        `/api/widget/${widgetId}/messages?sessionId=${encodeURIComponent(sessionId)}`,
+      );
+      const data = (await response.json()) as {
+        messages?: WidgetMessage[];
+        operatorsOnline?: boolean;
+        session?: { id: string; status: string } | null;
+      };
+
+      if (!response.ok) {
+        return;
+      }
+
+      if (typeof data.operatorsOnline === "boolean") {
+        setOperatorsOnline(data.operatorsOnline);
+      }
+
+      if (data.session === null) {
+        setSessionId(null);
+        setMessages([]);
+        return;
+      }
+
+      setMessages((current) => mergeMessages(current, data.messages ?? []));
+    } catch {
+      // Polling failures are retried on the next tick.
+    }
+  }, [sessionId, setSessionId, widgetFetch, widgetId]);
+
+  useEffect(() => {
+    void loadHistory();
+
+    if (!sessionId) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadHistory();
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(interval);
+  }, [loadHistory, sessionId]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isSending]);
+
+  const missingContactFields = useMemo(
+    () => (config ? getMissingContactFields(config, contact) : []),
+    [config, contact],
+  );
+  const showContactCard =
+    Boolean(config) &&
+    contactHydrated &&
+    (missingContactFields.length > 0 ||
+      (Boolean(config?.emailNotifications) && !contact.email.trim() && !contactDismissed));
+
+  function saveContact() {
+    const nextContact = {
+      name: contactDraft.name.trim(),
+      email: contactDraft.email.trim(),
+      phone: contactDraft.phone.trim(),
+    };
+    const validationError = validateContact(nextContact);
+
+    if (validationError) {
+      setContactError(validationError);
+      return;
+    }
+
+    if (config) {
+      const stillMissing = getMissingContactFields(config, nextContact);
+
+      if (stillMissing.length > 0) {
+        setContactError(`Please add your ${stillMissing.join(" and ")} to start chatting.`);
+        return;
+      }
+    }
+
+    setContact(nextContact);
+    setContactError("");
+    setContactDismissed(true);
+  }
+
+  async function sendMessage(rawContent: string) {
+    const content = rawContent.trim();
+
+    if (!config || (!content && pendingAttachments.length === 0) || isSending || isUploading) {
+      return;
+    }
+
+    if (missingContactFields.length > 0) {
+      setContactError(`Please add your ${missingContactFields.join(" and ")} first.`);
+      return;
+    }
+
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      setError(`Messages can be up to ${MAX_MESSAGE_LENGTH} characters.`);
+      return;
+    }
+
+    const attachments = pendingAttachments;
+    const pendingUserMessage: WidgetMessage = {
+      id: `pending-${Date.now()}`,
+      sender: "USER",
+      content,
+      attachments,
+      authorName: contact.name || null,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((current) => [...current, pendingUserMessage]);
+    setDraft("");
+    setPendingAttachments([]);
+    setEmojiOpen(false);
+    setError("");
+    setIsSending(true);
+
+    try {
+      const response = await widgetFetch(`/api/widget/${widgetId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          message: content,
+          attachments,
+          customerName: contact.name,
+          customerEmail: contact.email,
+          customerPhone: contact.phone,
+        }),
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        session?: { id: string };
+        messages?: WidgetMessage[];
+      };
+
+      if (!response.ok || !data.session || !data.messages) {
+        setMessages((current) => current.filter((message) => message.id !== pendingUserMessage.id));
+        setDraft(content);
+        setPendingAttachments(attachments);
+        setError(data.error ?? "Your message was not sent. Please try again.");
+        return;
+      }
+
+      const nextMessages = data.messages;
+      setSessionId(data.session.id);
+      setMessages((current) =>
+        mergeMessages(
+          current.filter((message) => message.id !== pendingUserMessage.id),
+          nextMessages,
+        ),
+      );
+    } catch {
+      setMessages((current) => current.filter((message) => message.id !== pendingUserMessage.id));
+      setDraft(content);
+      setPendingAttachments(attachments);
+      setError("Your message was not sent. Check your connection and try again.");
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function handleFileSelected(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    if (pendingAttachments.length >= 3) {
+      setError("You can attach up to 3 files per message.");
+      return;
+    }
+
+    setIsUploading(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const response = await widgetFetch(`/api/widget/${widgetId}/attachments`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await response.json()) as { error?: string; attachment?: WidgetAttachment };
+
+      if (!response.ok || !data.attachment) {
+        setError(data.error ?? "This file could not be uploaded.");
+        return;
+      }
+
+      setPendingAttachments((current) => [...current, data.attachment as WidgetAttachment]);
+    } catch {
+      setError("This file could not be uploaded. Check your connection and try again.");
+    } finally {
+      setIsUploading(false);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function toggleDictation() {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const speechWindow = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+
+    if (!Recognition) {
+      setError("Voice typing is not supported in this browser.");
+      return;
+    }
+
+    const recognition = new Recognition();
+    const baseDraft = draft ? `${draft.trimEnd()} ` : "";
+    recognition.lang = navigator.language || "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      let transcript = "";
+
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index][0].transcript;
+      }
+
+      setDraft(`${baseDraft}${transcript}`.slice(0, MAX_MESSAGE_LENGTH));
+    };
+    recognition.onerror = (event) => {
+      if (event.error === "not-allowed") {
+        setError("Microphone access was blocked. Allow it in your browser to use voice typing.");
+      }
+    };
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    setIsListening(true);
+    recognition.start();
+  }
+
+  function closeWidget() {
+    window.parent.postMessage({ type: WIDGET_MESSAGE_TYPE, action: "close" }, "*");
+  }
+
+  if (isLoadingConfig) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white text-sm text-slate-500">
+        Loading chat…
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white px-6 text-center text-sm text-red-500">
+        {error || "Unable to load this chat widget."}
+      </div>
+    );
+  }
+
+  const statusLabel = !config.isActive
+    ? "Paused"
+    : operatorsOnline
+      ? "Online — team available"
+      : config.online
+        ? "Online"
+        : "Offline";
+  const statusDotClass = !config.isActive
+    ? "bg-slate-300"
+    : operatorsOnline || config.online
+      ? "bg-emerald-400"
+      : "bg-orange-400";
+  const inputDisabled = !config.isActive || missingContactFields.length > 0;
+
+  return (
+    <div className="flex h-screen flex-col bg-white text-[#111827]">
+      <header
+        className="relative shrink-0 overflow-hidden rounded-b-[26px] px-6 pb-5 pt-6 text-white"
+        style={{ backgroundColor: config.primaryColor }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {config.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={config.avatarUrl}
+                alt=""
+                className="h-11 w-11 rounded-full border-2 border-white/40 object-cover"
+              />
+            ) : (
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-lg font-semibold">
+                {config.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+            <div>
+              <p className="text-xl font-semibold leading-tight">{config.name}</p>
+              <div className="mt-1.5 flex items-center gap-2 text-sm text-white/90">
+                <span className={`h-2.5 w-2.5 rounded-full ${statusDotClass}`} />
+                <span>{statusLabel}</span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={closeWidget}
+            className="rounded-full p-2 text-white/90 transition hover:bg-white/10"
+            aria-label="Close chat"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="m7 7 10 10M17 7 7 17" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      {isPreview ? (
+        <p className="shrink-0 bg-amber-50 px-5 py-2 text-center text-xs text-amber-800">
+          Preview mode — only your team can open this link. Customers use the embed code.
+        </p>
+      ) : null}
+
+      <main
+        ref={scrollRef}
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4"
+        aria-live="polite"
+      >
+        <div className="flex justify-start">
+          <div className="max-w-[82%] rounded-[22px] bg-[#eef4ff] px-5 py-3 text-sm leading-6 text-slate-700 shadow-sm">
+            {config.welcomeMessage || defaultChatbotWelcomeMessage}
+          </div>
+        </div>
+
+        {messages.length === 0 && config.conversationStarters.length > 0 && !inputDisabled ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            {config.conversationStarters.map((starter) => (
+              <button
+                key={starter}
+                type="button"
+                disabled={isSending}
+                onClick={() => void sendMessage(starter)}
+                className="rounded-full border px-3.5 py-2 text-left text-sm transition hover:bg-slate-50"
+                style={{ borderColor: config.primaryColor, color: config.primaryColor }}
+              >
+                {starter}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {messages.map((message) => {
+          if (message.sender === "SYSTEM") {
+            return (
+              <p key={message.id} className="px-4 text-center text-xs text-slate-400">
+                {message.content}
+              </p>
+            );
+          }
+
+          const isUser = message.sender === "USER";
+          const isPending = message.id.startsWith("pending-");
+
+          return (
+            <div key={message.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+              <div className="max-w-[82%]">
+                {!isUser && message.sender === "AGENT" && message.authorName ? (
+                  <p className="mb-1 pl-2 text-xs font-medium text-slate-500">{message.authorName}</p>
+                ) : null}
+                <div
+                  className={`rounded-[22px] px-5 py-3 text-sm leading-6 shadow-sm ${
+                    isUser ? "bg-[#f2f4f8] text-slate-800" : "bg-[#eef4ff] text-slate-700"
+                  } ${isPending ? "opacity-70" : ""}`}
+                >
+                  {message.content ? <MessageBody message={message} /> : null}
+                  <AttachmentList attachments={message.attachments} />
+                </div>
+                <div
+                  className={`mt-1.5 flex items-center gap-2 text-xs text-slate-400 ${
+                    isUser ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <span>{isPending ? "Sending…" : formatTime(message.createdAt)}</span>
+                  {isUser && !isPending ? (
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" aria-label="Delivered">
+                      <path d="m5 13 4 4L19 7" />
+                    </svg>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {isSending ? (
+          <div className="flex justify-start" aria-label={`${config.agentName} is typing`}>
+            <div className="flex gap-1 rounded-[22px] bg-[#eef4ff] px-5 py-4">
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="h-2 w-2 animate-bounce rounded-full bg-slate-400"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {showContactCard ? (
+          <section className="rounded-[22px] border border-slate-200 bg-[#fafbfd] p-4 shadow-sm">
+            <p className="text-sm font-semibold text-slate-800">
+              {missingContactFields.length > 0
+                ? "Before we start, how can we reach you?"
+                : "Get notified when we reply"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {missingContactFields.length > 0
+                ? `We need your ${missingContactFields.join(" and ")} to continue.`
+                : "Leave your email and we'll send you the answer if you close this window."}
+            </p>
+            <div className="mt-3 grid gap-2">
+              {config.requireName || missingContactFields.includes("name") || contactDraft.name ? (
+                <input
+                  type="text"
+                  aria-label="Your name"
+                  value={contactDraft.name}
+                  onChange={(event) => setContactDraft((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Your name"
+                  autoComplete="name"
+                  className="h-10 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                />
+              ) : null}
+              <input
+                type="email"
+                aria-label="Your email"
+                value={contactDraft.email}
+                onChange={(event) => setContactDraft((current) => ({ ...current, email: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    saveContact();
+                  }
+                }}
+                placeholder="you@example.com"
+                autoComplete="email"
+                className="h-10 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+              />
+              {config.requirePhone ? (
+                <input
+                  type="tel"
+                  aria-label="Your phone number"
+                  value={contactDraft.phone}
+                  onChange={(event) => setContactDraft((current) => ({ ...current, phone: event.target.value }))}
+                  placeholder="+92 300 1234567"
+                  autoComplete="tel"
+                  className="h-10 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                />
+              ) : null}
+            </div>
+            {contactError ? <p className="mt-2 text-xs text-red-600">{contactError}</p> : null}
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={saveContact}
+                className="h-9 rounded-full px-4 text-sm font-medium text-white"
+                style={{ backgroundColor: config.primaryColor }}
+              >
+                Submit
+              </button>
+              {missingContactFields.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setContactDismissed(true)}
+                  className="h-9 rounded-full px-4 text-sm text-slate-500 hover:bg-slate-100"
+                >
+                  Not now
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+      </main>
+
+      <footer className="shrink-0 border-t border-slate-200 bg-white px-4 pb-3 pt-3">
+        {error ? (
+          <p className="mb-2 rounded-2xl bg-red-50 px-4 py-2.5 text-sm text-red-600" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {pendingAttachments.length > 0 ? (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {pendingAttachments.map((attachment) => (
+              <span
+                key={attachment.url}
+                className="flex max-w-full items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+              >
+                <span className="truncate">📎 {attachment.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${attachment.name}`}
+                  onClick={() =>
+                    setPendingAttachments((current) => current.filter((item) => item.url !== attachment.url))
+                  }
+                  className="text-slate-400 hover:text-slate-700"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="flex items-center gap-2">
+          <input
+            ref={messageInputRef}
+            type="text"
+            value={draft}
+            maxLength={MAX_MESSAGE_LENGTH}
+            disabled={inputDisabled}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void sendMessage(draft);
+              }
+            }}
+            aria-label="Type your message"
+            placeholder={
+              !config.isActive
+                ? "Chat is paused"
+                : missingContactFields.length > 0
+                  ? "Add your details above to start"
+                  : isListening
+                    ? "Listening…"
+                    : "Send a message…"
+            }
+            className="h-12 min-w-0 flex-1 rounded-full border border-slate-200 px-5 text-sm outline-none transition focus:border-slate-400 disabled:bg-slate-50"
+          />
+          <button
+            type="button"
+            aria-label="Send message"
+            disabled={isSending || isUploading || inputDisabled || (!draft.trim() && pendingAttachments.length === 0)}
+            onClick={() => void sendMessage(draft)}
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: config.primaryColor }}
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="m5 12 14-7-4 14-3-4-4-3Z" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="relative mt-2 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,.docx"
+              onChange={(event) => void handleFileSelected(event.target.files?.[0])}
+            />
+            <button
+              type="button"
+              className={iconButtonClass}
+              aria-label="Attach file"
+              title="Attach an image or document (max 5 MB)"
+              disabled={inputDisabled || isUploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {isUploading ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="m8 12 5.5-5.5a3 3 0 1 1 4.2 4.2L9.5 19a5 5 0 1 1-7.1-7.1l8.2-8.2" />
+                </svg>
+              )}
+            </button>
+            {speechSupported ? (
+              <button
+                type="button"
+                className={`${iconButtonClass} ${isListening ? "bg-red-50 text-red-500" : ""}`}
+                aria-label={isListening ? "Stop voice typing" : "Voice typing"}
+                aria-pressed={isListening}
+                title="Speak your message"
+                disabled={inputDisabled}
+                onClick={toggleDictation}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 4a2.5 2.5 0 0 1 2.5 2.5v5a2.5 2.5 0 0 1-5 0v-5A2.5 2.5 0 0 1 12 4Z" />
+                  <path d="M7 11.5a5 5 0 0 0 10 0" />
+                  <path d="M12 16.5V20" />
+                </svg>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={iconButtonClass}
+              aria-label="Insert emoji"
+              aria-expanded={emojiOpen}
+              disabled={inputDisabled}
+              onClick={() => setEmojiOpen((current) => !current)}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="12" cy="12" r="8" />
+                <path d="M9 10h.01M15 10h.01" />
+                <path d="M8.5 14.5c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5" />
+              </svg>
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-400">
+            Powered by <span className="font-semibold text-slate-600">AssistDesk AI</span>
+          </p>
+
+          {emojiOpen ? (
+            <div
+              className="absolute bottom-11 left-0 grid w-[272px] grid-cols-8 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+              role="dialog"
+              aria-label="Emoji picker"
+            >
+              {emojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  aria-label={`Insert ${emoji}`}
+                  onClick={() => {
+                    setDraft((current) => `${current}${emoji}`.slice(0, MAX_MESSAGE_LENGTH));
+                    setEmojiOpen(false);
+                    messageInputRef.current?.focus();
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-slate-100"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </footer>
+    </div>
+  );
+}

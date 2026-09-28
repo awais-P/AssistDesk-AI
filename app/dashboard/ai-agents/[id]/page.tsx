@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { AgentConfigurationWorkspace } from "@/src/components/dashboard/agent-configuration-workspace";
 import { ensureAgentAutomationDefaults } from "@/src/lib/agent-automations";
+import { serializeAgent } from "@/src/lib/agent-serializer";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 
@@ -44,6 +45,8 @@ export default async function AgentDetailPage({
       id,
       workspaceId: session.user.workspaceId,
     },
+    // The key is loaded only so the server can build a masked preview.
+    omit: { apiKey: false },
     include: {
       knowledgeSources: {
         orderBy: {
@@ -57,24 +60,51 @@ export default async function AgentDetailPage({
     notFound();
   }
 
-  const automations = await ensureAgentAutomationDefaults(
-    session.user.workspaceId,
-    agent.id,
-  );
+  const [automations, usage] = await Promise.all([
+    ensureAgentAutomationDefaults(session.user.workspaceId, agent.id),
+    // Every AI generation (Playground, widget, channels, tickets) is logged with its model.
+    prisma.automationLog.aggregate({
+      where: {
+        workspaceId: session.user.workspaceId,
+        agentId: agent.id,
+        model: {
+          not: null,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+      _sum: {
+        tokens: true,
+      },
+    }),
+  ]);
+
+  const serializedAgent = serializeAgent(agent);
 
   return (
     <AgentConfigurationWorkspace
       initialTab={normalizeTab(resolvedSearchParams.tab)}
       initialAgent={{
-        id: agent.id,
-        name: agent.name,
-        provider: agent.provider,
-        model: agent.model,
-        apiKey: agent.apiKey,
-        systemPrompt: agent.systemPrompt,
-        temperature: agent.temperature,
-        confidenceThreshold: agent.confidenceThreshold,
-        status: agent.status,
+        id: serializedAgent.id,
+        name: serializedAgent.name,
+        provider: serializedAgent.provider,
+        model: serializedAgent.model,
+        hasApiKey: serializedAgent.hasApiKey,
+        apiKeyPreview: serializedAgent.apiKeyPreview,
+        systemPrompt: serializedAgent.systemPrompt,
+        temperature: serializedAgent.temperature,
+        confidenceThreshold: serializedAgent.confidenceThreshold,
+        maxTokens: serializedAgent.maxTokens,
+        tone: serializedAgent.tone,
+        responseLength: serializedAgent.responseLength,
+        status: serializedAgent.status,
+        // Sent back on save so updating settings never unlinks the inbox.
+        inboxId: serializedAgent.inboxId,
+      }}
+      usage={{
+        replies: usage._count._all,
+        tokens: usage._sum.tokens ?? 0,
       }}
       initialSources={agent.knowledgeSources.map((source) => ({
         id: source.id,
@@ -84,6 +114,8 @@ export default async function AgentDetailPage({
         sourceUrl: source.sourceUrl,
         fileName: source.fileName,
         rawText: source.rawText,
+        pageCount: source.pageCount,
+        processingError: source.processingError,
         lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
       }))}
       initialAutomations={automations.map((automation) => ({

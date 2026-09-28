@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  MAX_AGENT_MAX_TOKENS,
+  MIN_AGENT_MAX_TOKENS,
   agentProviderOptions,
+  agentResponseLengthOptions,
+  agentToneOptions,
   defaultAgentSystemPrompt,
   formatAgentRuntimeLabel,
   formatAgentShortId,
@@ -18,13 +22,23 @@ type AgentItem = {
   name: string;
   provider: string;
   model: string;
-  apiKey: string | null;
+  hasApiKey: boolean;
+  apiKeyPreview: string | null;
   systemPrompt: string | null;
   inboxId: string | null;
   inboxName: string | null;
   temperature: number;
   confidenceThreshold: number;
+  maxTokens: number;
+  tone: string;
+  responseLength: string;
   status: string;
+};
+
+type SavedAgentResponse = Omit<AgentItem, "inboxName"> & {
+  inbox?: {
+    name: string;
+  } | null;
 };
 
 type InboxOption = {
@@ -46,12 +60,33 @@ const emptyAgentForm = {
   inboxId: "",
   temperature: 0.7,
   confidenceThreshold: 0.5,
+  maxTokens: 512,
+  tone: "FRIENDLY",
+  responseLength: "BALANCED",
   systemPrompt: defaultAgentSystemPrompt,
   status: "ACTIVE",
 };
 
 function formatDecimal(value: number) {
   return value.toFixed(1);
+}
+
+function formatAgentStatus(status: string) {
+  if (status === "ACTIVE") return "Live";
+  if (status === "ARCHIVED") return "Archived";
+  return "Draft";
+}
+
+function agentStatusPillClass(status: string) {
+  if (status === "ACTIVE") {
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  }
+
+  if (status === "ARCHIVED") {
+    return "border-white/10 bg-white/5 text-slate-400";
+  }
+
+  return "border-amber-500/20 bg-amber-500/10 text-amber-200";
 }
 
 export function AgentsWorkspace({
@@ -69,10 +104,21 @@ export function AgentsWorkspace({
   const [success, setSuccess] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
+  const [cardError, setCardError] = useState<{
+    agentId: string;
+    message: string;
+  } | null>(null);
   const availableModels = useMemo(
     () => getModelsForProvider(form.provider),
     [form.provider],
   );
+  const selectedResponseLength =
+    agentResponseLengthOptions.find(
+      (option) => option.value === form.responseLength,
+    ) ?? agentResponseLengthOptions[1];
+  const selectedTone =
+    agentToneOptions.find((option) => option.value === form.tone) ??
+    agentToneOptions[0];
 
   useEffect(() => {
     function handleWindowClick() {
@@ -114,8 +160,36 @@ export function AgentsWorkspace({
   }
 
   async function handleSave() {
+    if (isSaving) {
+      return;
+    }
+
     setError("");
     setSuccess("");
+
+    if (!form.name.trim()) {
+      setError("Give the agent a name before creating it.");
+      return;
+    }
+
+    if (usesCustomApiKey(form.provider) && !form.apiKey.trim()) {
+      setError(
+        `Paste your ${form.provider} API key, or switch the provider to Default (Managed).`,
+      );
+      return;
+    }
+
+    if (
+      !Number.isFinite(form.maxTokens) ||
+      form.maxTokens < MIN_AGENT_MAX_TOKENS ||
+      form.maxTokens > MAX_AGENT_MAX_TOKENS
+    ) {
+      setError(
+        `Max reply tokens must be between ${MIN_AGENT_MAX_TOKENS} and ${MAX_AGENT_MAX_TOKENS}.`,
+      );
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -128,37 +202,28 @@ export function AgentsWorkspace({
           name: form.name,
           provider: form.provider,
           model: form.model,
-          apiKey: usesCustomApiKey(form.provider) ? form.apiKey : null,
+          apiKey: usesCustomApiKey(form.provider) ? form.apiKey.trim() : null,
           inboxId: form.inboxId || null,
           temperature: form.temperature,
           confidenceThreshold: form.confidenceThreshold,
+          maxTokens: form.maxTokens,
+          tone: form.tone,
+          responseLength: form.responseLength,
           systemPrompt: form.systemPrompt,
           status: form.status,
         }),
       });
 
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         error?: string;
-        agent?: {
-          id: string;
-          name: string;
-          provider: string;
-          model: string;
-          apiKey: string | null;
-          systemPrompt: string | null;
-          inboxId: string | null;
-          temperature: number;
-          confidenceThreshold: number;
-          status: string;
-          inbox?: {
-            name: string;
-          } | null;
-        };
+        agent?: SavedAgentResponse;
       };
 
       if (!response.ok || !data.agent) {
-        setError(data.error ?? "Unable to create the AI agent right now.");
-        setIsSaving(false);
+        setError(
+          data.error ??
+            "Unable to create the AI agent right now. Check the fields and try again.",
+        );
         return;
       }
 
@@ -167,27 +232,37 @@ export function AgentsWorkspace({
         name: data.agent.name,
         provider: data.agent.provider,
         model: data.agent.model,
-        apiKey: data.agent.apiKey,
+        hasApiKey: data.agent.hasApiKey,
+        apiKeyPreview: data.agent.apiKeyPreview,
         systemPrompt: data.agent.systemPrompt,
         inboxId: data.agent.inboxId,
         inboxName: data.agent.inbox?.name ?? null,
         temperature: data.agent.temperature,
         confidenceThreshold: data.agent.confidenceThreshold,
+        maxTokens: data.agent.maxTokens,
+        tone: data.agent.tone,
+        responseLength: data.agent.responseLength,
         status: data.agent.status,
       };
 
       setAgents((current) => [nextAgent, ...current]);
-      setSuccess("Agent created successfully.");
+      setSuccess("Agent created. Opening its configuration...");
       setDrawerOpen(false);
       router.push(`/dashboard/ai-agents/${nextAgent.id}`);
     } catch {
-      setError("Something went wrong while creating the AI agent.");
+      setError(
+        "Something went wrong while creating the AI agent. Check your connection and try again.",
+      );
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDelete(agentId: string) {
+    if (deletingId) {
+      return;
+    }
+
     const shouldDelete = window.confirm(
       "Delete this AI agent? This action cannot be undone.",
     );
@@ -198,23 +273,36 @@ export function AgentsWorkspace({
 
     setDeletingId(agentId);
     setMenuOpenId("");
+    setCardError(null);
+    setError("");
+    setSuccess("");
 
     try {
       const response = await fetch(`/api/ai-agents/${agentId}`, {
         method: "DELETE",
       });
 
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
 
       if (!response.ok) {
-        setError(data.error ?? "Unable to delete the AI agent.");
-        setDeletingId("");
+        // Shown on the agent's own card (e.g. 409 when chatbots still use it).
+        setCardError({
+          agentId,
+          message: data.error ?? "Unable to delete the AI agent. Try again.",
+        });
         return;
       }
 
       setAgents((current) => current.filter((agent) => agent.id !== agentId));
+      setSuccess("Agent deleted.");
     } catch {
-      setError("Something went wrong while deleting the AI agent.");
+      setCardError({
+        agentId,
+        message:
+          "Something went wrong while deleting the AI agent. Check your connection and try again.",
+      });
     } finally {
       setDeletingId("");
     }
@@ -315,9 +403,16 @@ export function AgentsWorkspace({
                       </svg>
                     </div>
                     <div>
-                      <p className="text-base font-semibold text-white">
-                        {agent.name}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-semibold text-white">
+                          {agent.name}
+                        </p>
+                        <span
+                          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${agentStatusPillClass(agent.status)}`}
+                        >
+                          {formatAgentStatus(agent.status)}
+                        </span>
+                      </div>
                       <p className="mt-1 text-xs text-slate-500">
                         Model: {formatAgentRuntimeLabel(agent.model)} • ID:{" "}
                         {formatAgentShortId(agent.id)}
@@ -328,6 +423,7 @@ export function AgentsWorkspace({
                   <div className="relative">
                     <button
                       type="button"
+                      aria-label={`Actions for ${agent.name}`}
                       onClick={(event) => {
                         event.stopPropagation();
                         setMenuOpenId((current) =>
@@ -380,12 +476,37 @@ export function AgentsWorkspace({
                     Temp: {formatDecimal(agent.temperature)}
                   </span>
                   <span className="rounded-full bg-white/5 px-2.5 py-1">
-                    Tokens: 512
+                    Tokens: {agent.maxTokens}
                   </span>
                   <span className="rounded-full bg-white/5 px-2.5 py-1">
-                    {agent.status}
+                    {agentToneOptions.find((option) => option.value === agent.tone)
+                      ?.label ?? agent.tone}
                   </span>
                 </div>
+
+                {agent.status !== "ACTIVE" ? (
+                  <p className="mt-3 text-xs text-slate-500">
+                    Not live yet: only the Playground can use this agent until
+                    it is published.
+                  </p>
+                ) : null}
+
+                {cardError?.agentId === agent.id ? (
+                  <div
+                    role="alert"
+                    className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+                  >
+                    <p>{cardError.message}</p>
+                    <button
+                      type="button"
+                      aria-label="Dismiss error"
+                      onClick={() => setCardError(null)}
+                      className="shrink-0 text-xs font-semibold text-red-100 transition hover:text-white"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                ) : null}
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-slate-500">
@@ -443,12 +564,17 @@ export function AgentsWorkspace({
           <div className="h-[calc(100%-90px)] overflow-y-auto px-5 py-4">
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
+                <label
+                  htmlFor="create-agent-name"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
                   Agent Name
                 </label>
                 <input
+                  id="create-agent-name"
                   type="text"
                   value={form.name}
+                  maxLength={80}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, name: event.target.value }))
                   }
@@ -458,19 +584,23 @@ export function AgentsWorkspace({
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-300">
+                  <label
+                    htmlFor="create-agent-provider"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
                     Provider
                   </label>
                   <select
+                    id="create-agent-provider"
                     value={form.provider}
                     onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      provider: event.target.value,
-                      model: getDefaultModelForProvider(event.target.value),
-                      apiKey: "",
-                    }))
-                  }
+                      setForm((current) => ({
+                        ...current,
+                        provider: event.target.value,
+                        model: getDefaultModelForProvider(event.target.value),
+                        apiKey: "",
+                      }))
+                    }
                     className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none"
                   >
                     {agentProviderOptions.map((option) => (
@@ -482,10 +612,14 @@ export function AgentsWorkspace({
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-300">
+                  <label
+                    htmlFor="create-agent-model"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
                     Model
                   </label>
                   <select
+                    id="create-agent-model"
                     value={form.model}
                     onChange={(event) =>
                       setForm((current) => ({
@@ -506,11 +640,16 @@ export function AgentsWorkspace({
 
               {usesCustomApiKey(form.provider) ? (
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-300">
+                  <label
+                    htmlFor="create-agent-api-key"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
                     API Key
                   </label>
                   <input
+                    id="create-agent-api-key"
                     type="password"
+                    autoComplete="off"
                     value={form.apiKey}
                     onChange={(event) =>
                       setForm((current) => ({
@@ -518,11 +657,12 @@ export function AgentsWorkspace({
                         apiKey: event.target.value,
                       }))
                     }
-                    placeholder="Paste your provider API key"
+                    placeholder={`Paste your ${form.provider} API key`}
                     className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none transition focus:border-white"
                   />
                   <p className="mt-2 text-xs text-slate-500">
-                    This key will be used only for this agent&apos;s selected provider.
+                    Required. The key is stored encrypted and only used for this
+                    agent&apos;s selected provider. It is never shown again in full.
                   </p>
                 </div>
               ) : (
@@ -533,10 +673,14 @@ export function AgentsWorkspace({
               )}
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
+                <label
+                  htmlFor="create-agent-inbox"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
                   Inbox
                 </label>
                 <select
+                  id="create-agent-inbox"
                   value={form.inboxId}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -555,9 +699,129 @@ export function AgentsWorkspace({
                 </select>
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="create-agent-tone"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
+                    Tone
+                  </label>
+                  <select
+                    id="create-agent-tone"
+                    value={form.tone}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        tone: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none"
+                  >
+                    {agentToneOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {selectedTone.instruction}
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="create-agent-response-length"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
+                    Response length
+                  </label>
+                  <select
+                    id="create-agent-response-length"
+                    value={form.responseLength}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        responseLength: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none"
+                  >
+                    {agentResponseLengthOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {selectedResponseLength.instruction}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="create-agent-max-tokens"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
+                    Max reply tokens
+                  </label>
+                  <input
+                    id="create-agent-max-tokens"
+                    type="number"
+                    min={MIN_AGENT_MAX_TOKENS}
+                    max={MAX_AGENT_MAX_TOKENS}
+                    step={1}
+                    value={Number.isFinite(form.maxTokens) ? form.maxTokens : ""}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        maxTokens: event.target.valueAsNumber,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none transition focus:border-white"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    {MIN_AGENT_MAX_TOKENS}–{MAX_AGENT_MAX_TOKENS}. Caps how long a
+                    single reply can be.
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="create-agent-status"
+                    className="mb-2 block text-sm font-medium text-slate-300"
+                  >
+                    Status
+                  </label>
+                  <select
+                    id="create-agent-status"
+                    value={form.status}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        status: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-white/10 bg-[#131313] px-4 py-3 text-sm text-white outline-none"
+                  >
+                    <option value="ACTIVE">Live (answers on all channels)</option>
+                    <option value="DRAFT">Draft (Playground only)</option>
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Only live agents reply on the chat widget, Slack and
+                    WhatsApp.
+                  </p>
+                </div>
+              </div>
+
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="text-sm font-medium text-slate-300">
+                  <label
+                    htmlFor="create-agent-confidence"
+                    className="text-sm font-medium text-slate-300"
+                  >
                     Confidence Threshold
                   </label>
                   <span className="text-sm text-slate-400">
@@ -565,6 +829,7 @@ export function AgentsWorkspace({
                   </span>
                 </div>
                 <input
+                  id="create-agent-confidence"
                   type="range"
                   min="0.1"
                   max="1"
@@ -582,7 +847,10 @@ export function AgentsWorkspace({
 
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="text-sm font-medium text-slate-300">
+                  <label
+                    htmlFor="create-agent-temperature"
+                    className="text-sm font-medium text-slate-300"
+                  >
                     Temperature
                   </label>
                   <span className="text-sm text-slate-400">
@@ -590,6 +858,7 @@ export function AgentsWorkspace({
                   </span>
                 </div>
                 <input
+                  id="create-agent-temperature"
                   type="range"
                   min="0"
                   max="1"
@@ -606,11 +875,16 @@ export function AgentsWorkspace({
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-300">
+                <label
+                  htmlFor="create-agent-system-prompt"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
                   System Prompt
                 </label>
                 <textarea
+                  id="create-agent-system-prompt"
                   value={form.systemPrompt}
+                  maxLength={8192}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,

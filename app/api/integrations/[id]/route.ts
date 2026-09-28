@@ -45,3 +45,30 @@ export async function DELETE(
 
   return NextResponse.json({ success: true });
 }
+
+/** Enable or disable a channel without re-entering its credentials (SRS FR-16.7). */
+export async function PATCH(request: Request, context: IntegrationRouteContext) {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const body = (await request.json().catch(() => ({}))) as { isActive?: unknown };
+
+  if (typeof body.isActive !== "boolean") {
+    return NextResponse.json({ error: "isActive must be true or false." }, { status: 400 });
+  }
+
+  const result = await prisma.integration.updateMany({
+    where: { id, workspaceId: session.user.workspaceId },
+    data: { isActive: body.isActive },
+  });
+
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Integration not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, isActive: body.isActive });
+}

@@ -90,6 +90,17 @@ enum ChatSessionStatus {
   CLOSED
 }
 
+enum ChatbotReplyMode {
+  ALWAYS
+  OPERATOR_OFFLINE
+  FALLBACK
+}
+
+enum WidgetPosition {
+  BOTTOM_RIGHT
+  BOTTOM_LEFT
+}
+
 enum MessageSender {
   USER
   AI
@@ -98,12 +109,12 @@ enum MessageSender {
 }
 
 model Workspace {
-  id               String             @id @default(cuid())
+  id               String            @id @default(cuid())
   name             String
-  slug             String             @unique
+  slug             String            @unique
   supportEmail     String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   users            User[]
   inboxes          Inbox[]
   tickets          Ticket[]
@@ -131,6 +142,7 @@ model User {
   passwordHash    String?
   role            UserRole  @default(ADMIN)
   isActive        Boolean   @default(true)
+  lastSeenAt      DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -155,16 +167,22 @@ model Session {
 }
 
 model Inbox {
-  id               String    @id @default(cuid())
+  id               String        @id @default(cuid())
   workspaceId      String
   name             String
-  emailPrefix      String    @unique
+  emailPrefix      String        @unique
   ticketPrefix     String
-  autoReplyEnabled Boolean   @default(false)
+  autoReplyEnabled Boolean       @default(false)
   senderEmail      String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  senderName       String?
+  smtpHost         String?
+  smtpPort         Int?
+  smtpUser         String?
+  smtpPassword     String?
+  smtpSecure       Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tickets          Ticket[]
   agents           AIAgent[]
   integrations     Integration[]
@@ -173,21 +191,24 @@ model Inbox {
 }
 
 model AIAgent {
-  id                  String              @id @default(cuid())
+  id                  String            @id @default(cuid())
   workspaceId         String
   inboxId             String?
   name                String
-  provider            String              @default("Groq")
-  model               String              @default("llama-3.3-70b-versatile")
+  provider            String            @default("Groq")
+  model               String            @default("llama-3.3-70b-versatile")
   apiKey              String?
   systemPrompt        String?
-  temperature         Float               @default(0.7)
-  confidenceThreshold Float               @default(0.5)
-  status              AgentStatus         @default(DRAFT)
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  inbox               Inbox?              @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  temperature         Float             @default(0.7)
+  confidenceThreshold Float             @default(0.5)
+  tone                String            @default("FRIENDLY")
+  responseLength      String            @default("BALANCED")
+  maxTokens           Int               @default(512)
+  status              AgentStatus       @default(DRAFT)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  workspace           Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inbox               Inbox?            @relation(fields: [inboxId], references: [id], onDelete: SetNull)
   chatbots            Chatbot[]
   knowledgeSources    KnowledgeSource[]
   automations         AgentAutomation[]
@@ -220,64 +241,78 @@ model AgentAutomation {
 }
 
 model Chatbot {
-  id                String      @id @default(cuid())
-  workspaceId       String
-  agentId           String
-  name              String
-  widgetId          String      @unique
-  welcomeMessage    String?
-  allowedDomains    String[]
-  primaryColor      String      @default("#111111")
-  isActive          Boolean     @default(true)
-  maxAiMessages     Int         @default(20)
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  workspace         Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agent             AIAgent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  chatSessions      ChatSession[]
+  id                   String           @id @default(cuid())
+  workspaceId          String
+  agentId              String
+  name                 String
+  widgetId             String           @unique
+  welcomeMessage       String?
+  allowedDomains       String[]
+  primaryColor         String           @default("#111111")
+  isActive             Boolean          @default(true)
+  maxAiMessages        Int              @default(20)
+  aiRepliesEnabled     Boolean          @default(true)
+  replyMode            ChatbotReplyMode @default(ALWAYS)
+  fallbackDelaySeconds Int              @default(60)
+  additionalPrompt     String?
+  avatarUrl            String?
+  conversationStarters String[]         @default([])
+  widgetPosition       WidgetPosition   @default(BOTTOM_RIGHT)
+  requireName          Boolean          @default(false)
+  requireEmail         Boolean          @default(true)
+  requirePhone         Boolean          @default(false)
+  emailNotifications   Boolean          @default(true)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent                AIAgent          @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  chatSessions         ChatSession[]
 
   @@index([workspaceId])
   @@index([agentId])
 }
 
 model KnowledgeSource {
-  id           String              @id @default(cuid())
-  workspaceId  String
-  agentId      String?
-  title        String
-  type         KnowledgeSourceType
-  status       SyncStatus          @default(PENDING)
-  sourceUrl    String?
-  fileName     String?
-  mimeType     String?
-  storagePath  String?
-  fileSize     Int?
-  rawText      String?
-  chunkCount   Int                 @default(0)
+  id              String              @id @default(cuid())
+  workspaceId     String
+  agentId         String?
+  title           String
+  type            KnowledgeSourceType
+  status          SyncStatus          @default(PENDING)
+  sourceUrl       String?
+  fileName        String?
+  mimeType        String?
+  storagePath     String?
+  fileSize        Int?
+  rawText         String?
+  crawlMode       String              @default("SINGLE")
+  maxPages        Int                 @default(1)
+  pageCount       Int                 @default(0)
+  chunkCount      Int                 @default(0)
   vectorIndexedAt DateTime?
   processingError String?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  lastSyncedAt DateTime?
-  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agent        AIAgent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  chunks       KnowledgeChunk[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  lastSyncedAt    DateTime?
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent           AIAgent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  chunks          KnowledgeChunk[]
 
   @@index([workspaceId])
   @@index([agentId])
 }
 
 model KnowledgeChunk {
-  id          String    @id @default(cuid())
+  id          String          @id @default(cuid())
   workspaceId String
   sourceId    String
   chunkIndex  Int
   content     String
   embedding   Json
-  tokenCount  Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tokenCount  Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   source      KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@unique([sourceId, chunkIndex])
@@ -286,28 +321,28 @@ model KnowledgeChunk {
 }
 
 model Ticket {
-  id            String         @id @default(cuid())
-  workspaceId   String
-  inboxId       String?
-  assigneeId    String?
-  createdById   String?
-  ticketNumber  Int
-  subject       String
-  previewText   String?
-  requesterName String?
+  id             String          @id @default(cuid())
+  workspaceId    String
+  inboxId        String?
+  assigneeId     String?
+  createdById    String?
+  ticketNumber   Int
+  subject        String
+  previewText    String?
+  requesterName  String?
   requesterEmail String?
-  source        TicketSource   @default(WEB)
-  status        TicketStatus   @default(OPEN)
-  priority      TicketPriority @default(MEDIUM)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  inbox         Inbox?         @relation(fields: [inboxId], references: [id], onDelete: SetNull)
-  assignee      User?          @relation("AssignedTickets", fields: [assigneeId], references: [id], onDelete: SetNull)
-  createdBy     User?          @relation("CreatedTickets", fields: [createdById], references: [id], onDelete: SetNull)
-  ticketTags    TicketTag[]
-  messages      TicketMessage[]
-  logs          AutomationLog[]
+  source         TicketSource    @default(WEB)
+  status         TicketStatus    @default(OPEN)
+  priority       TicketPriority  @default(MEDIUM)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inbox          Inbox?          @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  assignee       User?           @relation("AssignedTickets", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy      User?           @relation("CreatedTickets", fields: [createdById], references: [id], onDelete: SetNull)
+  ticketTags     TicketTag[]
+  messages       TicketMessage[]
+  logs           AutomationLog[]
 
   @@unique([workspaceId, ticketNumber])
   @@index([workspaceId])
@@ -316,39 +351,41 @@ model Ticket {
 }
 
 model TicketMessage {
-  id          String        @id @default(cuid())
-  workspaceId String
-  ticketId    String
-  sender      MessageSender
-  content     String
-  createdAt   DateTime      @default(now())
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  ticket      Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  workspaceId    String
+  ticketId       String
+  sender         MessageSender
+  content        String
+  deliveryStatus String?
+  deliveryError  String?
+  createdAt      DateTime      @default(now())
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ticket         Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([ticketId])
 }
 
 model Tag {
-  id         String      @id @default(cuid())
+  id          String      @id @default(cuid())
   workspaceId String
-  name       String
-  color      String      @default("#3b82f6")
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  ticketTags TicketTag[]
+  name        String
+  color       String      @default("#3b82f6")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ticketTags  TicketTag[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
 }
 
 model TicketTag {
-  ticketId   String
-  tagId      String
-  createdAt  DateTime @default(now())
-  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  ticketId  String
+  tagId     String
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([ticketId, tagId])
 }
@@ -392,32 +429,40 @@ model WorkspaceSetting {
 }
 
 model ChatSession {
-  id             String            @id @default(cuid())
-  workspaceId    String
-  chatbotId      String?
-  customerName   String?
-  customerEmail  String?
-  channel        ChannelType       @default(WEB_WIDGET)
-  status         ChatSessionStatus @default(ACTIVE)
-  startedAt      DateTime          @default(now())
-  endedAt        DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  chatbot        Chatbot?          @relation(fields: [chatbotId], references: [id], onDelete: SetNull)
-  messages       ChatMessage[]
+  id            String            @id @default(cuid())
+  workspaceId   String
+  chatbotId     String?
+  integrationId String?
+  externalId    String?
+  customerName  String?
+  customerEmail String?
+  customerPhone String?
+  channel       ChannelType       @default(WEB_WIDGET)
+  status        ChatSessionStatus @default(ACTIVE)
+  startedAt     DateTime          @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  workspace     Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chatbot       Chatbot?          @relation(fields: [chatbotId], references: [id], onDelete: SetNull)
+  integration   Integration?      @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  messages      ChatMessage[]
 
   @@index([workspaceId])
   @@index([chatbotId])
+  @@index([integrationId, externalId])
 }
 
 model ChatMessage {
-  id         String        @id @default(cuid())
-  sessionId  String
-  sender     MessageSender
-  content    String
-  createdAt  DateTime      @default(now())
-  session    ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id          String        @id @default(cuid())
+  sessionId   String
+  sender      MessageSender
+  content     String
+  attachments Json?
+  authorName  String?
+  externalId  String?       @unique
+  createdAt   DateTime      @default(now())
+  session     ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
 }
@@ -453,6 +498,8 @@ model Integration {
   name              String
   provider          String
   status            IntegrationStatus @default(DISCONNECTED)
+  externalId        String?
+  statusMessage     String?
   supportAddress    String?
   forwardingAddress String?
   webhookSecret     String?
@@ -464,7 +511,9 @@ model Integration {
   workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   inbox             Inbox?            @relation(fields: [inboxId], references: [id], onDelete: SetNull)
   agent             AIAgent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  chatSessions      ChatSession[]
 
+  @@unique([type, externalId])
   @@index([workspaceId])
   @@index([inboxId])
   @@index([agentId])

@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { SettingsWorkspace } from "@/src/components/dashboard/settings-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
-import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 
 export default async function SettingsPage() {
-  const [, session] = await Promise.all([ensureDemoData(), getCurrentSession()]);
+  const session = await getCurrentSession();
 
   if (!session) {
     redirect("/login");
@@ -15,6 +14,11 @@ export default async function SettingsPage() {
     prisma.workspace.findUnique({
       where: {
         id: session.user.workspaceId,
+      },
+      select: {
+        id: true,
+        name: true,
+        supportEmail: true,
       },
     }),
     prisma.workspaceSetting.findUnique({

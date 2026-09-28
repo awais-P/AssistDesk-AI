@@ -24,6 +24,10 @@ export default async function InboxEditPage({ params }: InboxEditPageProps) {
         id,
         workspaceId: session.user.workspaceId,
       },
+      // Opt in to the globally omitted secret only to learn whether one is stored.
+      omit: {
+        smtpPassword: false,
+      },
     }),
     prisma.aIAgent.findMany({
       where: {
@@ -52,6 +56,13 @@ export default async function InboxEditPage({ params }: InboxEditPageProps) {
         autoReplyEnabled: inbox.autoReplyEnabled,
         ticketPrefix: inbox.ticketPrefix,
         assignedAgentId: assignedAgent?.id ?? null,
+        senderName: inbox.senderName,
+        smtpHost: inbox.smtpHost,
+        smtpPort: inbox.smtpPort,
+        smtpUser: inbox.smtpUser,
+        smtpSecure: inbox.smtpSecure,
+        // Only a boolean crosses to the client; the encrypted password never does.
+        hasSmtpPassword: Boolean(inbox.smtpPassword),
       }}
       agentOptions={agents.map((agent) => ({
         id: agent.id,

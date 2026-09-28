@@ -26,10 +26,24 @@ export default async function ChatbotDetailPage({
         id,
         workspaceId: session.user.workspaceId,
       },
+      include: {
+        agent: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        },
+      },
     }),
     prisma.aIAgent.findMany({
       where: {
         workspaceId: session.user.workspaceId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
       },
       orderBy: {
         createdAt: "asc",
@@ -48,15 +62,29 @@ export default async function ChatbotDetailPage({
         name: chatbot.name,
         widgetId: chatbot.widgetId,
         agentId: chatbot.agentId,
+        agentName: chatbot.agent.name,
+        agentStatus: chatbot.agent.status,
         allowedDomains: chatbot.allowedDomains,
         primaryColor: chatbot.primaryColor,
         welcomeMessage: chatbot.welcomeMessage,
         isActive: chatbot.isActive,
         maxAiMessages: chatbot.maxAiMessages,
+        aiRepliesEnabled: chatbot.aiRepliesEnabled,
+        replyMode: chatbot.replyMode,
+        fallbackDelaySeconds: chatbot.fallbackDelaySeconds,
+        additionalPrompt: chatbot.additionalPrompt,
+        avatarUrl: chatbot.avatarUrl,
+        conversationStarters: chatbot.conversationStarters,
+        widgetPosition: chatbot.widgetPosition,
+        requireName: chatbot.requireName,
+        requireEmail: chatbot.requireEmail,
+        requirePhone: chatbot.requirePhone,
+        emailNotifications: chatbot.emailNotifications,
       }}
       agentOptions={agents.map((agent) => ({
         id: agent.id,
         name: agent.name,
+        status: agent.status,
       }))}
     />
   );

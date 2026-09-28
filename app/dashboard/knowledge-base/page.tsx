@@ -14,12 +14,37 @@ export default async function KnowledgeBasePage() {
     where: {
       workspaceId: session.user.workspaceId,
     },
-    include: {
-      agent: true,
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      status: true,
+      sourceUrl: true,
+      fileName: true,
+      mimeType: true,
+      storagePath: true,
+      fileSize: true,
+      rawText: true,
+      crawlMode: true,
+      maxPages: true,
+      pageCount: true,
+      chunkCount: true,
+      vectorIndexedAt: true,
+      processingError: true,
+      createdAt: true,
+      updatedAt: true,
+      lastSyncedAt: true,
+      agent: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
     orderBy: {
       createdAt: "desc",
     },
+    take: 100,
   });
 
   return <KnowledgeBaseClient initialSources={sources} />;

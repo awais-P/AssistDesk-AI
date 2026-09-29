@@ -72,6 +72,8 @@ export default async function ChatbotDetailPage({
         aiRepliesEnabled: chatbot.aiRepliesEnabled,
         replyMode: chatbot.replyMode,
         fallbackDelaySeconds: chatbot.fallbackDelaySeconds,
+        sessionTimeoutMinutes: chatbot.sessionTimeoutMinutes,
+        rateLimitPerMinute: chatbot.rateLimitPerMinute,
         additionalPrompt: chatbot.additionalPrompt,
         avatarUrl: chatbot.avatarUrl,
         conversationStarters: chatbot.conversationStarters,

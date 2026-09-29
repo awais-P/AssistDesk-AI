@@ -3,7 +3,7 @@ import { handleChannelInbound } from "@/src/lib/integrations/channel-inbound";
 import { readIntegrationConfig } from "@/src/lib/integrations/config";
 import {
   type SlackMessageEvent,
-  getSlackUserName,
+  getSlackUserProfile,
   parseSlackCustomerMessage,
   postSlackMessage,
   verifySlackSignature,
@@ -93,13 +93,15 @@ export async function POST(request: Request, context: SlackEventsRouteContext) {
   // Slack expects a response within 3 seconds, so the AI reply runs after we ack.
   after(async () => {
     try {
-      const customerName = await getSlackUserName(config.botToken, message.userId);
+      const profile = await getSlackUserProfile(config.botToken, message.userId);
+      const customerName = profile.name;
 
       await handleChannelInbound({
         integration,
         channel: "SLACK",
         conversationKey: message.conversationKey,
         externalMessageId: `slack:${envelope.event_id ?? `${message.channel}:${envelope.event?.ts}`}`,
+        identity: { slackUserId: message.userId, email: profile.email, name: customerName },
         customerName: customerName ?? `Slack user ${message.userId}`,
         text: message.text,
         deliver: (reply) =>

@@ -115,7 +115,7 @@ export async function getWorkspaceSetupState(workspaceId: string) {
 
 export function getWorkspaceSetupRedirect(
   state: WorkspaceSetupState | null,
-): "/setup" | "/dashboard/tickets" {
+): "/setup" | "/dashboard" {
   if (!state) {
     return "/setup";
   }
@@ -128,7 +128,7 @@ export function getWorkspaceSetupRedirect(
     return "/setup";
   }
 
-  return "/dashboard/tickets";
+  return "/dashboard";
 }
 
 export function normalizeDomain(value: string) {

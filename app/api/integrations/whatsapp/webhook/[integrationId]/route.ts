@@ -96,6 +96,7 @@ export async function POST(request: Request, context: WhatsAppWebhookRouteContex
           channel: "WHATSAPP",
           conversationKey: message.from,
           externalMessageId: `wa:${message.messageId}`,
+          identity: { whatsappId: message.from, name: message.name },
           customerName: message.name,
           customerPhone: `+${message.from}`,
           text: message.text,

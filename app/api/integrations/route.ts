@@ -1,3 +1,5 @@
+import { requireRole } from "@/src/lib/rbac";
+import { createNotification } from "@/src/lib/notifications";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -127,6 +129,16 @@ export async function POST(request: Request) {
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "ADMIN");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const body = (await request.json().catch(() => ({}))) as IntegrationPayload;
@@ -259,6 +271,18 @@ export async function POST(request: Request) {
         data: {
           inboxId: integration.inboxId,
         },
+      });
+    }
+
+    if (connection.status === "ERROR") {
+      await createNotification({
+        workspaceId: session.user.workspaceId,
+        type: "INTEGRATION_ERROR",
+        severity: "ERROR",
+        title: `${integration.name} could not connect`,
+        body: connection.statusMessage,
+        link: "/dashboard/integrations",
+        dedupeMinutes: 5,
       });
     }
 

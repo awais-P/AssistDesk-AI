@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -8,6 +9,8 @@ type SettingsPayload = {
   timezone?: string;
   theme?: string;
   supportSignature?: string;
+  /** Module 5: let the AI use what a customer said on other channels. */
+  crossChannelMemory?: boolean;
 };
 
 export async function PATCH(request: Request) {
@@ -15,6 +18,12 @@ export async function PATCH(request: Request) {
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const forbidden = requireRole(session.user, "ADMIN");
+
+  if (forbidden) {
+    return forbidden;
   }
 
   const body = (await request.json()) as SettingsPayload;
@@ -46,12 +55,16 @@ export async function PATCH(request: Request) {
         timezone: body.timezone?.trim() || "Asia/Karachi",
         theme: body.theme?.trim() || "dark",
         supportSignature: body.supportSignature?.trim() || null,
+        ...(typeof body.crossChannelMemory === "boolean"
+          ? { crossChannelMemory: body.crossChannelMemory }
+          : {}),
       },
       create: {
         workspaceId: session.user.workspaceId,
         timezone: body.timezone?.trim() || "Asia/Karachi",
         theme: body.theme?.trim() || "dark",
         supportSignature: body.supportSignature?.trim() || null,
+        crossChannelMemory: body.crossChannelMemory !== false,
       },
     }),
   ]);

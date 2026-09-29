@@ -5,9 +5,21 @@ export type DashboardItem = {
   description: string;
   moduleLabel: string;
   group: string;
+  /** Only highlight this item on an exact path match (nested routes don't count). */
+  exact?: boolean;
 };
 
 export const dashboardItems: DashboardItem[] = [
+  {
+    href: "/dashboard",
+    title: "Overview",
+    section: "overview",
+    description:
+      "See assistant performance, open work, knowledge health, and recent alerts at a glance.",
+    moduleLabel: "Module 7 - User Dashboard",
+    group: "Main",
+    exact: true,
+  },
   {
     href: "/dashboard/tickets",
     title: "Tickets",
@@ -24,6 +36,15 @@ export const dashboardItems: DashboardItem[] = [
     description:
       "View live chat conversations and future human handoff activity in one workspace.",
     moduleLabel: "Module 7 / Module 5",
+    group: "Main",
+  },
+  {
+    href: "/dashboard/contacts",
+    title: "Contacts",
+    section: "contacts",
+    description:
+      "See every customer across Website, WhatsApp, Slack and Email, with their conversations and AI memory.",
+    moduleLabel: "Module 5 - Session & Context Management",
     group: "Main",
   },
   {
@@ -51,6 +72,15 @@ export const dashboardItems: DashboardItem[] = [
     description:
       "Create, edit, and configure assistant identity, tone, and future model behavior.",
     moduleLabel: "Module 1 - Assistant Creation & Omnichannel Integration",
+    group: "AI",
+  },
+  {
+    href: "/dashboard/prompts",
+    title: "Prompts",
+    section: "prompts",
+    description:
+      "Manage reusable prompt templates that shape how your AI agents respond.",
+    moduleLabel: "Module 2 - Prompt Management",
     group: "AI",
   },
   {
@@ -149,4 +179,15 @@ export const dashboardPageMap = Object.fromEntries(
   dashboardItems.map((item) => [item.section, item]),
 ) as Record<string, DashboardItem>;
 
-export const dashboardPageOrder = dashboardItems.map((item) => item.section);
+// Sections served by the catch-all /dashboard/[section] route (Overview is /dashboard itself).
+export const dashboardPageOrder = dashboardItems
+  .filter((item) => item.href.startsWith("/dashboard/"))
+  .map((item) => item.section);
+
+export function isDashboardItemActive(item: DashboardItem, pathname: string) {
+  if (item.exact) {
+    return pathname === item.href;
+  }
+
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}

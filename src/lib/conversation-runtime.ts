@@ -6,8 +6,10 @@ import {
   toRuntimeAgent,
 } from "./llm-runtime";
 import { prisma } from "./prisma";
+import { appendSessionMessage, recordSessionEvent } from "./session-lifecycle";
+import { HISTORY_WINDOW, buildCustomerContext, scheduleMemoryRefresh } from "./session-memory";
 
-const HISTORY_MESSAGE_LIMIT = 12;
+const HISTORY_MESSAGE_LIMIT = HISTORY_WINDOW;
 
 type AttachmentSummary = { name?: string; mimeType?: string };
 
@@ -93,29 +95,58 @@ export async function generateSessionReply({
       content: `${message.content}${describeAttachments(message.attachments)}`,
     }));
 
-  const sources = await hydrateKnowledgeSources(agent.knowledgeSources);
+  const [sources, session, customerContext] = await Promise.all([
+    hydrateKnowledgeSources(agent.knowledgeSources),
+    prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: { summary: true, summarizedMessageCount: true, messageCount: true, contactId: true, previousSessionId: true },
+    }),
+    buildCustomerContext(sessionId),
+  ]);
+  // The rolling summary only covers messages older than the history window.
+  const conversationSummary =
+    session?.summary && session.messageCount > HISTORY_WINDOW ? session.summary : null;
   const response = await generateAgentReply({
     agent: toRuntimeAgent(agent, extraSystemPrompt),
     question: `${latest.content}${describeAttachments(latest.attachments)}`,
     sources,
     history,
     channel,
+    memory: { customerContext: customerContext.text, conversationSummary },
   });
 
-  const [message] = await prisma.$transaction([
-    prisma.chatMessage.create({
-      data: {
+  const message = await appendSessionMessage({
+    sessionId,
+    workspaceId,
+    sender: "AI",
+    content: response.reply,
+    authorName: agent.name,
+  });
+
+  // First reply that used memory from other sessions: record the carry-over (FE-2).
+  if (customerContext.carriedSessions.length > 0) {
+    const alreadyRecorded = await prisma.sessionEvent.count({
+      where: { sessionId, type: "CONTEXT_CARRIED" },
+    });
+
+    if (alreadyRecorded === 0) {
+      await recordSessionEvent({
+        workspaceId,
         sessionId,
-        sender: "AI",
-        content: response.reply,
-        authorName: agent.name,
-      },
-    }),
-    prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { updatedAt: new Date() },
-      select: { id: true },
-    }),
+        contactId: session?.contactId ?? null,
+        type: "CONTEXT_CARRIED",
+        detail: `AI received context from ${customerContext.carriedSessions.length} earlier conversation(s): ${[...new Set(customerContext.carriedSessions.map((item) => item.channel.replace("_", " ").toLowerCase()))].join(", ")}.`,
+        metadata: { sessionIds: customerContext.carriedSessions.map((item) => item.id) },
+      });
+    }
+  }
+
+  // Long conversation: condense older messages in the background (FE-3).
+  if ((session?.messageCount ?? 0) + 1 > HISTORY_WINDOW) {
+    scheduleMemoryRefresh({ sessionId, contactId: session?.contactId ?? null });
+  }
+
+  await prisma.$transaction([
     prisma.automationLog.create({
       data: {
         workspaceId,
@@ -132,5 +163,5 @@ export async function generateSessionReply({
     }),
   ]);
 
-  return { message, response };
+  return { message, response, usedMemory: Boolean(customerContext.text) };
 }

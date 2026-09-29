@@ -74,6 +74,13 @@ type KnowledgeSourceItem = {
 };
 
 type SourceModalType = "TEXT" | "URL" | "FILE";
+
+type UrlTestResult = {
+  ok: boolean;
+  title: string | null;
+  characters: number | null;
+  message: string;
+};
 type CrawlMode = "SINGLE" | "CRAWL";
 
 type AgentConfigurationWorkspaceProps = {
@@ -226,8 +233,12 @@ function formatSourceStatus(status: string) {
   if (status === "SYNCED") return "Trained";
   if (status === "PROCESSING") return "Processing";
   if (status === "FAILED") return "Failed";
-  if (status === "PENDING") return "Pending";
+  if (status === "PENDING") return "Queued";
   return status.toLowerCase();
+}
+
+function isIndexingStatus(status: string) {
+  return status === "PENDING" || status === "PROCESSING";
 }
 
 function formatLatency(latencyMs: number) {
@@ -565,7 +576,8 @@ export function AgentConfigurationWorkspace({
   const [maxPages, setMaxPages] = useState(DEFAULT_CRAWL_PAGES);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [testUrl, setTestUrl] = useState("");
-  const [testFeedback, setTestFeedback] = useState("");
+  const [testResult, setTestResult] = useState<UrlTestResult | null>(null);
+  const [isTestingUrl, setIsTestingUrl] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState("");
   const [settingsError, setSettingsError] = useState("");
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -627,7 +639,7 @@ export function AgentConfigurationWorkspace({
   }, [sources]);
 
   const hasProcessingSources = useMemo(
-    () => sources.some((source) => source.status === "PROCESSING"),
+    () => sources.some((source) => isIndexingStatus(source.status)),
     [sources],
   );
 
@@ -686,7 +698,7 @@ export function AgentConfigurationWorkspace({
     setMaxPages(DEFAULT_CRAWL_PAGES);
     setSelectedFile(null);
     setTestUrl("");
-    setTestFeedback("");
+    setTestResult(null);
     setSourceError("");
   }
 
@@ -708,6 +720,59 @@ export function AgentConfigurationWorkspace({
     setSelectedFile(file);
   }
 
+  /** Fetches the page server-side (SSRF-safe) to check it has readable text. */
+  async function handleTestUrl() {
+    if (isTestingUrl) {
+      return;
+    }
+
+    const url = testUrl.trim();
+    setTestResult(null);
+
+    try {
+      new URL(url);
+    } catch {
+      setSourceError("Enter a valid URL (including https://) before running a test.");
+      return;
+    }
+
+    setIsTestingUrl(true);
+
+    try {
+      const response = await fetch("/api/knowledge-sources/test-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        ok?: boolean;
+        title?: string | null;
+        characters?: number;
+        message?: string;
+      };
+
+      if (!response.ok || typeof data.message !== "string") {
+        setSourceError(data.error ?? "Unable to test this URL right now. Try again in a moment.");
+        return;
+      }
+
+      setTestResult({
+        ok: Boolean(data.ok),
+        title: data.title ?? null,
+        characters: typeof data.characters === "number" ? data.characters : null,
+        message: data.message,
+      });
+    } catch {
+      setSourceError("Unable to reach the server to test this URL. Check your connection.");
+    } finally {
+      setIsTestingUrl(false);
+    }
+  }
+
   async function handleAddSource() {
     if (isSubmittingSource) {
       return;
@@ -717,15 +782,7 @@ export function AgentConfigurationWorkspace({
     setSourceSuccess("");
 
     if (sourceModalTab === "test") {
-      try {
-        const parsedUrl = new URL(testUrl);
-        setTestFeedback(
-          `URL looks valid and ready to crawl from ${parsedUrl.hostname}.`,
-        );
-      } catch {
-        setSourceError("Enter a valid URL (including https://) before running a test.");
-      }
-
+      await handleTestUrl();
       return;
     }
 
@@ -815,8 +872,8 @@ export function AgentConfigurationWorkspace({
 
       setSources((current) => [createdSource, ...current]);
       setSourceSuccess(
-        createdSource.status === "PROCESSING"
-          ? "Source added. It is being processed in the background and will show Trained when ready."
+        isIndexingStatus(createdSource.status)
+          ? "Source added and queued for indexing. It will show Trained when ready."
           : "Knowledge source added successfully.",
       );
       resetSourceModal();
@@ -1483,17 +1540,28 @@ export function AgentConfigurationWorkspace({
                       {source.processingError}
                     </p>
                   ) : null}
+                  {source.status === "SYNCED" && source.processingError ? (
+                    <p
+                      title={source.processingError}
+                      className="mt-1 text-xs text-amber-200"
+                    >
+                      Keyword search only
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
               <div className="relative flex shrink-0 items-center gap-3">
                 <span
+                  title={source.processingError ?? undefined}
                   className={`rounded-full border px-3 py-1 text-xs font-medium ${
                     source.status === "FAILED"
                       ? "border-red-500/20 bg-red-500/10 text-red-200"
                       : source.status === "PROCESSING"
                         ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
-                        : "border-white/10 bg-[#111111] text-slate-200"
+                        : source.status === "SYNCED"
+                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                          : "border-white/10 bg-[#111111] text-slate-200"
                   }`}
                 >
                   {formatSourceStatus(source.status)}
@@ -1594,7 +1662,7 @@ export function AgentConfigurationWorkspace({
                 onClick={() => {
                   setSourceModalTab(item);
                   setSourceError("");
-                  setTestFeedback("");
+                  setTestResult(null);
                 }}
                 className={`rounded-lg px-4 py-3 text-sm font-semibold transition ${
                   sourceModalTab === item
@@ -1824,16 +1892,67 @@ export function AgentConfigurationWorkspace({
                 id="agent-source-test-url"
                 type="url"
                 value={testUrl}
-                onChange={(event) => setTestUrl(event.target.value)}
+                onChange={(event) => {
+                  setTestUrl(event.target.value);
+                  setTestResult(null);
+                }}
                 placeholder="https://example.com/help-center"
                 className="w-full rounded-2xl border border-white/10 bg-[#121212] px-4 py-4 text-sm text-white outline-none transition focus:border-white"
               />
 
-              <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-[#0c0c0c] px-4 py-5">
-                <p className="text-sm text-slate-400">
-                  {testFeedback ||
-                    "Run a quick test to validate the URL before adding it as a source."}
-                </p>
+              <div
+                role="status"
+                className={`mt-5 rounded-2xl border px-4 py-5 ${
+                  testResult
+                    ? testResult.ok
+                      ? "border-emerald-500/20 bg-emerald-500/10"
+                      : "border-amber-500/20 bg-amber-500/10"
+                    : "border-dashed border-white/10 bg-[#0c0c0c]"
+                }`}
+              >
+                {testResult ? (
+                  <>
+                    <p
+                      className={`text-sm ${
+                        testResult.ok ? "text-emerald-100" : "text-amber-100"
+                      }`}
+                    >
+                      {testResult.message}
+                    </p>
+                    {testResult.title || testResult.characters !== null ? (
+                      <p className="mt-2 text-xs text-slate-300">
+                        {[
+                          testResult.title ? `Page title: ${testResult.title}` : null,
+                          testResult.characters !== null
+                            ? `${testResult.characters.toLocaleString("en-US")} characters of readable text`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
+                    {testResult.ok ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSourceType("URL");
+                          setSourceUrl(testUrl.trim());
+                          setSourceModalTab("add");
+                          setTestResult(null);
+                        }}
+                        className="pressable mt-3 inline-flex items-center justify-center rounded-lg border border-white/10 bg-[#111111] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1a1a1a]"
+                      >
+                        Use this URL as a source
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-400">
+                    {isTestingUrl
+                      ? "Fetching the page..."
+                      : "Run a quick test to check the page is reachable and has readable text before adding it as a source."}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -1857,16 +1976,18 @@ export function AgentConfigurationWorkspace({
             </button>
             <button
               type="button"
-              disabled={isSubmittingSource}
+              disabled={isSubmittingSource || isTestingUrl}
               onClick={() => void handleAddSource()}
               className="pressable inline-flex items-center justify-center rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-[#050505] transition hover:bg-neutral-200 disabled:bg-neutral-400"
             >
-              {isSubmittingSource
-                ? sourceType === "FILE"
-                  ? "Uploading..."
-                  : "Adding..."
-                : sourceModalTab === "test"
-                  ? "Run Test"
+              {sourceModalTab === "test"
+                ? isTestingUrl
+                  ? "Testing..."
+                  : "Run Test"
+                : isSubmittingSource
+                  ? sourceType === "FILE"
+                    ? "Uploading..."
+                    : "Adding..."
                   : "Add Source"}
             </button>
           </div>

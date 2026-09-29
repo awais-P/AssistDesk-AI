@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -63,6 +64,16 @@ export async function POST(request: Request) {
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const body = (await request.json().catch(() => ({}))) as AgentPayload;

@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { defaultChatbotWelcomeMessage } from "@/src/lib/chatbot-config";
-import { WIDGET_MESSAGE_TYPE, WIDGET_TOKEN_HEADER } from "@/src/lib/widget-constants";
+import {
+  WIDGET_MESSAGE_TYPE,
+  WIDGET_SESSION_HEADER,
+  WIDGET_TOKEN_HEADER,
+} from "@/src/lib/widget-constants";
 
 type WidgetAttachment = {
   url: string;
@@ -39,6 +43,19 @@ type WidgetConfig = {
   online: boolean;
   operatorsOnline: boolean;
   isPreview: boolean;
+  sessionTimeoutMinutes?: number;
+};
+
+/** The visitor's conversation as the server reports it (Module 5 session lifecycle). */
+type WidgetSessionState = {
+  id: string;
+  status: "ACTIVE" | "ESCALATED" | "CLOSED";
+  startedAt: string;
+  lastActivityAt: string;
+  expiresAt: string | null;
+  idleTimeoutMinutes: number;
+  closedReason: string | null;
+  continuesPrevious: boolean;
 };
 
 type ContactState = {
@@ -71,8 +88,12 @@ type SpeechRecognitionInstance = {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 
+/** Only used when live updates (Server-Sent Events) are unavailable. */
 const POLL_INTERVAL_MS = 4000;
+const MAX_STREAM_FAILURES = 3;
+const EXPIRY_WARNING_MS = 5 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 2000;
+const DIVIDER_SENDER = "DIVIDER";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_PATTERN = /^[+()\d\s-]{6,20}$/;
 const emojis = [
@@ -149,6 +170,37 @@ function usePersistedState<T>(key: string, initialValue: T) {
   }, [isHydrated, key, state]);
 
   return [state, setState, isHydrated] as const;
+}
+
+/** Anonymous id for this browser, so a returning visitor is recognised (FE-2). */
+function createVisitorId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function newConversationDivider(sessionId: string, createdAt: string): WidgetMessage {
+  return {
+    id: `divider-${sessionId}`,
+    sender: DIVIDER_SENDER,
+    content: "New conversation — we still remember what we talked about.",
+    attachments: [],
+    authorName: null,
+    createdAt,
+  };
+}
+
+function formatMinutes(minutes: number) {
+  if (minutes >= 60) {
+    const hours = Math.round(minutes / 60);
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
 function mergeMessages(current: WidgetMessage[], incoming: WidgetMessage[]) {
@@ -253,10 +305,22 @@ export function ChatbotWidgetClient({
   const [operatorsOnline, setOperatorsOnline] = useState(false);
   const [contactDismissed, setContactDismissed] = useState(false);
   const [contactDraft, setContactDraft] = useState<ContactState>({ name: "", email: "", phone: "" });
-  const [sessionId, setSessionId] = usePersistedState<string | null>(
-    `assistdesk-widget-session-${widgetId}`,
+  // Module 5: the secret session token identifies this visitor's conversation; the
+  // server stores only its hash. The visitor id lets a returning visitor be recognised.
+  const [sessionToken, setSessionToken, sessionTokenHydrated] = usePersistedState<string | null>(
+    `assistdesk-widget-session-token-${widgetId}`,
     null,
   );
+  const [visitorId, setVisitorId, visitorIdHydrated] = usePersistedState<string | null>(
+    `assistdesk-widget-visitor-${widgetId}`,
+    null,
+  );
+  const [session, setSession] = useState<WidgetSessionState | null>(null);
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [liveUpdates, setLiveUpdates] = useState(true);
   const [contact, setContact, contactHydrated] = usePersistedState<ContactState>(
     `assistdesk-widget-contact-${widgetId}`,
     { name: "", email: "", phone: "" },
@@ -265,15 +329,52 @@ export function ChatbotWidgetClient({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const sessionTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    sessionTokenRef.current = sessionToken;
+  }, [sessionToken]);
 
   const widgetFetch = useCallback(
     (path: string, init?: RequestInit) =>
       fetch(path, {
         ...init,
-        headers: { ...(init?.headers ?? {}), [WIDGET_TOKEN_HEADER]: token },
+        headers: {
+          ...(init?.headers ?? {}),
+          [WIDGET_TOKEN_HEADER]: token,
+          ...(sessionTokenRef.current ? { [WIDGET_SESSION_HEADER]: sessionTokenRef.current } : {}),
+        },
       }),
     [token],
   );
+
+  useEffect(() => {
+    if (visitorIdHydrated && !visitorId) {
+      setVisitorId(createVisitorId());
+    }
+  }, [setVisitorId, visitorId, visitorIdHydrated]);
+
+  useEffect(() => {
+    // Sessions used to be stored by id; that key is no longer read.
+    try {
+      window.localStorage.removeItem(`assistdesk-widget-session-${widgetId}`);
+    } catch {}
+  }, [widgetId]);
+
+  // Ticks the expiry warning and the rate-limit cooldown.
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setNow(Date.now()), cooldownUntil - Date.now() + 50);
+    return () => window.clearTimeout(timeout);
+  }, [cooldownUntil]);
 
   useEffect(() => {
     if (contactHydrated) {
@@ -332,18 +433,16 @@ export function ChatbotWidgetClient({
   }, [widgetFetch, widgetId]);
 
   const loadHistory = useCallback(async () => {
-    if (!sessionId) {
+    if (!sessionTokenRef.current) {
       return;
     }
 
     try {
-      const response = await widgetFetch(
-        `/api/widget/${widgetId}/messages?sessionId=${encodeURIComponent(sessionId)}`,
-      );
+      const response = await widgetFetch(`/api/widget/${widgetId}/messages`);
       const data = (await response.json()) as {
         messages?: WidgetMessage[];
         operatorsOnline?: boolean;
-        session?: { id: string; status: string } | null;
+        session?: WidgetSessionState | null;
       };
 
       if (!response.ok) {
@@ -354,22 +453,93 @@ export function ChatbotWidgetClient({
         setOperatorsOnline(data.operatorsOnline);
       }
 
-      if (data.session === null) {
-        setSessionId(null);
+      if (!data.session) {
+        // Unknown or foreign token: start fresh on the next message.
+        setSessionToken(null);
+        setSession(null);
         setMessages([]);
         return;
       }
 
+      setSession(data.session);
       setMessages((current) => mergeMessages(current, data.messages ?? []));
     } catch {
-      // Polling failures are retried on the next tick.
+      // Retried on the next tick / reconnect.
     }
-  }, [sessionId, setSessionId, widgetFetch, widgetId]);
+  }, [setSessionToken, widgetFetch, widgetId]);
 
   useEffect(() => {
-    void loadHistory();
+    if (sessionTokenHydrated) {
+      void loadHistory();
+    }
+  }, [loadHistory, sessionToken, sessionTokenHydrated]);
 
-    if (!sessionId) {
+  const sessionOpen = Boolean(sessionToken) && session !== null && session.status !== "CLOSED";
+
+  // Live updates (Server-Sent Events): team replies, AI fallbacks, takeover and expiry
+  // arrive as they happen. EventSource reconnects by itself; after repeated failures
+  // the widget falls back to polling.
+  useEffect(() => {
+    if (!sessionOpen || !sessionToken || !liveUpdates || typeof EventSource === "undefined") {
+      return;
+    }
+
+    let source: EventSource | null = null;
+    let failures = 0;
+    let reconnectTimer: number | undefined;
+    let stopped = false;
+
+    const connect = () => {
+      const params = new URLSearchParams({ token, session: sessionToken });
+      source = new EventSource(`/api/widget/${widgetId}/stream?${params.toString()}`);
+
+      source.addEventListener("open", () => {
+        failures = 0;
+      });
+      source.addEventListener("message", (event) => {
+        try {
+          const incoming = JSON.parse((event as MessageEvent<string>).data) as WidgetMessage[];
+          setMessages((current) => mergeMessages(current, incoming));
+        } catch {}
+      });
+      source.addEventListener("session", (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent<string>).data) as {
+            session: WidgetSessionState;
+            operatorsOnline: boolean;
+          };
+          setSession(data.session);
+          setOperatorsOnline(data.operatorsOnline);
+        } catch {}
+      });
+      source.addEventListener("error", () => {
+        if (source?.readyState !== EventSource.CLOSED || stopped) {
+          return; // The browser is already reconnecting.
+        }
+
+        failures += 1;
+
+        if (failures >= MAX_STREAM_FAILURES) {
+          setLiveUpdates(false);
+          return;
+        }
+
+        reconnectTimer = window.setTimeout(connect, 3000 * failures);
+      });
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      window.clearTimeout(reconnectTimer);
+      source?.close();
+    };
+  }, [liveUpdates, sessionOpen, sessionToken, token, widgetId]);
+
+  // Polling fallback when live updates are not available.
+  useEffect(() => {
+    if (!sessionOpen || (liveUpdates && typeof EventSource !== "undefined")) {
       return;
     }
 
@@ -380,7 +550,7 @@ export function ChatbotWidgetClient({
     }, POLL_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
-  }, [loadHistory, sessionId]);
+  }, [liveUpdates, loadHistory, sessionOpen]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -432,6 +602,10 @@ export function ChatbotWidgetClient({
       return;
     }
 
+    if (cooldownUntil > Date.now()) {
+      return;
+    }
+
     if (missingContactFields.length > 0) {
       setContactError(`Please add your ${missingContactFields.join(" and ")} first.`);
       return;
@@ -464,17 +638,21 @@ export function ChatbotWidgetClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId,
           message: content,
           attachments,
           customerName: contact.name,
           customerEmail: contact.email,
           customerPhone: contact.phone,
+          visitorId,
         }),
       });
       const data = (await response.json()) as {
         error?: string;
-        session?: { id: string };
+        retryAfterSeconds?: number;
+        session?: WidgetSessionState;
+        sessionToken?: string | null;
+        sessionStarted?: boolean;
+        previousSession?: { id: string; closedReason: string | null } | null;
         messages?: WidgetMessage[];
       };
 
@@ -483,17 +661,36 @@ export function ChatbotWidgetClient({
         setDraft(content);
         setPendingAttachments(attachments);
         setError(data.error ?? "Your message was not sent. Please try again.");
+
+        if (response.status === 429) {
+          const retryAfter = Number(response.headers.get("Retry-After")) || data.retryAfterSeconds || 30;
+          setCooldownUntil(Date.now() + retryAfter * 1000);
+        }
+
         return;
       }
 
       const nextMessages = data.messages;
-      setSessionId(data.session.id);
-      setMessages((current) =>
-        mergeMessages(
-          current.filter((message) => message.id !== pendingUserMessage.id),
-          nextMessages,
-        ),
-      );
+      const nextSession = data.session;
+      // A closed or expired conversation was followed by a new one.
+      const startedAfterPrevious = Boolean(data.sessionStarted && data.previousSession);
+
+      if (data.sessionToken) {
+        sessionTokenRef.current = data.sessionToken;
+        setSessionToken(data.sessionToken);
+      }
+
+      setSession(nextSession);
+      setLiveUpdates(true);
+      setMessages((current) => {
+        const withoutPending = current.filter((message) => message.id !== pendingUserMessage.id);
+        const divider =
+          startedAfterPrevious && withoutPending.length > 0
+            ? [newConversationDivider(nextSession.id, nextSession.startedAt)]
+            : [];
+
+        return mergeMessages(withoutPending, [...divider, ...nextMessages]);
+      });
     } catch {
       setMessages((current) => current.filter((message) => message.id !== pendingUserMessage.id));
       setDraft(content);
@@ -589,6 +786,37 @@ export function ChatbotWidgetClient({
     window.parent.postMessage({ type: WIDGET_MESSAGE_TYPE, action: "close" }, "*");
   }
 
+  /** The visitor ends the conversation; their next message starts a new one. */
+  async function endConversation() {
+    if (!sessionToken || isEnding) {
+      return;
+    }
+
+    setIsEnding(true);
+    setError("");
+
+    try {
+      const response = await widgetFetch(`/api/widget/${widgetId}/session`, { method: "DELETE" });
+      const data = (await response.json()) as { error?: string; session?: WidgetSessionState | null };
+
+      if (!response.ok) {
+        setError(data.error ?? "The conversation could not be ended. Please try again.");
+        return;
+      }
+
+      if (data.session) {
+        setSession(data.session);
+      }
+
+      await loadHistory();
+    } catch {
+      setError("The conversation could not be ended. Check your connection and try again.");
+    } finally {
+      setIsEnding(false);
+      setConfirmingEnd(false);
+    }
+  }
+
   if (isLoadingConfig) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white text-sm text-slate-500">
@@ -618,6 +846,10 @@ export function ChatbotWidgetClient({
       ? "bg-emerald-400"
       : "bg-orange-400";
   const inputDisabled = !config.isActive || missingContactFields.length > 0;
+  const coolingDown = cooldownUntil > now;
+  const expiresInMs = sessionOpen && session?.expiresAt ? new Date(session.expiresAt).getTime() - now : null;
+  const showExpiryWarning = expiresInMs !== null && expiresInMs > 0 && expiresInMs <= EXPIRY_WARNING_MS;
+  const conversationEnded = Boolean(sessionToken) && session?.status === "CLOSED";
 
   return (
     <div className="flex h-screen flex-col bg-white text-[#111827]">
@@ -648,17 +880,54 @@ export function ChatbotWidgetClient({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={closeWidget}
-            className="rounded-full p-2 text-white/90 transition hover:bg-white/10"
-            aria-label="Close chat"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="m7 7 10 10M17 7 7 17" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            {sessionOpen && messages.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setConfirmingEnd((current) => !current)}
+                className="whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium text-white/90 transition hover:bg-white/10"
+                aria-expanded={confirmingEnd}
+              >
+                End chat
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={closeWidget}
+              className="rounded-full p-2 text-white/90 transition hover:bg-white/10"
+              aria-label="Close chat window"
+              title="Close the window — your conversation stays open"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="m7 7 10 10M17 7 7 17" />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        {confirmingEnd && sessionOpen ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white/15 px-4 py-3 text-sm">
+            <span>End this conversation?</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingEnd(false)}
+                className="rounded-full px-3 py-1 text-xs font-medium text-white/90 hover:bg-white/10"
+              >
+                Keep chatting
+              </button>
+              <button
+                type="button"
+                disabled={isEnding}
+                onClick={() => void endConversation()}
+                className="rounded-full bg-white px-3 py-1 text-xs font-semibold disabled:opacity-60"
+                style={{ color: config.primaryColor }}
+              >
+                {isEnding ? "Ending…" : "End chat"}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </header>
 
       {isPreview ? (
@@ -696,6 +965,16 @@ export function ChatbotWidgetClient({
         ) : null}
 
         {messages.map((message) => {
+          if (message.sender === DIVIDER_SENDER) {
+            return (
+              <div key={message.id} className="flex items-center gap-3 py-1 text-[11px] text-slate-400">
+                <span className="h-px flex-1 bg-slate-200" />
+                <span className="text-center">{message.content}</span>
+                <span className="h-px flex-1 bg-slate-200" />
+              </div>
+            );
+          }
+
           if (message.sender === "SYSTEM") {
             return (
               <p key={message.id} className="px-4 text-center text-xs text-slate-400">
@@ -828,6 +1107,20 @@ export function ChatbotWidgetClient({
       </main>
 
       <footer className="shrink-0 border-t border-slate-200 bg-white px-4 pb-3 pt-3">
+        {conversationEnded ? (
+          <p className="mb-2 rounded-2xl bg-slate-50 px-4 py-2.5 text-center text-xs text-slate-500">
+            This conversation has ended. Send a message to start a new one — we&apos;ll remember what
+            we talked about.
+          </p>
+        ) : null}
+
+        {showExpiryWarning && session ? (
+          <p className="mb-2 rounded-2xl bg-amber-50 px-4 py-2 text-center text-xs text-amber-700">
+            This conversation closes after {formatMinutes(session.idleTimeoutMinutes)} without messages
+            — about {Math.max(1, Math.ceil((expiresInMs ?? 0) / 60000))} min left.
+          </p>
+        ) : null}
+
         {error ? (
           <p className="mb-2 rounded-2xl bg-red-50 px-4 py-2.5 text-sm text-red-600" role="alert">
             {error}
@@ -879,14 +1172,23 @@ export function ChatbotWidgetClient({
                   ? "Add your details above to start"
                   : isListening
                     ? "Listening…"
-                    : "Send a message…"
+                    : conversationEnded
+                      ? "Start a new conversation…"
+                      : "Send a message…"
             }
             className="h-12 min-w-0 flex-1 rounded-full border border-slate-200 px-5 text-sm outline-none transition focus:border-slate-400 disabled:bg-slate-50"
           />
           <button
             type="button"
             aria-label="Send message"
-            disabled={isSending || isUploading || inputDisabled || (!draft.trim() && pendingAttachments.length === 0)}
+            disabled={
+              isSending ||
+              isUploading ||
+              inputDisabled ||
+              coolingDown ||
+              (!draft.trim() && pendingAttachments.length === 0)
+            }
+            title={coolingDown ? "Please wait a moment before sending again" : undefined}
             onClick={() => void sendMessage(draft)}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: config.primaryColor }}

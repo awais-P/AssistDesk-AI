@@ -56,6 +56,14 @@ export const maxAiMessagesLimit = 1000;
 export const minFallbackDelaySeconds = 10;
 export const maxFallbackDelaySeconds = 600;
 export const defaultFallbackDelaySeconds = 60;
+// Module 5: widget session idle timeout and per-conversation message rate limit
+// (the server clamps to the same ranges in session-lifecycle.ts / rate-limit.ts).
+export const minSessionTimeoutMinutes = 5;
+export const maxSessionTimeoutMinutes = 24 * 60;
+export const defaultSessionTimeoutMinutes = 30;
+export const minRateLimitPerMinute = 1;
+export const maxRateLimitPerMinute = 120;
+export const defaultRateLimitPerMinute = 10;
 export const maxAvatarBytes = 1024 * 1024;
 export const avatarMimeTypes = [
   "image/png",

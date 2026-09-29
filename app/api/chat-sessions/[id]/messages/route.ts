@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { deliverAgentMessageToChannel } from "@/src/lib/integrations/channel-outbound";
 import { prisma } from "@/src/lib/prisma";
+import { publishConversationEvent } from "@/src/lib/realtime";
+import { appendSessionMessage, recordSessionEvent } from "@/src/lib/session-lifecycle";
 
 type ChatSessionMessagesRouteContext = {
   params: Promise<{
@@ -10,8 +12,9 @@ type ChatSessionMessagesRouteContext = {
 };
 
 /**
- * A team member replies in a chat from the dashboard. The message appears in the
- * widget (which polls) and is delivered to Slack/WhatsApp for those channels.
+ * A team member replies in a chat from the dashboard. The message is pushed live to
+ * the widget (SSE) and delivered to Slack/WhatsApp for those channels. Replying takes
+ * the conversation over from the AI (status ESCALATED) until it is handed back.
  */
 export async function POST(request: Request, context: ChatSessionMessagesRouteContext) {
   const session = await getCurrentSession();
@@ -37,26 +40,48 @@ export async function POST(request: Request, context: ChatSessionMessagesRouteCo
 
   const chatSession = await prisma.chatSession.findFirst({
     where: { id, workspaceId: session.user.workspaceId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, contactId: true, workspaceId: true },
   });
 
   if (!chatSession) {
     return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
   }
 
-  const message = await prisma.chatMessage.create({
-    data: {
-      sessionId: chatSession.id,
-      sender: "AGENT",
-      content,
-      authorName: session.user.fullName,
-    },
-  });
+  if (chatSession.status === "CLOSED") {
+    return NextResponse.json(
+      {
+        error:
+          "This conversation has ended, so the customer would not see a reply here. Their next message starts a new conversation.",
+      },
+      { status: 409 },
+    );
+  }
 
-  await prisma.chatSession.update({
-    where: { id: chatSession.id },
-    data: { status: chatSession.status === "CLOSED" ? "ACTIVE" : chatSession.status },
-    select: { id: true },
+  if (chatSession.status === "ACTIVE") {
+    await prisma.chatSession.update({
+      where: { id: chatSession.id },
+      data: { status: "ESCALATED" },
+      select: { id: true },
+    });
+
+    await recordSessionEvent({
+      workspaceId: chatSession.workspaceId,
+      sessionId: chatSession.id,
+      contactId: chatSession.contactId,
+      type: "HUMAN_TAKEOVER",
+      detail: `${session.user.fullName} replied and took over the conversation; AI replies paused.`,
+      metadata: { userId: session.user.id, trigger: "reply" },
+    });
+
+    publishConversationEvent({ workspaceId: chatSession.workspaceId, sessionId: chatSession.id, type: "status" });
+  }
+
+  const message = await appendSessionMessage({
+    sessionId: chatSession.id,
+    workspaceId: chatSession.workspaceId,
+    sender: "AGENT",
+    content,
+    authorName: session.user.fullName,
   });
 
   const delivery = await deliverAgentMessageToChannel(chatSession.id, content);
@@ -70,6 +95,7 @@ export async function POST(request: Request, context: ChatSessionMessagesRouteCo
       attachments: [],
       createdAt: message.createdAt.toISOString(),
     },
+    status: "ESCALATED",
     delivery,
   });
 }

@@ -1,7 +1,9 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
   deleteStoredKnowledgeFile,
+  purgeKnowledgeSourceVectors,
   queueKnowledgeSourceProcessing,
   saveKnowledgeSourceFile,
 } from "@/src/lib/knowledge-indexing";
@@ -94,6 +96,16 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
+  }
+
   const { id } = await context.params;
   const knowledgeSource = await prisma.knowledgeSource.findFirst({
     where: {
@@ -102,7 +114,10 @@ export async function DELETE(
     },
     select: {
       id: true,
+      workspaceId: true,
       storagePath: true,
+      chunkCount: true,
+      vectorStore: true,
     },
   });
 
@@ -113,6 +128,7 @@ export async function DELETE(
     );
   }
 
+  await purgeKnowledgeSourceVectors(knowledgeSource);
   await deleteStoredKnowledgeFile(knowledgeSource.storagePath);
   await prisma.knowledgeSource.delete({
     where: {
@@ -131,6 +147,16 @@ export async function PATCH(
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const { id } = await context.params;
@@ -274,7 +300,7 @@ export async function PATCH(
 
     if (shouldQueue) {
       data.processingError = null;
-      data.status = "PROCESSING";
+      data.status = "PENDING";
     }
 
     const updated = await prisma.knowledgeSource.update({

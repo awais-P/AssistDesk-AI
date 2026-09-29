@@ -1,117 +1,63 @@
 import { redirect } from "next/navigation";
-import {
-  ChatsWorkspace,
-  type ChatAttachmentItem,
-} from "@/src/components/dashboard/chats-workspace";
+import { ChatsWorkspace } from "@/src/components/dashboard/chats-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
+import { loadChatSessionList } from "@/src/lib/chat-session-list";
 import { prisma } from "@/src/lib/prisma";
+import { expireIdleSessions } from "@/src/lib/session-lifecycle";
 
-function readAttachments(value: unknown): ChatAttachmentItem[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+type ChatsPageProps = {
+  searchParams: Promise<{
+    session?: string | string[];
+  }>;
+};
 
-  return value.flatMap((item: unknown) => {
-    if (!item || typeof item !== "object") {
-      return [];
-    }
-
-    const attachment = item as Record<string, unknown>;
-
-    if (typeof attachment.url !== "string" || !attachment.url) {
-      return [];
-    }
-
-    return [
-      {
-        url: attachment.url,
-        name: typeof attachment.name === "string" ? attachment.name : "Attachment",
-        mimeType:
-          typeof attachment.mimeType === "string" ? attachment.mimeType : "",
-        size: typeof attachment.size === "number" ? attachment.size : null,
-      },
-    ];
-  });
-}
-
-export default async function ChatsPage() {
-  const session = await getCurrentSession();
+export default async function ChatsPage({ searchParams }: ChatsPageProps) {
+  const [session, resolvedSearchParams] = await Promise.all([
+    getCurrentSession(),
+    searchParams,
+  ]);
 
   if (!session) {
     redirect("/login");
   }
 
-  const chatSessions = await prisma.chatSession.findMany({
-    where: {
-      workspaceId: session.user.workspaceId,
-    },
-    select: {
-      id: true,
-      customerName: true,
-      customerEmail: true,
-      customerPhone: true,
-      status: true,
-      channel: true,
-      startedAt: true,
-      updatedAt: true,
-      chatbot: {
-        select: {
-          name: true,
-        },
-      },
-      integration: {
-        select: {
-          name: true,
-          type: true,
-        },
-      },
-      messages: {
-        select: {
-          id: true,
-          sender: true,
-          content: true,
-          attachments: true,
-          authorName: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 100,
-      },
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-    take: 50,
-  });
+  // `?session=<id>` deep-links to one conversation (e.g. from a customer profile).
+  // It opens the unfiltered list so the conversation is found whatever its status.
+  const requestedSessionId =
+    typeof resolvedSearchParams.session === "string"
+      ? resolvedSearchParams.session.slice(0, 40) || null
+      : null;
+  const initialStatusFilter = requestedSessionId ? "ALL" : "OPEN";
+
+  // Sessions past their idle / max-duration policy are closed before listing (FE-5).
+  await expireIdleSessions({ workspaceId: session.user.workspaceId, limit: 25 });
+
+  const [listed, requested, settings] = await Promise.all([
+    loadChatSessionList(session.user.workspaceId, {
+      status: initialStatusFilter === "OPEN" ? "OPEN" : null,
+    }),
+    // A deep-linked conversation older than the latest 50 is loaded on its own.
+    requestedSessionId
+      ? loadChatSessionList(session.user.workspaceId, { sessionIds: [requestedSessionId] })
+      : Promise.resolve([]),
+    prisma.workspaceSetting.findUnique({
+      where: { workspaceId: session.user.workspaceId },
+      select: { crossChannelMemory: true },
+    }),
+  ]);
+
+  const chatSessions =
+    requested[0] && !listed.some((item) => item.id === requested[0].id)
+      ? [requested[0], ...listed]
+      : listed;
 
   return (
     <ChatsWorkspace
-      initialSessions={chatSessions.map((sessionItem) => ({
-        id: sessionItem.id,
-        customerName: sessionItem.customerName,
-        customerEmail: sessionItem.customerEmail,
-        customerPhone: sessionItem.customerPhone,
-        status: sessionItem.status,
-        channel: sessionItem.channel,
-        startedAt: sessionItem.startedAt.toISOString(),
-        updatedAt: sessionItem.updatedAt.toISOString(),
-        chatbotName: sessionItem.chatbot?.name ?? null,
-        integrationName: sessionItem.integration?.name ?? null,
-        integrationType: sessionItem.integration?.type ?? null,
-        messages: sessionItem.messages
-          .slice()
-          .reverse()
-          .map((message) => ({
-            id: message.id,
-            sender: message.sender,
-            content: message.content,
-            authorName: message.authorName,
-            attachments: readAttachments(message.attachments),
-            createdAt: message.createdAt.toISOString(),
-          })),
-      }))}
+      key={requestedSessionId ?? "inbox"}
+      initialSessions={chatSessions}
+      initialStatusFilter={initialStatusFilter}
+      initialSelectedId={requestedSessionId}
+      crossChannelMemory={settings?.crossChannelMemory !== false}
     />
   );
 }

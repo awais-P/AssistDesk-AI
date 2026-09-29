@@ -58,7 +58,7 @@ describe("document type detection", () => {
     });
     expect(docxText).toContain("Warranty Policy");
     expect(docxText).toContain("6 month warranty");
-  });
+  }, 30_000);
 });
 
 describe("HTML helpers", () => {

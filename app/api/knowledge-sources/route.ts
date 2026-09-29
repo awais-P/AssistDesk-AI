@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -137,6 +138,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
+  }
+
   try {
     const payload = await parseKnowledgeSourcePayload(request);
 
@@ -192,7 +203,7 @@ export async function POST(request: Request) {
         agentId: payload.agentId,
         title: payload.title,
         type: payload.type,
-        status: "PROCESSING",
+        status: "PENDING",
         sourceUrl: payload.sourceUrl,
         rawText: payload.type === "TEXT" ? payload.rawText : null,
         crawlMode: payload.type === "URL" ? payload.crawlMode : "SINGLE",

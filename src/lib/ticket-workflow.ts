@@ -1,8 +1,11 @@
+import { createNotification } from "./notifications";
 import { ensureAgentAutomationDefaults } from "./agent-automations";
 import { estimateTokenUsage, hydrateKnowledgeSources } from "./knowledge-runtime";
-import { generateAgentReply, toRuntimeAgent } from "./llm-runtime";
+import { type ConversationTurn, generateAgentReply, toRuntimeAgent } from "./llm-runtime";
 import { sendTicketReplyEmail } from "./mailer";
 import { prisma } from "./prisma";
+import { recordSessionEvent } from "./session-lifecycle";
+import { buildContactContext } from "./session-memory";
 
 function normalize(value: string | null | undefined) {
   return (value || "").trim().toLowerCase();
@@ -195,6 +198,209 @@ async function createAutomationLog(data: {
   });
 }
 
+const agentInclude = {
+  knowledgeSources: {
+    where: { status: { not: "DELETED" as const } },
+    orderBy: { createdAt: "desc" as const },
+  },
+};
+
+/** The inbox's own active agent, else any active agent of the workspace. */
+async function findTicketAgent(ticket: { workspaceId: string; inboxId: string | null }) {
+  return (
+    (ticket.inboxId
+      ? await prisma.aIAgent.findFirst({
+          where: { workspaceId: ticket.workspaceId, inboxId: ticket.inboxId, status: "ACTIVE" },
+          omit: { apiKey: false },
+          include: agentInclude,
+        })
+      : null) ||
+    (await prisma.aIAgent.findFirst({
+      where: { workspaceId: ticket.workspaceId, status: "ACTIVE" },
+      omit: { apiKey: false },
+      include: agentInclude,
+    }))
+  );
+}
+
+type TicketAgent = NonNullable<Awaited<ReturnType<typeof findTicketAgent>>>;
+
+type ReplyTicket = {
+  id: string;
+  workspaceId: string;
+  ticketNumber: number;
+  subject: string;
+  previewText: string | null;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  contactId: string | null;
+};
+
+const TICKET_HISTORY_WINDOW = 12;
+
+/**
+ * AI answer for the latest customer email of a ticket (Module 5 on email): the
+ * earlier emails of the thread are the conversation history, and the customer's
+ * memory from chats on other channels is added, like in a chat session.
+ */
+async function generateTicketAiReply(ticket: ReplyTicket, agent: TicketAgent) {
+  const startedAt = Date.now();
+  // SYSTEM messages are internal notes and low-confidence drafts: never shown to the model.
+  const thread = await prisma.ticketMessage.findMany({
+    where: { ticketId: ticket.id, sender: { not: "SYSTEM" } },
+    orderBy: { createdAt: "desc" },
+    take: TICKET_HISTORY_WINDOW + 1,
+    select: { sender: true, content: true },
+  });
+  thread.reverse();
+
+  const lastCustomerIndex = thread.findLastIndex((message) => message.sender === "USER");
+  const question =
+    lastCustomerIndex >= 0 ? thread[lastCustomerIndex].content : buildTicketContext(ticket);
+  const history: ConversationTurn[] = (lastCustomerIndex >= 0 ? thread.slice(0, lastCustomerIndex) : thread).map(
+    (message) => ({
+      role: message.sender === "USER" ? ("user" as const) : ("assistant" as const),
+      content: message.content,
+    }),
+  );
+  const customer = ticket.contactId
+    ? await buildContactContext({
+        workspaceId: ticket.workspaceId,
+        contactId: ticket.contactId,
+        currentChannel: "EMAIL",
+        excludeTicketId: ticket.id,
+      })
+    : null;
+
+  const hydratedSources = await hydrateKnowledgeSources(
+    agent.knowledgeSources.map((source) => ({
+      id: source.id,
+      title: source.title,
+      type: source.type,
+      status: source.status,
+      sourceUrl: source.sourceUrl,
+      rawText: source.rawText,
+    })),
+  );
+
+  const response = await generateAgentReply({
+    agent: toRuntimeAgent(agent),
+    question,
+    sources: hydratedSources,
+    history,
+    channel: "EMAIL",
+    memory: { customerContext: customer?.text ?? null },
+  });
+
+  const isConfident = response.confidence >= agent.confidenceThreshold;
+  const aiMessage = await prisma.ticketMessage.create({
+    data: {
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket.id,
+      sender: isConfident ? "AI" : "SYSTEM",
+      content: isConfident
+        ? response.reply
+        : `AI confidence was too low for a full automatic answer.\n\n${response.reply}`,
+    },
+  });
+
+  // Only confident answers are emailed; low-confidence drafts stay internal for a human.
+  if (isConfident && !response.usedFallback) {
+    await sendTicketReplyEmail({
+      ticketId: ticket.id,
+      ticketMessageId: aiMessage.id,
+      content: response.reply,
+    });
+  }
+
+  await createAutomationLog({
+    workspaceId: ticket.workspaceId,
+    ticketId: ticket.id,
+    agentId: agent.id,
+    action: "AI_RESPONSE",
+    status: response.usedFallback ? "FALLBACK" : isConfident ? "SUCCESS" : "ESCALATED",
+    model: agent.model,
+    tokens: response.tokens,
+    summary: `Confidence ${response.confidence.toFixed(2)} with provider ${agent.provider}${history.length ? `, ${history.length} earlier message(s) in the thread` : ""}${customer?.text ? ", customer memory from other channels" : ""}.`,
+    durationMs: Date.now() - startedAt,
+  });
+
+  if (customer?.text && ticket.contactId) {
+    await recordSessionEvent({
+      workspaceId: ticket.workspaceId,
+      contactId: ticket.contactId,
+      type: "CONTEXT_CARRIED",
+      detail: `Email reply on ticket #${ticket.ticketNumber} used the customer's memory${customer.carriedSessions.length ? ` from ${customer.carriedSessions.length} earlier conversation(s)` : ""}.`,
+      metadata: {
+        ticketId: ticket.id,
+        fromSessions: customer.carriedSessions.map((session) => session.id),
+        channels: [...new Set(customer.carriedSessions.map((session) => session.channel))],
+      },
+    });
+  }
+
+  if (!isConfident) {
+    await createNotification({
+      workspaceId: ticket.workspaceId,
+      type: "AI_LOW_CONFIDENCE",
+      severity: "WARNING",
+      title: `Ticket #${ticket.ticketNumber} needs a human answer`,
+      body: `The AI was not confident enough to reply to "${ticket.subject}".`,
+      link: `/dashboard/tickets/${ticket.id}`,
+    });
+  }
+
+  return { confident: isConfident };
+}
+
+/**
+ * A customer replied by email to an existing ticket. If a human has already
+ * answered on this ticket, they own it (like a chat in human takeover) and the AI
+ * stays quiet; otherwise the AI answers the follow-up with the whole thread in mind.
+ */
+export async function processTicketFollowUp(ticketId: string) {
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+
+  if (!ticket || ticket.status === "CLOSED") {
+    return { processed: false, reason: "Ticket not found or closed." };
+  }
+
+  const humanReplies = await prisma.ticketMessage.count({ where: { ticketId, sender: "AGENT" } });
+
+  if (humanReplies > 0) {
+    await createAutomationLog({
+      workspaceId: ticket.workspaceId,
+      ticketId,
+      action: "AI_RESPONSE",
+      status: "SKIPPED",
+      summary: "A support agent is handling this ticket, so the AI did not answer the follow-up.",
+    });
+
+    return { processed: false, reason: "Handled by a human." };
+  }
+
+  const agent = await findTicketAgent(ticket);
+
+  if (!agent) {
+    return { processed: false, reason: "No active AI agent found." };
+  }
+
+  const automations = await ensureAgentAutomationDefaults(ticket.workspaceId, agent.id);
+
+  if (!automations.some((automation) => automation.key === "ai-response" && automation.isEnabled)) {
+    return { processed: false, reason: "AI responses are disabled." };
+  }
+
+  await generateTicketAiReply(ticket, agent);
+  await prisma.ticket.update({
+    where: { id: ticket.id },
+    data: { status: "IN_PROGRESS" },
+    select: { id: true },
+  });
+
+  return { processed: true, agentId: agent.id };
+}
+
 export async function processIncomingTicket(ticketId: string) {
   const workflowStart = Date.now();
 
@@ -213,38 +419,7 @@ export async function processIncomingTicket(ticketId: string) {
     return { processed: false, reason: "Ticket not found." };
   }
 
-  const agent =
-    (ticket.inboxId
-      ? await prisma.aIAgent.findFirst({
-          where: {
-            workspaceId: ticket.workspaceId,
-            inboxId: ticket.inboxId,
-            status: "ACTIVE",
-          },
-          omit: { apiKey: false },
-          include: {
-            knowledgeSources: {
-              orderBy: {
-                createdAt: "desc",
-              },
-            },
-          },
-        })
-      : null) ||
-    (await prisma.aIAgent.findFirst({
-      where: {
-        workspaceId: ticket.workspaceId,
-        status: "ACTIVE",
-      },
-      omit: { apiKey: false },
-      include: {
-        knowledgeSources: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-      },
-    }));
+  const agent = await findTicketAgent(ticket);
 
   if (!agent) {
     await createAutomationLog({
@@ -350,63 +525,8 @@ export async function processIncomingTicket(ticketId: string) {
     }
 
     if (automation.key === "ai-response") {
-      const hydratedSources = await hydrateKnowledgeSources(
-        agent.knowledgeSources.map((source) => ({
-          id: source.id,
-          title: source.title,
-          type: source.type,
-          status: source.status,
-          sourceUrl: source.sourceUrl,
-          rawText: source.rawText,
-        })),
-      );
-
-      const response = await generateAgentReply({
-        agent: toRuntimeAgent(agent),
-        question: context,
-        sources: hydratedSources,
-        channel: "EMAIL",
-      });
-
-      const isConfident = response.confidence >= agent.confidenceThreshold;
-      const aiMessage = await prisma.ticketMessage.create({
-        data: {
-          workspaceId: ticket.workspaceId,
-          ticketId: ticket.id,
-          sender: isConfident ? "AI" : "SYSTEM",
-          content: isConfident
-            ? response.reply
-            : `AI confidence was too low for a full automatic answer.\n\n${response.reply}`,
-        },
-      });
-
-      // Only confident answers are emailed; low-confidence drafts stay internal for a human.
-      if (isConfident && !response.usedFallback) {
-        await sendTicketReplyEmail({
-          ticketId: ticket.id,
-          ticketMessageId: aiMessage.id,
-          content: response.reply,
-        });
-      }
-
+      await generateTicketAiReply(ticket, agent);
       ticketUpdate.status = "IN_PROGRESS";
-
-      await createAutomationLog({
-        workspaceId: ticket.workspaceId,
-        ticketId: ticket.id,
-        agentId: agent.id,
-        action: "AI_RESPONSE",
-        status:
-          response.usedFallback
-            ? "FALLBACK"
-            : response.confidence >= agent.confidenceThreshold
-              ? "SUCCESS"
-              : "ESCALATED",
-        model: agent.model,
-        tokens: response.tokens,
-        summary: `Confidence ${response.confidence.toFixed(2)} with provider ${agent.provider}.`,
-        durationMs: Date.now() - startedAt,
-      });
       continue;
     }
 

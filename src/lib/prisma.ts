@@ -17,6 +17,7 @@ function createPrismaClient() {
     omit: {
       aIAgent: { apiKey: true },
       inbox: { smtpPassword: true },
+      user: { passwordHash: true },
     } as const,
   });
 }
@@ -36,7 +37,9 @@ function hasRequiredDelegates(client: AppPrismaClient) {
     "ticketMessage" in client &&
     "automationLog" in client &&
     "integration" in client &&
-    "knowledgeChunk" in client
+    "knowledgeChunk" in client &&
+    "notification" in client &&
+    "promptTemplate" in client
   );
 }
 

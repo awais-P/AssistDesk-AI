@@ -15,17 +15,17 @@ The SDS (Ch. 4.1.3) and the SDS slides claim **Modules 1, 7 and 10, plus Module 
 | # | Module | FE done | Now | Notes (what exists → what's missing) |
 |---|---|---|---|---|
 | M1 | Assistant Creation & Omnichannel | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~65%~~ → 92%** *(2026-09-28)* | Done: agent tone, length and token limit; avatar and conversation starters; PDF/DOCX; website crawl (Firecrawl or built-in); Slack and WhatsApp; outbound email; working reply modes; publish; secure widget with attachments, emoji and voice. Remaining: live Slack/WhatsApp/SMTP tests with real accounts, and WhatsApp media messages. |
-| M7 | User Dashboard | FE-1 ✅, FE-2 ✅, FE-4 ✅, FE-5 ◐, FE-3 ✗ | **70%** | Full dashboard shell, tickets, inboxes, tags, canned responses, users, settings, playground. Broken: ticket filters, pagination, bulk actions, mobile nav. Missing: notifications/alerts and real performance summaries. |
-| M10 | Knowledge Base Management | FE-3 ✅, FE-2 ◐, FE-4 ◐, FE-5 ◐, FE-1 ✗ | **60%** | TEXT/URL/FILE (text files only) sources, chunking, status lifecycle, agent linking. The "vectors" are hashed word counts in Postgres, not Pinecone. The processing queue is in-memory. URL re-sync is broken. |
-| M5 | Real-Time Context & Session *(the half module)* | FE-1 ◐, FE-4 ◐, FE-2 ✗, FE-3 ✗, FE-5 ✗, FE-6 ✗ | **25%** | ChatSession/ChatMessage are stored from the widget and the Chats page is read-only. Missing: LLM conversation memory, expiry, rate limiting, human reply/takeover, cross-channel context. |
+| M7 | User Dashboard | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~70%~~ → 90%** *(2026-09-29)* | Done: Overview with per-agent performance + notifications bell (FE-3); tickets with server pagination/filters/bulk actions (FR-5); Prompts page (FR-9); real Reports; users/profile with RBAC, temporary passwords and password change (FE-5); mobile menu; loading/error pages. Remaining: agent attachments/emoji in Chats (FR-6.6/6.7), customer presence dot (FR-6.2), API Keys page (M11). |
+| M10 | Knowledge Base Management | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~60%~~ → 90%** *(2026-09-29)* | Done: real embeddings (OpenRouter text-embedding-3-small), Pinecone store with namespace per workspace (switches on with PINECONE_API_KEY/INDEX), section-aware chunking, hybrid semantic+keyword retrieval with the confidence threshold, durable indexing queue with recovery, vector purge on delete, search/sort/pagination, chunk viewer and Test retrieval. Remaining: live Pinecone test with a real key, scanned-PDF OCR. |
+| M5 | Real-Time Context & Session *(the half module)* | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅, FE-6 ✅ | **~~25%~~ → 90%** *(2026-09-29)* | Done: session lifecycle (ACTIVE ⇄ ESCALATED → CLOSED, reason + resolution, closed sessions final and linked to the next), secret hashed widget tokens, per-channel expiry + cron, Contact-based Unified Memory Buffer across Website/WhatsApp/Slack/Email, 3-layer memory (history, rolling summary, customer profile) with trust-based redaction, Postgres rate limiter with 429 + logs, SSE live updates (2–52 ms), email threading, Chats context panel, Contacts pages. Full write-up: [M5_SESSION_CONTEXT.md](M5_SESSION_CONTEXT.md). Remaining: voice channel (M3 scope), multi-instance push (Redis/NOTIFY), email OTP identity verification. |
 | M6 | LLM Management & Fast Inference | FE-1 ✅, FE-2 ✅, FE-4 ◐, others ✗ | 30% (bonus) | Multi-provider runtime and per-agent model choice already work. Missing: feedback loop, streaming, voice (VAD/TTS). |
-| M11 | Integrations & RBAC | FE-4 ◐, FE-1 ◐, FE-3 ✗, FE-5 ◐ | 25% (bonus) | Roles exist but are **not enforced**. Email inbound webhook and automation logs exist. No audit log; the ApiKey model is unused. |
-| M4 | Monitoring & Analytics | FE-2 ◐ | 20% | Transcripts are stored and the Reports page shows ticket counts. Its KPIs are hard-coded. |
+| M11 | Integrations & RBAC | FE-1 ◐, FE-3 ✅, FE-4 ✅, FE-5 ◐ | 45% (bonus) | RBAC enforced on all mutating APIs (Owner/Admin/Manager/Agent), Slack/WhatsApp/email channels. Missing: audit log, API keys page, CRM connectors. |
+| M4 | Monitoring & Analytics | FE-1 ◐, FE-2 ✅, FE-3 ◐, FE-4 ◐ | 35% | Transcripts stored; Overview KPIs and Reports use real numbers. Missing: charts (24h latency), trends, FAQ insights, exports. |
 | M2 | Agentic Tool & Action Mgmt | FE-5 ◐ | 10% | "Automations" are regex rules and AutomationLog acts as an action log. No tool registry and no LangGraph. |
 | M8 | Lead Generation | FE-2 ◐ | 10% | The widget can require name/email/phone. No Lead model, page, webhooks or notifications. |
-| M9 | Support Escalation | — | 5% | Only the `ESCALATED` enum exists. |
+| M9 | Support Escalation | FE-1 ◐ | 15% | Human takeover from the Chats page (M5): take over, hand back, team replies pause the AI, AI reply limit → human-only. Missing: escalation rules, queues/assignment, SLA. |
 | M3 | Subscription & Payment | — | 0% | Stripe is installed but unused. |
-| | **Overall (11 modules, equal weight)** | | **≈ 29%** | Matches the 30% claim. |
+| | **Overall (11 modules, equal weight)** | | **≈ 29% → ≈ 46%** *(2026-09-29)* | 29% matched the SDS 30% claim; after M1, M7, M10 and M5 it is ≈ 46%. Next: M2, M8, M4 to pass 60%. |
 
 ✅ done · ◐ partial · ✗ missing
 
@@ -54,10 +54,10 @@ This choice follows the **Module-based Work Division table in the Proposal** exa
 | Module | Now | Target | | Module | Now | Target |
 |---|---|---|---|---|---|---|
 | M1 | 65% → **92%** ✅ | 85% | | M2 | 10% | 75% |
-| M7 | 70% | 90% | | M8 | 10% | 85% |
-| M10 | 60% | 85% | | M4 | 20% | 85% |
-| M5 | 25% | 90% | | M6 | 30% | 45% |
-| M9 | 5% | 30% | | M11 | 25% | 45% |
+| M7 | 70% → **90%** ✅ | 90% | | M8 | 10% | 85% |
+| M10 | 60% → **90%** ✅ | 85% | | M4 | 20% | 85% |
+| M5 | 25% → **90%** ✅ | 90% | | M6 | 30% | 45% |
+| M9 | 5% → 15% | 30% | | M11 | 25% → 45% | 45% |
 | M3 | 0% | 0% | | **Overall** | **≈29%** | **≈65%** |
 
 ---
@@ -107,6 +107,8 @@ Each task lists the issue IDs it closes. "Done" means: works in the UI, has at l
 ---
 
 ### P1 — M5 Real-Time Context & Session Management (Thu 1 → Sun 4 Oct) · Ahmad
+
+> ✅ **Done 2026-09-29, ahead of schedule.** What was built (and where it differs from this plan: SSE instead of 3 s polling; WhatsApp and Slack already plug into the Contact; memory has a trust level) is documented in [M5_SESSION_CONTEXT.md](M5_SESSION_CONTEXT.md) and the CHANGELOG. The table below is the original plan, kept for reference.
 
 | FE | Deliverable |
 |---|---|

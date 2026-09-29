@@ -1,12 +1,30 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { after } from "next/server";
 import {
   MAX_KNOWLEDGE_FILE_BYTES,
   describeUnsupportedFile,
   detectDocumentKind,
   extractDocumentText,
 } from "./document-extract";
+import {
+  LEXICAL_EMBEDDING_MODEL,
+  cosineSimilarity,
+  embedDocumentChunks,
+  embedTexts,
+  isSemanticModel,
+  tokenizeForSearch,
+} from "./embeddings";
+import { chunkDocument, chunkEmbeddingText } from "./knowledge-chunking";
+import { createNotification } from "./notifications";
 import { prisma } from "./prisma";
+import {
+  canUsePinecone,
+  deleteSourceVectors,
+  isPineconeConfigured,
+  queryPinecone,
+  upsertChunkVectors,
+} from "./vector-store";
 import {
   type CrawlMode,
   clampMaxPages,
@@ -35,64 +53,29 @@ type IndexingSource = {
   maxPages: number;
 };
 
-type RetrievedChunkMatch = {
+export type RetrievedChunkMatch = {
   sourceId: string;
   chunkIndex: number;
+  title: string;
   excerpt: string;
   score: number;
+  semanticScore: number | null;
+  keywordScore: number;
 };
 
 const MAX_URL_TEXT_LENGTH = 50_000;
 const MAX_CRAWL_TEXT_LENGTH = 250_000;
 const MAX_FILE_TEXT_LENGTH = 250_000;
-const EMBEDDING_DIMENSIONS = 96;
+const MAX_EXCERPT_CHARS = 1500;
+const STALE_PROCESSING_MS = 5 * 60 * 1000;
 const KB_STORAGE_ROOT = path.join(process.cwd(), "storage", "knowledge-base");
-const stopWords = new Set([
-  "a",
-  "an",
-  "and",
-  "are",
-  "as",
-  "at",
-  "be",
-  "by",
-  "for",
-  "from",
-  "how",
-  "i",
-  "if",
-  "in",
-  "is",
-  "it",
-  "of",
-  "on",
-  "or",
-  "that",
-  "the",
-  "this",
-  "to",
-  "was",
-  "what",
-  "when",
-  "where",
-  "which",
-  "who",
-  "why",
-  "with",
-  "you",
-  "your",
-]);
 
 declare global {
   var knowledgeSourceProcessingQueue: Set<string> | undefined;
 }
 
-const processingQueue =
-  global.knowledgeSourceProcessingQueue ?? new Set<string>();
-
-if (process.env.NODE_ENV !== "production") {
-  global.knowledgeSourceProcessingQueue = processingQueue;
-}
+const processingQueue = global.knowledgeSourceProcessingQueue ?? new Set<string>();
+global.knowledgeSourceProcessingQueue = processingQueue;
 
 function sanitizeFileName(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -100,14 +83,6 @@ function sanitizeFileName(value: string) {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\r/g, "").replace(/\t/g, " ").replace(/[ ]{2,}/g, " ").trim();
-}
-
-function tokenize(value: string) {
-  return normalizeWhitespace(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2 && !stopWords.has(token));
 }
 
 function textToRelativeStoragePath(workspaceId: string, fileName: string) {
@@ -118,103 +93,6 @@ function textToRelativeStoragePath(workspaceId: string, fileName: string) {
 
 function resolveStoragePath(storagePath: string) {
   return path.join(process.cwd(), ...storagePath.split("/"));
-}
-
-function hashTokenToIndex(token: string, dimensions: number) {
-  let hash = 0;
-
-  for (let index = 0; index < token.length; index += 1) {
-    hash = (hash * 31 + token.charCodeAt(index)) >>> 0;
-  }
-
-  return hash % dimensions;
-}
-
-function hashTokenToSign(token: string) {
-  let hash = 7;
-
-  for (let index = 0; index < token.length; index += 1) {
-    hash = (hash * 17 + token.charCodeAt(index)) >>> 0;
-  }
-
-  return hash % 2 === 0 ? 1 : -1;
-}
-
-function normalizeVector(vector: number[]) {
-  const magnitude = Math.sqrt(
-    vector.reduce((sum, value) => sum + value * value, 0),
-  );
-
-  if (magnitude === 0) {
-    return vector;
-  }
-
-  return vector.map((value) => value / magnitude);
-}
-
-export function buildKnowledgeEmbedding(
-  text: string,
-  dimensions = EMBEDDING_DIMENSIONS,
-) {
-  const tokens = tokenize(text);
-  const vector = new Array(dimensions).fill(0);
-
-  for (const token of tokens) {
-    const index = hashTokenToIndex(token, dimensions);
-    vector[index] += hashTokenToSign(token);
-  }
-
-  return normalizeVector(vector);
-}
-
-export function cosineSimilarity(left: number[], right: number[]) {
-  if (left.length !== right.length || left.length === 0) {
-    return 0;
-  }
-
-  let dot = 0;
-  let leftMagnitude = 0;
-  let rightMagnitude = 0;
-
-  for (let index = 0; index < left.length; index += 1) {
-    dot += left[index] * right[index];
-    leftMagnitude += left[index] * left[index];
-    rightMagnitude += right[index] * right[index];
-  }
-
-  if (leftMagnitude === 0 || rightMagnitude === 0) {
-    return 0;
-  }
-
-  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
-}
-
-export function chunkKnowledgeText(text: string) {
-  const words = normalizeWhitespace(text).split(/\s+/).filter(Boolean);
-
-  if (words.length === 0) {
-    return [];
-  }
-
-  const chunkSize = 180;
-  const overlap = 35;
-  const chunks: string[] = [];
-
-  for (let start = 0; start < words.length; start += chunkSize - overlap) {
-    const chunk = words.slice(start, start + chunkSize).join(" ").trim();
-
-    if (!chunk) {
-      continue;
-    }
-
-    chunks.push(chunk);
-
-    if (start + chunkSize >= words.length) {
-      break;
-    }
-  }
-
-  return chunks;
 }
 
 export async function fetchKnowledgeSourceText(sourceUrl: string) {
@@ -323,41 +201,6 @@ async function extractTextFromStoredFile(source: IndexingSource) {
   return text.slice(0, MAX_FILE_TEXT_LENGTH);
 }
 
-async function createKnowledgeChunks({
-  workspaceId,
-  sourceId,
-  text,
-}: {
-  workspaceId: string;
-  sourceId: string;
-  text: string;
-}) {
-  const chunks = chunkKnowledgeText(text);
-
-  await prisma.knowledgeChunk.deleteMany({
-    where: {
-      sourceId,
-    },
-  });
-
-  if (chunks.length === 0) {
-    return 0;
-  }
-
-  await prisma.knowledgeChunk.createMany({
-    data: chunks.map((content, index) => ({
-      workspaceId,
-      sourceId,
-      chunkIndex: index,
-      content,
-      embedding: buildKnowledgeEmbedding(content),
-      tokenCount: Math.max(1, Math.ceil(content.length / 4)),
-    })),
-  });
-
-  return chunks.length;
-}
-
 async function buildSourceText(
   source: IndexingSource,
 ): Promise<{ text: string; pageCount: number }> {
@@ -388,16 +231,15 @@ async function buildSourceText(
   return { text: await extractTextFromStoredFile(source), pageCount: 0 };
 }
 
-export async function processKnowledgeSourceById(sourceId: string) {
-  const source = await prisma.knowledgeSource.findUnique({
-    where: {
-      id: sourceId,
-    },
+async function readSourceForIndexing(sourceId: string) {
+  return prisma.knowledgeSource.findUnique({
+    where: { id: sourceId },
     select: {
       id: true,
       workspaceId: true,
       title: true,
       type: true,
+      status: true,
       sourceUrl: true,
       fileName: true,
       mimeType: true,
@@ -405,75 +247,149 @@ export async function processKnowledgeSourceById(sourceId: string) {
       rawText: true,
       crawlMode: true,
       maxPages: true,
+      chunkCount: true,
+      vectorStore: true,
     },
   });
+}
 
-  if (!source) {
+/**
+ * Indexing pipeline (Module 10 FE-4): extract text -> chunk -> embed -> store chunks
+ * in PostgreSQL and vectors in Pinecone (or PostgreSQL) -> SYNCED / FAILED.
+ */
+export async function processKnowledgeSourceById(sourceId: string) {
+  const source = await readSourceForIndexing(sourceId);
+
+  if (!source || source.status === "DELETED") {
     return null;
   }
 
   await prisma.knowledgeSource.update({
-    where: {
-      id: sourceId,
-    },
-    data: {
-      status: "PROCESSING",
-      processingError: null,
-    },
+    where: { id: sourceId },
+    data: { status: "PROCESSING", processingError: null },
+    select: { id: true },
   });
 
   try {
     const { text: rawText, pageCount } = await buildSourceText(source);
-    const chunkCount = await createKnowledgeChunks({
-      workspaceId: source.workspaceId,
-      sourceId: source.id,
-      text: rawText,
-    });
+    const drafts = chunkDocument(rawText);
 
-    return prisma.knowledgeSource.update({
-      where: {
-        id: source.id,
-      },
+    if (drafts.length === 0) {
+      throw new Error("No readable text was found to index.");
+    }
+
+    const contents = drafts.map((draft) =>
+      draft.heading && !draft.content.startsWith(draft.heading)
+        ? `${draft.heading}\n${draft.content}`
+        : draft.content,
+    );
+    const embedded = await embedDocumentChunks(
+      drafts.map((draft) => chunkEmbeddingText(draft, source.title)),
+    );
+    const dimension = embedded.vectors[0]?.length ?? 0;
+    const usePinecone = isSemanticModel(embedded.model) && (await canUsePinecone(dimension));
+
+    // Replace chunks atomically so a concurrent question never sees an empty source.
+    await prisma.$transaction([
+      prisma.knowledgeChunk.deleteMany({ where: { sourceId } }),
+      prisma.knowledgeChunk.createMany({
+        data: contents.map((content, index) => ({
+          workspaceId: source.workspaceId,
+          sourceId,
+          chunkIndex: index,
+          content,
+          // With Pinecone the vector lives in the index; PostgreSQL keeps only the text.
+          embedding: usePinecone ? [] : embedded.vectors[index],
+          embeddingModel: embedded.model,
+          tokenCount: Math.max(1, Math.ceil(content.length / 4)),
+        })),
+      }),
+    ]);
+
+    if (usePinecone) {
+      await upsertChunkVectors({
+        workspaceId: source.workspaceId,
+        sourceId,
+        model: embedded.model,
+        vectors: embedded.vectors,
+        previousChunkCount: source.chunkCount,
+      });
+    } else if (source.vectorStore === "pinecone") {
+      await deleteSourceVectors(source.workspaceId, sourceId, source.chunkCount);
+    }
+
+    const updated = await prisma.knowledgeSource.update({
+      where: { id: sourceId },
       data: {
         rawText,
         status: "SYNCED",
         pageCount,
-        chunkCount,
+        chunkCount: contents.length,
+        embeddingModel: embedded.model,
+        vectorStore: usePinecone ? "pinecone" : "postgres",
         vectorIndexedAt: new Date(),
         lastSyncedAt: new Date(),
-        processingError: null,
+        processingError: embedded.warning,
       },
-      include: {
-        agent: true,
-      },
+      include: { agent: true },
     });
+
+    if (embedded.warning) {
+      await createNotification({
+        workspaceId: source.workspaceId,
+        type: "KNOWLEDGE_DEGRADED",
+        severity: "WARNING",
+        title: `"${source.title}" was indexed with keyword search only`,
+        body: embedded.warning,
+        link: `/dashboard/knowledge-base/${sourceId}`,
+        dedupeMinutes: 60,
+      });
+    }
+
+    return updated;
   } catch (error) {
-    await prisma.knowledgeChunk.deleteMany({
-      where: {
-        sourceId: source.id,
-      },
+    const message =
+      error instanceof Error ? error.message : "Unable to process this knowledge source.";
+
+    await prisma.knowledgeChunk.deleteMany({ where: { sourceId } });
+
+    if (source.vectorStore === "pinecone") {
+      await deleteSourceVectors(source.workspaceId, sourceId, source.chunkCount);
+    }
+
+    await createNotification({
+      workspaceId: source.workspaceId,
+      type: "KNOWLEDGE_FAILED",
+      severity: "ERROR",
+      title: `Knowledge source "${source.title}" failed to sync`,
+      body: message,
+      link: `/dashboard/knowledge-base/${sourceId}`,
     });
 
     return prisma.knowledgeSource.update({
-      where: {
-        id: source.id,
-      },
+      where: { id: sourceId },
       data: {
         status: "FAILED",
         chunkCount: 0,
         vectorIndexedAt: null,
-        processingError:
-          error instanceof Error
-            ? error.message
-            : "Unable to process this knowledge source.",
+        processingError: message,
       },
-      include: {
-        agent: true,
-      },
+      include: { agent: true },
     });
   }
 }
 
+function runQueuedJob(sourceId: string) {
+  void processKnowledgeSourceById(sourceId)
+    .catch((error) => console.error("[knowledge] Indexing job crashed:", error))
+    .finally(() => processingQueue.delete(sourceId));
+}
+
+/**
+ * Queues a source for background indexing. Inside a request it runs after the
+ * response is sent (Next.js `after`); anything interrupted by a restart is picked up
+ * again by `recoverStaleKnowledgeJobs`.
+ */
 export function queueKnowledgeSourceProcessing(sourceId: string) {
   if (processingQueue.has(sourceId)) {
     return false;
@@ -481,96 +397,229 @@ export function queueKnowledgeSourceProcessing(sourceId: string) {
 
   processingQueue.add(sourceId);
 
-  setTimeout(() => {
-    void processKnowledgeSourceById(sourceId).finally(() => {
-      processingQueue.delete(sourceId);
-    });
-  }, 50);
+  try {
+    after(() => runQueuedJob(sourceId));
+  } catch {
+    // Outside a request scope (scripts, tests): run on the next tick instead.
+    setTimeout(() => runQueuedJob(sourceId), 0);
+  }
 
   return true;
 }
 
+/**
+ * Re-queues sources stuck in PENDING/PROCESSING (e.g. after a server restart) and
+ * sources still indexed with the first milestone's keyword vectors, a few at a time.
+ */
+export async function recoverStaleKnowledgeJobs(workspaceId?: string, limit = 5) {
+  const stale = await prisma.knowledgeSource.findMany({
+    where: {
+      ...(workspaceId ? { workspaceId } : {}),
+      OR: [
+        { status: "PENDING" },
+        { status: "PROCESSING", updatedAt: { lt: new Date(Date.now() - STALE_PROCESSING_MS) } },
+        { status: "SYNCED", embeddingModel: null },
+      ],
+    },
+    orderBy: { updatedAt: "asc" },
+    take: limit,
+    select: { id: true },
+  });
+
+  return stale.filter((source) => queueKnowledgeSourceProcessing(source.id)).length;
+}
+
+/** Removes a source's vectors from Pinecone (SRS: "embeddings purged from vector DB"). */
+export async function purgeKnowledgeSourceVectors(source: {
+  workspaceId: string;
+  id: string;
+  chunkCount: number;
+  vectorStore: string | null;
+}) {
+  if (source.vectorStore === "pinecone") {
+    await deleteSourceVectors(source.workspaceId, source.id, source.chunkCount);
+  }
+}
+
+function keywordCoverage(questionTokens: string[], contentTokens: Set<string>) {
+  if (questionTokens.length === 0) {
+    return 0;
+  }
+
+  let hits = 0;
+
+  for (const token of questionTokens) {
+    if (contentTokens.has(token)) {
+      hits += 1;
+      continue;
+    }
+
+    // Light stemming: "refunds" matches "refund", "shipping" matches "shipped".
+    const stem = token.length > 5 ? token.slice(0, 5) : null;
+
+    if (stem && [...contentTokens].some((word) => word.startsWith(stem))) {
+      hits += 0.8;
+    }
+  }
+
+  return hits / questionTokens.length;
+}
+
+/**
+ * Calibrates raw cosine similarity of modern embedding models (unrelated text is
+ * <0.2, a passage that answers the question ~0.3-0.5; measured with text-embedding-3-small) onto a 0-1 relevance score.
+ */
+export function calibrateSemanticScore(cosine: number) {
+  return Math.max(0, Math.min(1, (cosine - 0.15) / 0.3));
+}
+
+/**
+ * Hybrid retrieval (Module 10 FE-2): semantic similarity from the vector store plus
+ * keyword coverage, scoped to the agent's sources, top-k with full chunk text.
+ */
 export async function retrieveVectorMatches({
   question,
   sourceIds,
+  topK = 5,
 }: {
   question: string;
   sourceIds: string[];
-}) {
-  if (sourceIds.length === 0) {
+  topK?: number;
+}): Promise<RetrievedChunkMatch[]> {
+  if (sourceIds.length === 0 || !question.trim()) {
     return [];
   }
 
-  const [chunks, sources] = await Promise.all([
-    prisma.knowledgeChunk.findMany({
-      where: {
-        sourceId: {
-          in: sourceIds,
-        },
-      },
-      orderBy: [{ sourceId: "asc" }, { chunkIndex: "asc" }],
-    }),
-    prisma.knowledgeSource.findMany({
-      where: {
-        id: {
-          in: sourceIds,
-        },
-      },
-      select: {
-        id: true,
-        title: true,
-      },
-    }),
-  ]);
+  const sources = await prisma.knowledgeSource.findMany({
+    where: {
+      id: { in: sourceIds },
+      status: { in: ["SYNCED", "PROCESSING"] },
+      chunkCount: { gt: 0 },
+    },
+    select: { id: true, title: true, workspaceId: true, embeddingModel: true, vectorStore: true },
+  });
 
-  if (chunks.length === 0) {
+  if (sources.length === 0) {
     return [];
   }
 
-  const sourceMap = new Map(sources.map((source) => [source.id, source.title]));
-  const questionEmbedding = buildKnowledgeEmbedding(question);
+  const questionTokens = tokenizeForSearch(question);
+  const sourceMap = new Map(sources.map((source) => [source.id, source]));
+  const semanticScores = new Map<string, number>();
+  const models = Array.from(
+    new Set(
+      sources
+        .map((source) => source.embeddingModel)
+        .filter((model): model is string => isSemanticModel(model)),
+    ),
+  );
 
-  const ranked = chunks
+  for (const model of models) {
+    const modelSources = sources.filter((source) => source.embeddingModel === model);
+
+    try {
+      const {
+        vectors: [queryVector],
+      } = await embedTexts([question], model);
+      const pineconeSources = modelSources.filter((source) => source.vectorStore === "pinecone");
+      const postgresSources = modelSources.filter((source) => source.vectorStore !== "pinecone");
+
+      if (pineconeSources.length > 0 && isPineconeConfigured()) {
+        const byWorkspace = new Map<string, string[]>();
+
+        for (const source of pineconeSources) {
+          byWorkspace.set(source.workspaceId, [
+            ...(byWorkspace.get(source.workspaceId) ?? []),
+            source.id,
+          ]);
+        }
+
+        for (const [workspaceId, ids] of byWorkspace) {
+          const matches = await queryPinecone({
+            workspaceId,
+            vector: queryVector,
+            sourceIds: ids,
+            topK: topK * 3,
+          });
+
+          for (const match of matches) {
+            semanticScores.set(`${match.sourceId}:${match.chunkIndex}`, match.score);
+          }
+        }
+      }
+
+      if (postgresSources.length > 0) {
+        const chunks = await prisma.knowledgeChunk.findMany({
+          where: {
+            sourceId: { in: postgresSources.map((source) => source.id) },
+            embeddingModel: model,
+          },
+          select: { sourceId: true, chunkIndex: true, embedding: true },
+        });
+
+        for (const chunk of chunks) {
+          const embedding = Array.isArray(chunk.embedding) ? (chunk.embedding as number[]) : [];
+          semanticScores.set(
+            `${chunk.sourceId}:${chunk.chunkIndex}`,
+            cosineSimilarity(queryVector, embedding),
+          );
+        }
+      }
+    } catch (error) {
+      // Provider outage: these sources fall back to keyword scoring below.
+      console.error(`[knowledge] Query embedding with ${model} failed:`, error);
+    }
+  }
+
+  const chunks = await prisma.knowledgeChunk.findMany({
+    where: { sourceId: { in: sources.map((source) => source.id) } },
+    select: {
+      sourceId: true,
+      chunkIndex: true,
+      content: true,
+      embeddingModel: true,
+      embedding: true,
+    },
+  });
+  const needsLexicalQuery = chunks.some(
+    (chunk) => chunk.embeddingModel === LEXICAL_EMBEDDING_MODEL,
+  );
+  const lexicalQuery = needsLexicalQuery
+    ? (await embedTexts([question], LEXICAL_EMBEDDING_MODEL)).vectors[0]
+    : null;
+
+  return chunks
     .map((chunk) => {
-      const embedding = Array.isArray(chunk.embedding)
-        ? (chunk.embedding as number[])
-        : [];
-      const lexicalBonus = tokenize(question).length
-        ? tokenize(question).filter((token) =>
-            chunk.content.toLowerCase().includes(token),
-          ).length /
-          Math.max(1, tokenize(question).length)
-        : 0;
+      const key = `${chunk.sourceId}:${chunk.chunkIndex}`;
+      const keywordScore = keywordCoverage(questionTokens, new Set(tokenizeForSearch(chunk.content)));
+      const cosine = semanticScores.get(key);
+      let semanticScore: number | null = null;
+      let score: number;
+
+      if (typeof cosine === "number") {
+        semanticScore = calibrateSemanticScore(cosine);
+        score = 0.85 * semanticScore + 0.15 * keywordScore;
+      } else if (lexicalQuery && chunk.embeddingModel === LEXICAL_EMBEDDING_MODEL) {
+        const embedding = Array.isArray(chunk.embedding) ? (chunk.embedding as number[]) : [];
+        score = 0.6 * keywordScore + 0.4 * Math.max(0, cosineSimilarity(lexicalQuery, embedding));
+      } else {
+        score = keywordScore * 0.85;
+      }
 
       return {
         sourceId: chunk.sourceId,
         chunkIndex: chunk.chunkIndex,
+        title: sourceMap.get(chunk.sourceId)?.title ?? "Knowledge Source",
         excerpt:
-          chunk.content.length > 360
-            ? `${chunk.content.slice(0, 360)}...`
+          chunk.content.length > MAX_EXCERPT_CHARS
+            ? `${chunk.content.slice(0, MAX_EXCERPT_CHARS)}…`
             : chunk.content,
-        score: cosineSimilarity(questionEmbedding, embedding) + lexicalBonus * 0.2,
+        score: Math.min(1, score),
+        semanticScore,
+        keywordScore,
       };
     })
-    .filter((chunk) => chunk.score > 0.05)
-    .sort((left, right) => right.score - left.score);
-
-  const uniqueMatches = ranked.reduce<RetrievedChunkMatch[]>((accumulator, match) => {
-    if (
-      accumulator.some(
-        (entry) =>
-          entry.sourceId === match.sourceId && entry.chunkIndex === match.chunkIndex,
-      )
-    ) {
-      return accumulator;
-    }
-
-    accumulator.push(match);
-    return accumulator;
-  }, []);
-
-  return uniqueMatches.slice(0, 5).map((match) => ({
-    ...match,
-    title: sourceMap.get(match.sourceId) || "Knowledge Source",
-  }));
+    .filter((match) => match.score > 0.05)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, topK);
 }

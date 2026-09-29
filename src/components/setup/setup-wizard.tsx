@@ -471,7 +471,7 @@ export function SetupWizard({ user, initialState }: SetupWizardProps) {
       }
 
       setChatbotId(data.chatbot.id);
-      window.location.assign("/dashboard/tickets");
+      window.location.assign("/dashboard");
     } catch {
       setError("Something went wrong while creating your chatbot widget.");
     } finally {

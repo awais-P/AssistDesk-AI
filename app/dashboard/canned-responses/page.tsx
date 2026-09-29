@@ -3,6 +3,19 @@ import { CannedResponsesWorkspace } from "@/src/components/dashboard/canned-resp
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 
+function resolveTimeZone(timeZone: string | null | undefined) {
+  if (!timeZone) {
+    return "UTC";
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
 export default async function CannedResponsesPage() {
   const session = await getCurrentSession();
 
@@ -10,21 +23,31 @@ export default async function CannedResponsesPage() {
     redirect("/login");
   }
 
-  const cannedResponses = await prisma.cannedResponse.findMany({
-    where: {
-      workspaceId: session.user.workspaceId,
-    },
-    select: {
-      id: true,
-      title: true,
-      body: true,
-      createdAt: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: 100,
-  });
+  const [cannedResponses, settings] = await Promise.all([
+    prisma.cannedResponse.findMany({
+      where: {
+        workspaceId: session.user.workspaceId,
+      },
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 100,
+    }),
+    prisma.workspaceSetting.findUnique({
+      where: {
+        workspaceId: session.user.workspaceId,
+      },
+      select: {
+        timezone: true,
+      },
+    }),
+  ]);
 
   return (
     <CannedResponsesWorkspace
@@ -34,7 +57,7 @@ export default async function CannedResponsesPage() {
         body: response.body,
         createdAt: response.createdAt.toISOString(),
       }))}
-      createdByName={session.user.fullName}
+      timeZone={resolveTimeZone(settings?.timezone)}
     />
   );
 }

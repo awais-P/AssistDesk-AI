@@ -18,6 +18,8 @@ import {
   chatbotReplyModeOptions,
   defaultChatbotWelcomeMessage,
   defaultFallbackDelaySeconds,
+  defaultRateLimitPerMinute,
+  defaultSessionTimeoutMinutes,
   formatWidgetPositionLabel,
   getChatbotInitial,
   isValidHexColor,
@@ -26,7 +28,11 @@ import {
   maxConversationStarterLength,
   maxConversationStarters,
   maxFallbackDelaySeconds,
+  maxRateLimitPerMinute,
+  maxSessionTimeoutMinutes,
   minFallbackDelaySeconds,
+  minRateLimitPerMinute,
+  minSessionTimeoutMinutes,
   parseChatbotDomainInput,
   widgetPositionOptions,
 } from "@/src/lib/chatbot-config";
@@ -53,6 +59,8 @@ type ChatbotConfigurationWorkspaceProps = {
     aiRepliesEnabled: boolean;
     replyMode: string;
     fallbackDelaySeconds: number;
+    sessionTimeoutMinutes: number;
+    rateLimitPerMinute: number;
     additionalPrompt: string | null;
     avatarUrl: string | null;
     conversationStarters: string[];
@@ -180,6 +188,12 @@ export function ChatbotConfigurationWorkspace({
   const [fallbackDelaySeconds, setFallbackDelaySeconds] = useState(
     String(chatbot.fallbackDelaySeconds || defaultFallbackDelaySeconds),
   );
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(
+    String(chatbot.sessionTimeoutMinutes || defaultSessionTimeoutMinutes),
+  );
+  const [rateLimitPerMinute, setRateLimitPerMinute] = useState(
+    String(chatbot.rateLimitPerMinute || defaultRateLimitPerMinute),
+  );
   const [additionalPrompt, setAdditionalPrompt] = useState(
     chatbot.additionalPrompt || "",
   );
@@ -229,6 +243,20 @@ export function ChatbotConfigurationWorkspace({
     fallbackDelayValue < minFallbackDelaySeconds ||
     fallbackDelayValue > maxFallbackDelaySeconds
       ? `Enter a whole number of seconds between ${minFallbackDelaySeconds} and ${maxFallbackDelaySeconds}.`
+      : "";
+  const sessionTimeoutValue = Number(sessionTimeoutMinutes);
+  const sessionTimeoutError =
+    !Number.isInteger(sessionTimeoutValue) ||
+    sessionTimeoutValue < minSessionTimeoutMinutes ||
+    sessionTimeoutValue > maxSessionTimeoutMinutes
+      ? `Enter a whole number of minutes between ${minSessionTimeoutMinutes} and ${maxSessionTimeoutMinutes}.`
+      : "";
+  const rateLimitValue = Number(rateLimitPerMinute);
+  const rateLimitError =
+    !Number.isInteger(rateLimitValue) ||
+    rateLimitValue < minRateLimitPerMinute ||
+    rateLimitValue > maxRateLimitPerMinute
+      ? `Enter a whole number between ${minRateLimitPerMinute} and ${maxRateLimitPerMinute}.`
       : "";
 
   function toggleSection(section: keyof typeof openSections) {
@@ -354,6 +382,16 @@ export function ChatbotConfigurationWorkspace({
       return;
     }
 
+    if (sessionTimeoutError) {
+      setError(`Conversation timeout: ${sessionTimeoutError}`);
+      return;
+    }
+
+    if (rateLimitError) {
+      setError(`Message rate limit: ${rateLimitError}`);
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -376,6 +414,8 @@ export function ChatbotConfigurationWorkspace({
           fallbackDelaySeconds: fallbackDelayError
             ? chatbot.fallbackDelaySeconds
             : fallbackDelayValue,
+          sessionTimeoutMinutes: sessionTimeoutValue,
+          rateLimitPerMinute: rateLimitValue,
           additionalPrompt,
           avatarUrl,
           conversationStarters: conversationStarters
@@ -840,6 +880,74 @@ export function ChatbotConfigurationWorkspace({
                   <p className="mt-2 text-sm text-slate-400">
                     Maximum AI replies per session (up to {maxAiMessagesLimit}).
                   </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="chatbot-session-timeout"
+                    className="mb-2 block text-sm font-medium text-white"
+                  >
+                    Conversation timeout (minutes)
+                  </label>
+                  <input
+                    id="chatbot-session-timeout"
+                    type="number"
+                    min={minSessionTimeoutMinutes}
+                    max={maxSessionTimeoutMinutes}
+                    step="1"
+                    value={sessionTimeoutMinutes}
+                    onChange={(event) => setSessionTimeoutMinutes(event.target.value)}
+                    placeholder={String(defaultSessionTimeoutMinutes)}
+                    aria-invalid={sessionTimeoutError ? true : undefined}
+                    aria-describedby="chatbot-session-timeout-help"
+                    className={`h-12 w-full rounded-xl border bg-[#111111] px-4 text-sm text-white outline-none transition focus:border-white ${
+                      sessionTimeoutError ? "border-red-500/60" : "border-white/10"
+                    }`}
+                  />
+                  <div id="chatbot-session-timeout-help">
+                    {sessionTimeoutError ? (
+                      <p className="mt-2 text-sm text-red-300">{sessionTimeoutError}</p>
+                    ) : null}
+                    <p className="mt-2 text-sm text-slate-400">
+                      Idle conversations end after this many minutes. The customer&apos;s next
+                      message starts a new conversation, and the assistant still remembers the
+                      earlier one ({minSessionTimeoutMinutes}–{maxSessionTimeoutMinutes} minutes).
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="chatbot-rate-limit"
+                    className="mb-2 block text-sm font-medium text-white"
+                  >
+                    Message rate limit (per minute)
+                  </label>
+                  <input
+                    id="chatbot-rate-limit"
+                    type="number"
+                    min={minRateLimitPerMinute}
+                    max={maxRateLimitPerMinute}
+                    step="1"
+                    value={rateLimitPerMinute}
+                    onChange={(event) => setRateLimitPerMinute(event.target.value)}
+                    placeholder={String(defaultRateLimitPerMinute)}
+                    aria-invalid={rateLimitError ? true : undefined}
+                    aria-describedby="chatbot-rate-limit-help"
+                    className={`h-12 w-full rounded-xl border bg-[#111111] px-4 text-sm text-white outline-none transition focus:border-white ${
+                      rateLimitError ? "border-red-500/60" : "border-white/10"
+                    }`}
+                  />
+                  <div id="chatbot-rate-limit-help">
+                    {rateLimitError ? (
+                      <p className="mt-2 text-sm text-red-300">{rateLimitError}</p>
+                    ) : null}
+                    <p className="mt-2 text-sm text-slate-400">
+                      Messages one visitor conversation may send per minute. Protects the
+                      assistant from spam. Extra messages are blocked with a &lsquo;please
+                      wait&rsquo; notice ({minRateLimitPerMinute}–{maxRateLimitPerMinute}).
+                    </p>
+                  </div>
                 </div>
               </div>
             </AccordionSection>

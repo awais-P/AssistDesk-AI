@@ -1,3 +1,4 @@
+import { createNotification } from "./notifications";
 import nodemailer from "nodemailer";
 import { prisma } from "./prisma";
 import { decryptSecret } from "./secrets";
@@ -69,6 +70,7 @@ export async function sendTicketReplyEmail({
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     select: {
+      workspaceId: true,
       subject: true,
       ticketNumber: true,
       requesterEmail: true,
@@ -148,6 +150,14 @@ export async function sendTicketReplyEmail({
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[mailer] Failed to send ticket ${reference}: ${message}`);
         result = { status: "FAILED", error: message.slice(0, 300) };
+        await createNotification({
+          workspaceId: ticket.workspaceId,
+          type: "EMAIL_DELIVERY_FAILED",
+          severity: "ERROR",
+          title: `Reply to ${ticket.requesterEmail} was not delivered`,
+          body: message.slice(0, 300),
+          link: `/dashboard/tickets/${ticketId}`,
+        });
       }
     }
   }

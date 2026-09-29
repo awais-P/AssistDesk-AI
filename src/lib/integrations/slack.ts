@@ -95,21 +95,30 @@ export async function postSlackMessage({
   });
 }
 
-export async function getSlackUserName(botToken: string, userId: string) {
+/**
+ * Name and (with the users:read.email scope) email of a Slack user. The email lets
+ * AssistDesk recognise the same customer on the website or by email (Module 5).
+ */
+export async function getSlackUserProfile(botToken: string, userId: string) {
   try {
     const data = await slackApi<{
-      user?: { real_name?: string; profile?: { display_name?: string; real_name?: string } };
+      user?: {
+        real_name?: string;
+        profile?: { display_name?: string; real_name?: string; email?: string };
+      };
     }>("users.info", botToken, { user: userId });
 
-    return (
-      data.user?.profile?.display_name ||
-      data.user?.profile?.real_name ||
-      data.user?.real_name ||
-      null
-    );
+    return {
+      name:
+        data.user?.profile?.display_name ||
+        data.user?.profile?.real_name ||
+        data.user?.real_name ||
+        null,
+      email: data.user?.profile?.email ?? null,
+    };
   } catch {
-    // users:read scope is optional.
-    return null;
+    // users:read / users:read.email scopes are optional.
+    return { name: null, email: null };
   }
 }
 

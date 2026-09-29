@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -16,6 +17,16 @@ export async function DELETE(
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "ADMIN");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const { id } = await context.params;
@@ -52,6 +63,16 @@ export async function PATCH(request: Request, context: IntegrationRouteContext) 
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "ADMIN");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const { id } = await context.params;

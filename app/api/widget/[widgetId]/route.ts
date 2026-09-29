@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeWidgetRequest } from "@/src/lib/chatbot-widget";
 import { isWorkspaceOnline } from "@/src/lib/presence";
+import { clampSessionTimeoutMinutes } from "@/src/lib/session-lifecycle";
 
 type WidgetRouteContext = {
   params: Promise<{
@@ -37,6 +38,8 @@ export async function GET(request: Request, context: WidgetRouteContext) {
       requireEmail: chatbot.requireEmail,
       requirePhone: chatbot.requirePhone,
       emailNotifications: chatbot.emailNotifications,
+      // Module 5: the widget shows when an idle conversation will end.
+      sessionTimeoutMinutes: clampSessionTimeoutMinutes(chatbot.sessionTimeoutMinutes),
       agentName: chatbot.agent.name,
       online: chatbot.isActive && (operatorsOnline || aiAvailable),
       operatorsOnline,

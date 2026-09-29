@@ -3,10 +3,20 @@ import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 
 type CannedResponsePayload = {
-  id?: string;
-  title?: string;
-  body?: string;
+  id?: unknown;
+  title?: unknown;
+  body?: unknown;
 };
+
+const MAX_TITLE_LENGTH = 120;
+const MAX_BODY_LENGTH = 10000;
+
+const cannedResponseSelect = {
+  id: true,
+  title: true,
+  body: true,
+  createdAt: true,
+} as const;
 
 export async function POST(request: Request) {
   const session = await getCurrentSession();
@@ -15,9 +25,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const body = (await request.json()) as CannedResponsePayload;
-  const title = body.title?.trim();
-  const content = body.body?.trim();
+  let body: CannedResponsePayload;
+
+  try {
+    body = (await request.json()) as CannedResponsePayload;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const content = typeof body.body === "string" ? body.body.trim() : "";
+  const id = typeof body.id === "string" && body.id ? body.id : null;
 
   if (!title || !content) {
     return NextResponse.json(
@@ -26,12 +44,21 @@ export async function POST(request: Request) {
     );
   }
 
+  if (title.length > MAX_TITLE_LENGTH || content.length > MAX_BODY_LENGTH) {
+    return NextResponse.json(
+      {
+        error: `Keep the name under ${MAX_TITLE_LENGTH} characters and the content under ${MAX_BODY_LENGTH}.`,
+      },
+      { status: 400 },
+    );
+  }
+
   let cannedResponse;
 
-  if (body.id) {
+  if (id) {
     const existing = await prisma.cannedResponse.findFirst({
       where: {
-        id: body.id,
+        id,
         workspaceId: session.user.workspaceId,
       },
       select: {
@@ -48,12 +75,13 @@ export async function POST(request: Request) {
 
     cannedResponse = await prisma.cannedResponse.update({
       where: {
-        id: body.id,
+        id,
       },
       data: {
         title,
         body: content,
       },
+      select: cannedResponseSelect,
     });
   } else {
     cannedResponse = await prisma.cannedResponse.create({
@@ -62,6 +90,7 @@ export async function POST(request: Request) {
         title,
         body: content,
       },
+      select: cannedResponseSelect,
     });
   }
 

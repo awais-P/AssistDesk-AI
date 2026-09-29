@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { authorizeWidgetRequest } from "@/src/lib/chatbot-widget";
+import {
+  RATE_LIMITS,
+  consumeRateLimit,
+  getRequestIp,
+  hashClientIp,
+  tooManyRequests,
+} from "@/src/lib/rate-limit";
 import { attachmentMimeTypes, storeUpload } from "@/src/lib/uploads";
 
 type WidgetAttachmentRouteContext = {
@@ -18,6 +25,15 @@ export async function POST(request: Request, context: WidgetAttachmentRouteConte
 
   if (!access.chatbot.isActive) {
     return NextResponse.json({ error: "This chat is paused right now." }, { status: 403 });
+  }
+
+  const limit = await consumeRateLimit(
+    `widget-attachment:${hashClientIp(getRequestIp(request))}`,
+    RATE_LIMITS.widgetAttachmentPerIp,
+  );
+
+  if (!limit.allowed) {
+    return tooManyRequests(limit, "You're uploading files too quickly.");
   }
 
   const formData = await request.formData().catch(() => null);

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { hashPassword } from "./auth";
 import { prisma } from "./prisma";
 
@@ -41,21 +42,15 @@ async function seedDemoData() {
   let adminUser = workspace.users[0];
 
   if (!adminUser) {
+    // Local demo account. The password comes from ASSISTDESK_DEMO_PASSWORD, never a default.
     adminUser = await prisma.user.create({
       data: {
         workspaceId: workspace.id,
-        fullName: "Muhammad Awais",
-        username: "admin",
+        fullName: "Demo Admin",
+        username: "demo-admin",
         email: "admin@assistdesk.local",
-        passwordHash: hashPassword("admin"),
+        passwordHash: await hashPassword(process.env.ASSISTDESK_DEMO_PASSWORD as string),
         role: "ADMIN",
-      },
-    });
-  } else if (adminUser.passwordHash === "admin") {
-    adminUser = await prisma.user.update({
-      where: { id: adminUser.id },
-      data: {
-        passwordHash: hashPassword("admin"),
       },
     });
   }
@@ -125,7 +120,7 @@ async function seedDemoData() {
         status: "CONNECTED",
         supportAddress: "support@assistdesk.local",
         forwardingAddress: "forwarding@assistdesk.local",
-        webhookSecret: "assistdesk-demo-email-secret",
+        webhookSecret: randomBytes(24).toString("hex"),
         config: {
           autoCreateTickets: true,
           syncReplies: true,
@@ -273,7 +268,23 @@ async function seedDemoData() {
   }
 }
 
+/**
+ * Seeds a demo workspace for local development only. It never runs in production and
+ * needs ASSISTDESK_SEED_DEMO=true plus an ASSISTDESK_DEMO_PASSWORD (8+ characters).
+ */
+export function isDemoSeedingEnabled() {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.ASSISTDESK_SEED_DEMO === "true" &&
+    (process.env.ASSISTDESK_DEMO_PASSWORD?.length ?? 0) >= 8
+  );
+}
+
 export async function ensureDemoData() {
+  if (!isDemoSeedingEnabled()) {
+    return;
+  }
+
   if (!global.assistdeskDemoDataPromise) {
     global.assistdeskDemoDataPromise = seedDemoData().catch((error) => {
       global.assistdeskDemoDataPromise = undefined;

@@ -1,15 +1,30 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@/app/generated/prisma/client";
-import {
-  type WidgetChatbot,
-  authorizeWidgetRequest,
-  decideWidgetReply,
-  isFallbackReplyDue,
-} from "@/src/lib/chatbot-widget";
-import { generateSessionReply, loadAgentForReplies } from "@/src/lib/conversation-runtime";
+import { authorizeWidgetRequest, decideWidgetReply } from "@/src/lib/chatbot-widget";
+import { normalizeEmail, normalizePhone } from "@/src/lib/contacts";
+import { createNotification } from "@/src/lib/notifications";
 import { isWorkspaceOnline } from "@/src/lib/presence";
 import { prisma } from "@/src/lib/prisma";
-import { isTrustedUploadUrl } from "@/src/lib/uploads";
+import {
+  RATE_LIMITS,
+  consumeRateLimit,
+  getRequestIp,
+  hashClientIp,
+  tooManyRequests,
+} from "@/src/lib/rate-limit";
+import { appendSessionMessage, recordSessionEvent } from "@/src/lib/session-lifecycle";
+import {
+  MAX_WIDGET_MESSAGE_LENGTH,
+  parseWidgetAttachments,
+  replyWithAgent,
+  runFallbackIfDue,
+  serializeWidgetMessage,
+} from "@/src/lib/widget-conversation";
+import {
+  getSessionForMessage,
+  loadWidgetSession,
+  readWidgetSessionToken,
+  serializeWidgetSession,
+} from "@/src/lib/widget-session";
 
 type WidgetMessagesRouteContext = {
   params: Promise<{
@@ -17,143 +32,21 @@ type WidgetMessagesRouteContext = {
   }>;
 };
 
-type WidgetAttachment = {
-  url: string;
-  name: string;
-  mimeType: string;
-  size: number;
-};
-
 type WidgetMessagePayload = {
-  sessionId?: string;
-  message?: string;
-  customerName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
+  message?: unknown;
+  customerName?: unknown;
+  customerEmail?: unknown;
+  customerPhone?: unknown;
+  visitorId?: unknown;
   attachments?: unknown;
 };
 
-const MAX_MESSAGE_LENGTH = 2000;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const PHONE_PATTERN = /^[+()\d\s-]{6,20}$/;
-
-declare global {
-  var widgetFallbackLocks: Set<string> | undefined;
+function text(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
-const fallbackLocks = global.widgetFallbackLocks ?? new Set<string>();
-global.widgetFallbackLocks = fallbackLocks;
-
-function trimNullable(value?: string | null, maxLength = 160) {
-  const trimmed = typeof value === "string" ? value.trim().slice(0, maxLength) : "";
-  return trimmed ? trimmed : null;
-}
-
-function parseAttachments(value: unknown): WidgetAttachment[] | null {
-  if (typeof value === "undefined" || value === null) {
-    return [];
-  }
-
-  if (!Array.isArray(value) || value.length > 3) {
-    return null;
-  }
-
-  const attachments: WidgetAttachment[] = [];
-
-  for (const item of value) {
-    const candidate = item as Partial<WidgetAttachment>;
-
-    if (
-      typeof candidate?.url !== "string" ||
-      !isTrustedUploadUrl(candidate.url) ||
-      typeof candidate.name !== "string" ||
-      typeof candidate.mimeType !== "string"
-    ) {
-      return null;
-    }
-
-    attachments.push({
-      url: candidate.url,
-      name: candidate.name.slice(0, 120),
-      mimeType: candidate.mimeType.slice(0, 120),
-      size: typeof candidate.size === "number" ? candidate.size : 0,
-    });
-  }
-
-  return attachments;
-}
-
-function serializeMessage(message: {
-  id: string;
-  sender: string;
-  content: string;
-  attachments: Prisma.JsonValue | null;
-  authorName: string | null;
-  createdAt: Date;
-}) {
-  return {
-    id: message.id,
-    sender: message.sender,
-    content: message.content,
-    attachments: Array.isArray(message.attachments) ? message.attachments : [],
-    authorName: message.authorName,
-    createdAt: message.createdAt.toISOString(),
-  };
-}
-
-function serializeSession(session: {
-  id: string;
-  customerName: string | null;
-  customerEmail: string | null;
-  customerPhone: string | null;
-  status: string;
-}) {
-  return {
-    id: session.id,
-    customerName: session.customerName,
-    customerEmail: session.customerEmail,
-    customerPhone: session.customerPhone,
-    status: session.status,
-  };
-}
-
-async function replyWithAgent(chatbot: WidgetChatbot, sessionId: string) {
-  const agent = await loadAgentForReplies(chatbot.agentId);
-
-  if (!agent) {
-    return null;
-  }
-
-  const result = await generateSessionReply({
-    sessionId,
-    workspaceId: chatbot.workspaceId,
-    agent,
-    channel: "WEB_WIDGET",
-    extraSystemPrompt: chatbot.additionalPrompt,
-    logSummary: `Widget reply generated for ${chatbot.name}.`,
-  });
-
-  return result?.message ?? null;
-}
-
-async function runFallbackIfDue(chatbot: WidgetChatbot, sessionId: string) {
-  if (fallbackLocks.has(sessionId) || !(await isFallbackReplyDue(chatbot, sessionId))) {
-    return;
-  }
-
-  fallbackLocks.add(sessionId);
-
-  try {
-    await replyWithAgent(chatbot, sessionId);
-  } finally {
-    fallbackLocks.delete(sessionId);
-  }
-}
-
-export async function GET(
-  request: Request,
-  context: WidgetMessagesRouteContext,
-) {
+/** Current conversation for this visitor (by secret session token). */
+export async function GET(request: Request, context: WidgetMessagesRouteContext) {
   const { widgetId } = await context.params;
   const access = await authorizeWidgetRequest(request, widgetId);
 
@@ -162,27 +55,16 @@ export async function GET(
   }
 
   const { chatbot } = access;
-  const url = new URL(request.url);
-  const sessionId = url.searchParams.get("sessionId");
   const operatorsOnline = await isWorkspaceOnline(chatbot.workspaceId);
-
-  if (!sessionId) {
-    return NextResponse.json({ session: null, messages: [], operatorsOnline });
-  }
-
-  const session = await prisma.chatSession.findFirst({
-    where: {
-      id: sessionId,
-      chatbotId: chatbot.id,
-      workspaceId: chatbot.workspaceId,
-    },
-  });
+  const session = await loadWidgetSession(chatbot, readWidgetSessionToken(request));
 
   if (!session) {
     return NextResponse.json({ session: null, messages: [], operatorsOnline });
   }
 
-  await runFallbackIfDue(chatbot, session.id);
+  if (session.status !== "CLOSED") {
+    await runFallbackIfDue(chatbot, session.id);
+  }
 
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId: session.id },
@@ -191,16 +73,14 @@ export async function GET(
   });
 
   return NextResponse.json({
-    session: serializeSession(session),
-    messages: messages.reverse().map(serializeMessage),
+    session: serializeWidgetSession(session),
+    messages: messages.reverse().map(serializeWidgetMessage),
     operatorsOnline,
   });
 }
 
-export async function POST(
-  request: Request,
-  context: WidgetMessagesRouteContext,
-) {
+/** A visitor sends a message: session lifecycle, rate limits, identity, reply. */
+export async function POST(request: Request, context: WidgetMessagesRouteContext) {
   const { widgetId } = await context.params;
   const access = await authorizeWidgetRequest(request, widgetId);
 
@@ -223,11 +103,47 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const customerName = trimNullable(body.customerName, 120);
-  const customerEmail = trimNullable(body.customerEmail, 160)?.toLowerCase() ?? null;
-  const customerPhone = trimNullable(body.customerPhone, 32);
-  const content = typeof body.message === "string" ? body.message.trim() : "";
-  const attachments = parseAttachments(body.attachments);
+  const clientIpHash = hashClientIp(getRequestIp(request));
+
+  // FE-6: abuse protection before any work is done (per IP, then per widget).
+  for (const [key, policy, message] of [
+    [`widget-ip:${clientIpHash}`, RATE_LIMITS.widgetMessagePerIp, "You're sending messages too quickly."],
+    [`widget:${chatbot.id}`, RATE_LIMITS.widgetMessagePerWidget, "This chat is very busy right now."],
+  ] as const) {
+    const result = await consumeRateLimit(key, policy);
+
+    if (!result.allowed) {
+      await recordSessionEvent({
+        workspaceId: chatbot.workspaceId,
+        type: "RATE_LIMITED",
+        detail: `${key.startsWith("widget-ip") ? "Per-visitor" : "Per-widget"} message limit exceeded on ${chatbot.name}.`,
+        metadata: { scope: key.split(":")[0], clientIpHash, limit: policy.limit },
+      });
+      return tooManyRequests(result, message);
+    }
+  }
+
+  const rawEmail = text(body.customerEmail, 160);
+  const rawPhone = text(body.customerPhone, 32);
+  const customerEmail = rawEmail ? normalizeEmail(rawEmail) : null;
+  const customerPhone = rawPhone ? normalizePhone(rawPhone) : null;
+  const customerName = text(body.customerName, 120) || null;
+  const content = text(body.message, MAX_WIDGET_MESSAGE_LENGTH + 1);
+  const attachments = parseWidgetAttachments(body.attachments);
+
+  if (rawEmail && !customerEmail) {
+    return NextResponse.json(
+      { error: "Please enter a valid email address, like name@example.com." },
+      { status: 400 },
+    );
+  }
+
+  if (rawPhone && !customerPhone) {
+    return NextResponse.json(
+      { error: "Please enter a valid phone number, for example +92 300 1234567." },
+      { status: 400 },
+    );
+  }
 
   if (!attachments) {
     return NextResponse.json(
@@ -240,99 +156,94 @@ export async function POST(
     return NextResponse.json({ error: "A message is required." }, { status: 400 });
   }
 
-  if (content.length > MAX_MESSAGE_LENGTH) {
+  if (content.length > MAX_WIDGET_MESSAGE_LENGTH) {
     return NextResponse.json(
-      { error: `Messages can be up to ${MAX_MESSAGE_LENGTH} characters.` },
+      { error: `Messages can be up to ${MAX_WIDGET_MESSAGE_LENGTH} characters.` },
       { status: 400 },
     );
   }
 
-  if (customerEmail && !EMAIL_PATTERN.test(customerEmail)) {
-    return NextResponse.json(
-      { error: "Please enter a valid email address, like name@example.com." },
-      { status: 400 },
-    );
-  }
-
-  if (customerPhone && !PHONE_PATTERN.test(customerPhone)) {
-    return NextResponse.json(
-      { error: "Please enter a valid phone number, digits only with an optional +." },
-      { status: 400 },
-    );
-  }
-
-  let session = body.sessionId
-    ? await prisma.chatSession.findFirst({
-        where: {
-          id: body.sessionId,
-          chatbotId: chatbot.id,
-          workspaceId: chatbot.workspaceId,
-        },
-      })
-    : null;
-
-  const knownName = customerName ?? session?.customerName ?? null;
-  const knownEmail = customerEmail ?? session?.customerEmail ?? null;
-  const knownPhone = customerPhone ?? session?.customerPhone ?? null;
-
-  if (chatbot.requireName && !knownName) {
-    return NextResponse.json(
-      { error: "Please provide your name before starting the chat." },
-      { status: 400 },
-    );
-  }
-
-  if (chatbot.requireEmail && !knownEmail) {
-    return NextResponse.json(
-      { error: "Please provide your email before starting the chat." },
-      { status: 400 },
-    );
-  }
-
-  if (chatbot.requirePhone && !knownPhone) {
-    return NextResponse.json(
-      { error: "Please provide your phone number before starting the chat." },
-      { status: 400 },
-    );
-  }
-
-  if (!session || session.status === "CLOSED") {
-    session = await prisma.chatSession.create({
-      data: {
-        workspaceId: chatbot.workspaceId,
-        chatbotId: chatbot.id,
-        customerName: knownName,
-        customerEmail: knownEmail,
-        customerPhone: knownPhone,
-        channel: "WEB_WIDGET",
-        status: "ACTIVE",
-      },
-    });
-  } else if (
-    session.customerName !== knownName ||
-    session.customerEmail !== knownEmail ||
-    session.customerPhone !== knownPhone
-  ) {
-    // Only fill in or change details the visitor actually sent; never wipe them.
-    session = await prisma.chatSession.update({
-      where: { id: session.id },
-      data: {
-        customerName: knownName,
-        customerEmail: knownEmail,
-        customerPhone: knownPhone,
-      },
-    });
-  }
-
-  const userMessage = await prisma.chatMessage.create({
-    data: {
-      sessionId: session.id,
-      sender: "USER",
-      content,
-      attachments: attachments.length > 0 ? attachments : undefined,
-      authorName: knownName,
+  const resolved = await getSessionForMessage({
+    chatbot,
+    token: readWidgetSessionToken(request),
+    identity: {
+      name: customerName,
+      email: customerEmail,
+      phone: customerPhone,
+      visitorId: text(body.visitorId, 64) || null,
     },
+    clientIpHash,
   });
+
+  if (!resolved.ok) {
+    await recordSessionEvent({
+      workspaceId: chatbot.workspaceId,
+      type: "RATE_LIMITED",
+      detail: `Too many new conversations from one visitor on ${chatbot.name}.`,
+      metadata: { scope: "widget-new-session", clientIpHash },
+    });
+    return tooManyRequests(resolved.rateLimit, "Too many new conversations were started from your connection.");
+  }
+
+  const { session } = resolved;
+
+  if (chatbot.requireName && !session.customerName) {
+    return NextResponse.json({ error: "Please provide your name before starting the chat." }, { status: 400 });
+  }
+
+  if (chatbot.requireEmail && !session.customerEmail) {
+    return NextResponse.json({ error: "Please provide your email before starting the chat." }, { status: 400 });
+  }
+
+  if (chatbot.requirePhone && !session.customerPhone) {
+    return NextResponse.json({ error: "Please provide your phone number before starting the chat." }, { status: 400 });
+  }
+
+  // FE-6: the chatbot's own per-conversation limit (Chatbot → AI Responses).
+  const perSession = await consumeRateLimit(`widget-session:${session.id}`, {
+    limit: chatbot.rateLimitPerMinute,
+    windowSeconds: 60,
+  });
+
+  if (!perSession.allowed) {
+    await recordSessionEvent({
+      workspaceId: chatbot.workspaceId,
+      sessionId: session.id,
+      contactId: session.contactId,
+      type: "RATE_LIMITED",
+      detail: `More than ${chatbot.rateLimitPerMinute} messages in a minute.`,
+      metadata: { scope: "widget-session", limit: chatbot.rateLimitPerMinute, clientIpHash },
+    });
+    await createNotification({
+      workspaceId: chatbot.workspaceId,
+      type: "RATE_LIMITED",
+      severity: "WARNING",
+      title: `A visitor hit the message limit on ${chatbot.name}`,
+      body: `More than ${chatbot.rateLimitPerMinute} messages per minute were blocked.`,
+      link: "/dashboard/chats",
+      dedupeMinutes: 30,
+    });
+    return tooManyRequests(perSession, "You're sending messages too quickly.");
+  }
+
+  const userMessage = await appendSessionMessage({
+    sessionId: session.id,
+    workspaceId: chatbot.workspaceId,
+    sender: "USER",
+    content,
+    attachments: attachments.length > 0 ? attachments : undefined,
+    authorName: session.customerName,
+  });
+
+  if (resolved.started) {
+    await createNotification({
+      workspaceId: chatbot.workspaceId,
+      type: "NEW_CHAT",
+      title: `${resolved.previous ? "Returning visitor" : "New chat"}: ${session.customerName || session.customerEmail || "a website visitor"}`,
+      body: `${chatbot.name}: ${content.slice(0, 140)}`,
+      link: "/dashboard/chats",
+    });
+  }
 
   const decision = await decideWidgetReply({
     chatbot,
@@ -350,18 +261,52 @@ export async function POST(
   } else {
     const notice = decision.action === "SYSTEM" ? decision.content : decision.notice;
 
+    if (decision.action === "SYSTEM" && session.aiMessageCount >= chatbot.maxAiMessages) {
+      await recordSessionEvent({
+        workspaceId: chatbot.workspaceId,
+        sessionId: session.id,
+        contactId: session.contactId,
+        type: "AI_LIMIT_REACHED",
+        detail: `AI reply limit (${chatbot.maxAiMessages}) reached; conversation is now human-only.`,
+      });
+    }
+
+    if (notice && decision.action === "WAIT_FOR_HUMAN") {
+      await createNotification({
+        workspaceId: chatbot.workspaceId,
+        type: "CHAT_WAITING",
+        severity: "WARNING",
+        title: `${session.customerName || session.customerEmail || "A visitor"} is waiting for a team reply`,
+        body: content.slice(0, 160),
+        link: "/dashboard/chats",
+        dedupeMinutes: 10,
+      });
+    }
+
     if (notice) {
       newMessages.push(
-        await prisma.chatMessage.create({
-          data: { sessionId: session.id, sender: "SYSTEM", content: notice },
+        await appendSessionMessage({
+          sessionId: session.id,
+          workspaceId: chatbot.workspaceId,
+          sender: "SYSTEM",
+          content: notice,
         }),
       );
     }
   }
 
+  const fresh = await prisma.chatSession.findUniqueOrThrow({
+    where: { id: session.id },
+    include: { chatbot: { select: { sessionTimeoutMinutes: true } } },
+  });
+
   return NextResponse.json({
-    session: serializeSession(session),
-    messages: newMessages.map(serializeMessage),
+    session: serializeWidgetSession(fresh),
+    // Returned only when a new conversation started; the widget stores it.
+    sessionToken: resolved.newToken,
+    sessionStarted: resolved.started,
+    previousSession: resolved.previous,
+    messages: newMessages.map(serializeWidgetMessage),
     waitingForHuman: decision.action === "WAIT_FOR_HUMAN",
   });
 }

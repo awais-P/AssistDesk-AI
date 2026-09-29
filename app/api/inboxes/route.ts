@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { verifySmtpSettings } from "@/src/lib/mailer";
@@ -85,6 +86,16 @@ export async function POST(request: Request) {
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "ADMIN");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const body = (await request.json().catch(() => ({}))) as InboxPayload;

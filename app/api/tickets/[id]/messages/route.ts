@@ -10,12 +10,15 @@ type TicketMessagesRouteContext = {
 };
 
 type CreateTicketMessagePayload = {
-  content?: string;
-  mode?: "reply" | "internal";
-  closeAfterReply?: boolean;
+  content?: unknown;
+  mode?: unknown;
+  closeAfterReply?: unknown;
 };
 
+type ComposerMode = "reply" | "internal";
+
 const INTERNAL_NOTE_PREFIX = "[[INTERNAL_NOTE]]";
+const composerModes = new Set<string>(["reply", "internal"]);
 
 export async function POST(
   request: Request,
@@ -28,9 +31,26 @@ export async function POST(
   }
 
   const { id } = await context.params;
-  const body = (await request.json()) as CreateTicketMessagePayload;
-  const content = body.content?.trim();
-  const mode = body.mode || "reply";
+  let body: CreateTicketMessagePayload;
+
+  try {
+    body = (await request.json()) as CreateTicketMessagePayload;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  const requestedMode = body.mode ?? "reply";
+
+  if (typeof requestedMode !== "string" || !composerModes.has(requestedMode)) {
+    return NextResponse.json(
+      { error: 'Message mode must be "reply" or "internal".' },
+      { status: 400 },
+    );
+  }
+
+  const mode = requestedMode as ComposerMode;
+  const closeAfterReply = mode === "reply" && body.closeAfterReply === true;
 
   if (!content) {
     return NextResponse.json(
@@ -64,19 +84,23 @@ export async function POST(
       ticketId: id,
       sender: mode === "reply" ? "AGENT" : "SYSTEM",
       content: storedContent,
+      authorName: session.user.fullName,
     },
   });
 
-  await prisma.ticket.update({
-    where: {
-      id,
-    },
-    data: {
-      status: body.closeAfterReply ? "CLOSED" : "IN_PROGRESS",
-      assigneeId: ticket.assigneeId || session.user.id,
-      previewText: content.slice(0, 300),
-    },
-  });
+  // Internal notes never touch the ticket itself (BUG-09). Replies move the ticket
+  // along but keep previewText: it stays the customer's original issue (DATA-04).
+  if (mode === "reply") {
+    await prisma.ticket.update({
+      where: {
+        id,
+      },
+      data: {
+        status: closeAfterReply ? "CLOSED" : "IN_PROGRESS",
+        assigneeId: ticket.assigneeId || session.user.id,
+      },
+    });
+  }
 
   const delivery =
     mode === "reply"
@@ -92,9 +116,9 @@ export async function POST(
       summary:
         mode === "reply"
           ? delivery?.status === "SENT"
-            ? "A manual agent reply was emailed to the requester."
-            : `A manual agent reply was saved but not emailed: ${delivery?.error ?? "unknown reason"}`
-          : "An internal note was added to the ticket.",
+            ? `${session.user.fullName} emailed a reply to the requester.`
+            : `${session.user.fullName} saved a reply that was not emailed: ${delivery?.error ?? "unknown reason"}`
+          : `${session.user.fullName} added an internal note.`,
     },
   });
 

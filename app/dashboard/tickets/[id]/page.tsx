@@ -9,6 +9,19 @@ type TicketDetailPageProps = {
   }>;
 };
 
+function resolveTimeZone(timeZone: string | null | undefined) {
+  if (!timeZone) {
+    return "UTC";
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
 export default async function TicketDetailPage({
   params,
 }: TicketDetailPageProps) {
@@ -21,7 +34,7 @@ export default async function TicketDetailPage({
     redirect("/login");
   }
 
-  const [ticket, cannedResponses, users, tags] = await Promise.all([
+  const [ticket, cannedResponses, users, tags, settings] = await Promise.all([
     prisma.ticket.findFirst({
       where: {
         id,
@@ -69,6 +82,7 @@ export default async function TicketDetailPage({
             id: true,
             sender: true,
             content: true,
+            authorName: true,
             deliveryStatus: true,
             deliveryError: true,
             createdAt: true,
@@ -137,6 +151,14 @@ export default async function TicketDetailPage({
         color: true,
       },
     }),
+    prisma.workspaceSetting.findUnique({
+      where: {
+        workspaceId: session.user.workspaceId,
+      },
+      select: {
+        timezone: true,
+      },
+    }),
   ]);
 
   if (!ticket) {
@@ -185,6 +207,7 @@ export default async function TicketDetailPage({
           id: message.id,
           sender: message.sender,
           content: message.content,
+          authorName: message.authorName,
           deliveryStatus: message.deliveryStatus,
           deliveryError: message.deliveryError,
           createdAt: message.createdAt.toISOString(),
@@ -207,6 +230,7 @@ export default async function TicketDetailPage({
       }))}
       users={users}
       tags={tags}
+      timeZone={resolveTimeZone(settings?.timezone)}
     />
   );
 }

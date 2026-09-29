@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { formatTicketLabel } from "@/src/lib/canned-variables";
 import { DashboardPageHeader } from "./dashboard-page-header";
+
+export type TicketSort = "newest" | "oldest" | "updated" | "priority";
+
+export type TicketFilters = {
+  q: string;
+  status: string;
+  priority: string;
+  source: string;
+  assignee: string;
+  inbox: string;
+  tag: string;
+};
 
 type TicketItem = {
   id: string;
@@ -16,71 +29,103 @@ type TicketItem = {
   priority: string;
   createdAt: string;
   inboxName: string | null;
+  assigneeId: string | null;
   assigneeName: string | null;
   assigneeInitials: string;
   tags: string[];
 };
 
+type NamedOption = {
+  id: string;
+  name: string;
+};
+
 type TicketsClientProps = {
-  initialTickets: TicketItem[];
+  tickets: TicketItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sort: TicketSort;
+  filters: TicketFilters;
+  users: Array<{ id: string; fullName: string }>;
+  inboxes: NamedOption[];
+  tags: NamedOption[];
+  timeZone: string;
   currentUser: {
     id: string;
     fullName: string;
   };
 };
 
-type MenuName =
-  | "priority"
-  | "status"
-  | "source"
-  | "assignee"
-  | "inbox"
-  | "tag"
-  | null;
-
+type FilterKey = Exclude<keyof TicketFilters, "q">;
+type MenuName = FilterKey | null;
 type ViewMode = "list" | "grid";
+type BulkAction = "status" | "priority" | "assign" | "tag" | "delete";
 
-const priorityOptions = ["ALL", "LOW", "MEDIUM", "HIGH", "URGENT"];
-const statusOptions = ["ALL", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
-const sourceOptions = ["ALL", "WEB", "EMAIL", "MANUAL"];
+type Option = {
+  value: string;
+  label: string;
+};
 
-function formatTicketDate(date: string) {
+type ListState = TicketFilters & {
+  page: number;
+  pageSize: number;
+  sort: TicketSort;
+};
+
+const priorityValues = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+const statusValues = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
+const sourceValues = ["WEB", "EMAIL", "WHATSAPP", "SLACK", "VOICE", "MANUAL"];
+const createSourceValues = ["WEB", "EMAIL", "MANUAL"];
+const pageSizeOptions = [10, 20, 50];
+const DEFAULT_PAGE_SIZE = 20;
+
+const sortOptions: Array<{ value: TicketSort; label: string }> = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "updated", label: "Recently updated" },
+  { value: "priority", label: "Highest priority" },
+];
+
+const filterKeys: FilterKey[] = ["priority", "status", "source", "assignee", "inbox", "tag"];
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+const selectClass =
+  "h-9 rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-white outline-none transition focus:border-white disabled:opacity-60";
+
+function enumOptions(values: string[]): Option[] {
+  return [
+    { value: "", label: "All" },
+    ...values.map((value) => ({ value, label: formatTicketLabel(value) })),
+  ];
+}
+
+// Dates are formatted in the workspace time zone so server and client render the
+// same text (UI-19).
+function formatTicketDate(date: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "2-digit",
     year: "numeric",
+    timeZone,
   }).format(new Date(date));
 }
 
-function formatDetailedDate(date: string) {
+function formatDetailedDate(date: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "2-digit",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone,
   }).format(new Date(date));
-}
-
-function formatOptionLabel(value: string) {
-  if (value === "ALL") {
-    return "All";
-  }
-
-  if (value === "IN_PROGRESS") {
-    return "Awaiting Customer Reply";
-  }
-
-  return value.toLowerCase().replaceAll("_", " ");
-}
-
-function formatSource(source: string) {
-  return source.toLowerCase().replaceAll("_", " ");
 }
 
 function statusClass(status: string) {
   if (status === "OPEN") {
-    return "rounded-full border border-[#22355b] bg-[#10192d] px-2.5 py-1 text-xs font-medium capitalize text-white";
+    return "rounded-full border border-[#22355b] bg-[#10192d] px-2.5 py-1 text-xs font-medium text-white";
   }
 
   if (status === "IN_PROGRESS") {
@@ -114,21 +159,69 @@ function priorityClass(priority: string) {
   return "rounded-full bg-[#1f1f1f] px-2.5 py-1 text-xs font-medium text-white";
 }
 
+function buildQuery(state: ListState) {
+  const params = new URLSearchParams();
+
+  if (state.q) {
+    params.set("q", state.q);
+  }
+
+  for (const key of filterKeys) {
+    if (state[key]) {
+      params.set(key, state[key]);
+    }
+  }
+
+  if (state.sort !== "newest") {
+    params.set("sort", state.sort);
+  }
+
+  if (state.pageSize !== DEFAULT_PAGE_SIZE) {
+    params.set("pageSize", String(state.pageSize));
+  }
+
+  if (state.page > 1) {
+    params.set("page", String(state.page));
+  }
+
+  return params.toString();
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function pluralTickets(count: number) {
+  return `${count} ticket${count === 1 ? "" : "s"}`;
+}
+
 function TicketToolbarButton({
   label,
   value,
   isActive,
+  isExpanded,
   onClick,
 }: {
   label: string;
   value?: string;
   isActive?: boolean;
+  isExpanded?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-haspopup={isExpanded === undefined ? undefined : "true"}
+      aria-expanded={isExpanded}
       className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-3.5 text-sm font-medium transition ${
         isActive
           ? "border-white bg-white text-[#050505]"
@@ -158,31 +251,32 @@ function FilterMenu({
   onSelect,
 }: {
   label: string;
-  options: string[];
+  options: Option[];
   selectedValue: string;
   onSelect: (value: string) => void;
 }) {
   return (
-    <div className="absolute left-0 top-[calc(100%+8px)] z-20 min-w-[190px] rounded-xl border border-white/10 bg-[#0d0d0d] p-2 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
+    <div className="absolute left-0 top-[calc(100%+8px)] z-20 max-h-80 min-w-[190px] overflow-y-auto rounded-xl border border-white/10 bg-[#0d0d0d] p-2 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
       <p className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
         {label}
       </p>
       <div className="space-y-1">
         {options.map((option) => {
-          const isSelected = selectedValue === option;
+          const isSelected = selectedValue === option.value;
 
           return (
             <button
-              key={option}
+              key={option.value || "all"}
               type="button"
-              onClick={() => onSelect(option)}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+              aria-pressed={isSelected}
+              onClick={() => onSelect(option.value)}
+              className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
                 isSelected
                   ? "bg-white text-[#050505]"
                   : "text-slate-200 hover:bg-white/5"
               }`}
             >
-              <span className="capitalize">{formatOptionLabel(option)}</span>
+              <span>{option.label}</span>
               {isSelected ? <span className="text-xs">Selected</span> : null}
             </button>
           );
@@ -192,31 +286,80 @@ function FilterMenu({
   );
 }
 
+function BulkSelect({
+  id,
+  label,
+  options,
+  disabled,
+  onChoose,
+}: {
+  id: string;
+  label: string;
+  options: Option[];
+  disabled: boolean;
+  onChoose: (value: string) => void;
+}) {
+  return (
+    <>
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <select
+        id={id}
+        value=""
+        disabled={disabled}
+        onChange={(event) => {
+          if (event.target.value) {
+            onChoose(event.target.value);
+          }
+        }}
+        className={selectClass}
+      >
+        <option value="" disabled>
+          {label}
+        </option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
 function TicketActionMenu({
+  ticket,
+  users,
+  isBusy,
   onCopyId,
   onViewDetails,
   onAssignToMe,
+  onChangeStatus,
+  onReassign,
   onCloseTicket,
   onDeleteTicket,
-  isBusy,
 }: {
+  ticket: TicketItem;
+  users: TicketsClientProps["users"];
+  isBusy: boolean;
   onCopyId: () => void;
   onViewDetails: () => void;
   onAssignToMe: () => void;
+  onChangeStatus: (status: string) => void;
+  onReassign: (assigneeId: string) => void;
   onCloseTicket: () => void;
   onDeleteTicket: () => void;
-  isBusy: boolean;
 }) {
   const menuItems = [
-    { label: "Copy ticket ID", action: onCopyId, danger: false },
-    { label: "View details", action: onViewDetails, danger: false },
-    { label: "Assign to me", action: onAssignToMe, danger: false },
-    { label: "Close this ticket", action: onCloseTicket, danger: false },
-    { label: "Delete Ticket", action: onDeleteTicket, danger: true },
+    { label: "Copy ticket ID", action: onCopyId },
+    { label: "View details", action: onViewDetails },
+    { label: "Assign to me", action: onAssignToMe },
+    { label: "Close this ticket", action: onCloseTicket },
   ];
 
   return (
-    <div className="absolute right-0 top-11 z-30 min-w-[170px] rounded-xl border border-white/10 bg-[#131313] p-2 shadow-[0_18px_40px_rgba(0,0,0,0.42)]">
+    <div className="absolute right-0 top-11 z-30 w-[220px] rounded-xl border border-white/10 bg-[#131313] p-2 shadow-[0_18px_40px_rgba(0,0,0,0.42)]">
       <p className="px-2 pb-2 pt-1 text-sm font-semibold text-white">Actions</p>
       <div className="space-y-1">
         {menuItems.map((item) => (
@@ -225,75 +368,90 @@ function TicketActionMenu({
             type="button"
             disabled={isBusy}
             onClick={item.action}
-            className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition ${
-              item.danger
-                ? "text-red-300 hover:bg-red-500/10"
-                : "text-slate-200 hover:bg-white/5"
-            } disabled:cursor-not-allowed disabled:opacity-60`}
+            className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {item.label}
           </button>
         ))}
+
+        <div className="px-3 py-2">
+          <label
+            htmlFor={`ticket-${ticket.id}-status`}
+            className="block text-xs font-medium text-slate-400"
+          >
+            Change status
+          </label>
+          <select
+            id={`ticket-${ticket.id}-status`}
+            value={ticket.status}
+            disabled={isBusy}
+            onChange={(event) => onChangeStatus(event.target.value)}
+            className={`${selectClass} mt-1 w-full`}
+          >
+            {statusValues.map((status) => (
+              <option key={status} value={status}>
+                {formatTicketLabel(status)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="px-3 py-2">
+          <label
+            htmlFor={`ticket-${ticket.id}-assignee`}
+            className="block text-xs font-medium text-slate-400"
+          >
+            Reassign to
+          </label>
+          <select
+            id={`ticket-${ticket.id}-assignee`}
+            value={ticket.assigneeId ?? ""}
+            disabled={isBusy}
+            onChange={(event) => onReassign(event.target.value)}
+            className={`${selectClass} mt-1 w-full`}
+          >
+            <option value="">Unassigned</option>
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.fullName}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={onDeleteTicket}
+          className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Delete Ticket
+        </button>
       </div>
     </div>
   );
 }
 
-function mapTicketFromApi(ticket: {
-  id: string;
-  ticketNumber: number;
-  subject: string;
-  previewText: string | null;
-  requesterName: string | null;
-  requesterEmail: string | null;
-  source: string;
-  status: string;
-  priority: string;
-  createdAt: string;
-  inbox?: { name: string | null } | null;
-  assignee?: { fullName: string | null } | null;
-  ticketTags?: Array<{ tag: { name: string } }>;
-}) {
-  return {
-    id: ticket.id,
-    ticketNumber: ticket.ticketNumber,
-    subject: ticket.subject,
-    previewText: ticket.previewText,
-    requesterName: ticket.requesterName,
-    requesterEmail: ticket.requesterEmail,
-    source: ticket.source,
-    status: ticket.status,
-    priority: ticket.priority,
-    createdAt: ticket.createdAt,
-    inboxName: ticket.inbox?.name ?? "Unassigned",
-    assigneeName: ticket.assignee?.fullName ?? "Unassigned",
-    assigneeInitials: (ticket.assignee?.fullName ?? "UN")
-      .split(" ")
-      .map((part) => part[0])
-      .slice(0, 2)
-      .join(""),
-    tags: ticket.ticketTags?.map((ticketTag) => ticketTag.tag.name) ?? [],
-  } satisfies TicketItem;
-}
-
 export function TicketsClient({
-  initialTickets,
+  tickets,
+  total,
+  page,
+  pageSize,
+  sort,
+  filters,
+  users,
+  inboxes,
+  tags,
+  timeZone,
   currentUser,
 }: TicketsClientProps) {
   const router = useRouter();
-  const [tickets, setTickets] = useState(
-    [...initialTickets].sort((a, b) => b.ticketNumber - a.ticketNumber),
-  );
-  const [search, setSearch] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [sourceFilter, setSourceFilter] = useState<string>("ALL");
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("ALL");
-  const [inboxFilter, setInboxFilter] = useState<string>("ALL");
-  const [tagFilter, setTagFilter] = useState<string>("ALL");
+  const pathname = usePathname();
+  const [searchInput, setSearchInput] = useState(filters.q);
   const [view, setView] = useState<ViewMode>("list");
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
   const [ticketMenuId, setTicketMenuId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [subject, setSubject] = useState("");
   const [previewText, setPreviewText] = useState("");
@@ -302,106 +460,144 @@ export function TicketsClient({
   const [createPriority, setCreatePriority] = useState("MEDIUM");
   const [createStatus, setCreateStatus] = useState("OPEN");
   const [createSource, setCreateSource] = useState("WEB");
+  const [createError, setCreateError] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [actioningTicketId, setActioningTicketId] = useState("");
+  const [isBulkPending, setIsBulkPending] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const searchTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    function handleWindowClick() {
+    function closeMenus() {
       setOpenMenu(null);
       setTicketMenuId("");
     }
 
-    window.addEventListener("click", handleWindowClick);
-    return () => window.removeEventListener("click", handleWindowClick);
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeMenus();
+      }
+    }
+
+    window.addEventListener("click", closeMenus);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("click", closeMenus);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
-  const assigneeOptions = useMemo(
-    () => [
-      "ALL",
-      ...Array.from(
-        new Set(
-          tickets
-            .map((ticket) => ticket.assigneeName || "Unassigned")
-            .filter(Boolean),
-        ),
-      ),
-    ],
-    [tickets],
-  );
+  useEffect(() => {
+    const timer = searchTimerRef;
+    return () => window.clearTimeout(timer.current);
+  }, []);
 
-  const inboxOptions = useMemo(
-    () => [
-      "ALL",
-      ...Array.from(
-        new Set(
-          tickets.map((ticket) => ticket.inboxName || "Unassigned").filter(Boolean),
-        ),
-      ),
-    ],
-    [tickets],
-  );
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const firstItem = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastItem = Math.min(page * pageSize, total);
+  const selectedTickets = tickets.filter((ticket) => selectedIds.has(ticket.id));
+  const allSelected = tickets.length > 0 && selectedTickets.length === tickets.length;
+  const someSelected = selectedTickets.length > 0 && !allSelected;
+  const activeFilterCount =
+    filterKeys.filter((key) => filters[key]).length + (filters.q ? 1 : 0);
 
-  const tagOptions = useMemo(
-    () => [
-      "ALL",
-      ...Array.from(new Set(tickets.flatMap((ticket) => ticket.tags))).sort(),
-    ],
-    [tickets],
-  );
+  const userOptions: Option[] = users.map((user) => ({
+    value: user.id,
+    label: user.id === currentUser.id ? `${user.fullName} (you)` : user.fullName,
+  }));
+  const tagOptions: Option[] = tags.map((tag) => ({ value: tag.id, label: tag.name }));
 
-  const filteredTickets = useMemo(() => {
-    return tickets.filter((ticket) => {
-      const searchValue = search.toLowerCase();
-      const matchesSearch =
-        !searchValue ||
-        ticket.subject.toLowerCase().includes(searchValue) ||
-        ticket.previewText?.toLowerCase().includes(searchValue) ||
-        ticket.requesterName?.toLowerCase().includes(searchValue) ||
-        ticket.requesterEmail?.toLowerCase().includes(searchValue) ||
-        ticket.ticketNumber.toString().includes(searchValue);
+  const filterMenus: Array<{ key: FilterKey; label: string; options: Option[] }> = [
+    { key: "priority", label: "Priority", options: enumOptions(priorityValues) },
+    { key: "status", label: "Status", options: enumOptions(statusValues) },
+    // "State" in the SRS means the channel a ticket arrived through (UI-33).
+    { key: "source", label: "Channel", options: enumOptions(sourceValues) },
+    {
+      key: "assignee",
+      label: "Assignee",
+      options: [
+        { value: "", label: "All" },
+        { value: "unassigned", label: "Unassigned" },
+        ...userOptions,
+      ],
+    },
+    {
+      key: "inbox",
+      label: "Inbox",
+      options: [
+        { value: "", label: "All" },
+        { value: "unassigned", label: "No inbox" },
+        ...inboxes.map((inbox) => ({ value: inbox.id, label: inbox.name })),
+      ],
+    },
+    {
+      key: "tag",
+      label: "Tags",
+      options: [{ value: "", label: "All" }, ...tagOptions],
+    },
+  ];
 
-      const matchesPriority =
-        priorityFilter === "ALL" || ticket.priority === priorityFilter;
-      const matchesStatus =
-        statusFilter === "ALL" || ticket.status === statusFilter;
-      const matchesSource =
-        sourceFilter === "ALL" || ticket.source === sourceFilter;
-      const matchesAssignee =
-        assigneeFilter === "ALL" ||
-        (ticket.assigneeName || "Unassigned") === assigneeFilter;
-      const matchesInbox =
-        inboxFilter === "ALL" ||
-        (ticket.inboxName || "Unassigned") === inboxFilter;
-      const matchesTag =
-        tagFilter === "ALL" || ticket.tags.includes(tagFilter);
+  function navigate(changes: Partial<ListState>) {
+    const next: ListState = { ...filters, sort, pageSize, page: 1, ...changes };
+    const query = buildQuery(next);
 
-      return (
-        matchesSearch &&
-        matchesPriority &&
-        matchesStatus &&
-        matchesSource &&
-        matchesAssignee &&
-        matchesInbox &&
-        matchesTag
-      );
+    setSelectedIds(new Set());
+    setOpenMenu(null);
+    setTicketMenuId("");
+    startTransition(() => {
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     });
-  }, [
-    tickets,
-    search,
-    priorityFilter,
-    statusFilter,
-    sourceFilter,
-    assigneeFilter,
-    inboxFilter,
-    tagFilter,
-  ]);
+  }
 
-  async function patchTicket(
-    ticketId: string,
-    payload: Record<string, unknown>,
-  ) {
+  function handleSearchChange(value: string) {
+    setSearchInput(value);
+    window.clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = window.setTimeout(() => {
+      navigate({ q: value.trim() });
+    }, 350);
+  }
+
+  function clearFilters() {
+    window.clearTimeout(searchTimerRef.current);
+    setSearchInput("");
+    navigate({
+      q: "",
+      status: "",
+      priority: "",
+      source: "",
+      assignee: "",
+      inbox: "",
+      tag: "",
+    });
+  }
+
+  function toggleSelected(ticketId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(ticketId)) {
+        next.delete(ticketId);
+      } else {
+        next.add(ticketId);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(tickets.map((ticket) => ticket.id)));
+  }
+
+  function refreshList() {
+    startTransition(() => {
+      router.refresh();
+    });
+  }
+
+  async function patchTicket(ticketId: string, payload: Record<string, unknown>) {
     const response = await fetch(`/api/tickets/${ticketId}`, {
       method: "PATCH",
       headers: {
@@ -410,167 +606,304 @@ export function TicketsClient({
       body: JSON.stringify(payload),
     });
 
-    const data = (await response.json()) as {
-      error?: string;
-      ticket?: Parameters<typeof mapTicketFromApi>[0];
-    };
+    const data = await readJson<{ error?: string }>(response);
 
-    if (!response.ok || !data.ticket) {
+    if (!response.ok) {
       throw new Error(data.error ?? "Unable to update the ticket.");
     }
-
-    const nextTicket = mapTicketFromApi(data.ticket);
-
-    setTickets((current) =>
-      current.map((ticket) => (ticket.id === ticketId ? nextTicket : ticket)),
-    );
-
-    return nextTicket;
   }
 
-  async function handleTicketAction(
-    ticket: TicketItem,
-    action: "copy" | "view" | "assign" | "close" | "delete",
-  ) {
+  async function runRowAction(ticket: TicketItem, work: () => Promise<string>) {
     setError("");
     setSuccess("");
     setTicketMenuId("");
-
-    if (action === "view") {
-      router.push(`/dashboard/tickets/${ticket.id}`);
-      return;
-    }
-
-    if (action === "copy") {
-      try {
-        await navigator.clipboard.writeText(`#${ticket.ticketNumber}`);
-        setSuccess(`Copied #${ticket.ticketNumber} to your clipboard.`);
-      } catch {
-        setError("Unable to copy the ticket ID right now.");
-      }
-      return;
-    }
-
     setActioningTicketId(ticket.id);
 
     try {
-      if (action === "assign") {
-        const updatedTicket = await patchTicket(ticket.id, { assignToMe: true });
-        setSuccess(`Ticket #${updatedTicket.ticketNumber} assigned to you.`);
-      }
-
-      if (action === "close") {
-        const updatedTicket = await patchTicket(ticket.id, { status: "CLOSED" });
-        setSuccess(`Ticket #${updatedTicket.ticketNumber} closed successfully.`);
-      }
-
-      if (action === "delete") {
-        const shouldDelete = window.confirm(
-          `Delete ticket #${ticket.ticketNumber}? This cannot be undone.`,
-        );
-
-        if (!shouldDelete) {
-          setActioningTicketId("");
-          return;
-        }
-
-        const response = await fetch(`/api/tickets/${ticket.id}`, {
-          method: "DELETE",
-        });
-
-        const data = (await response.json()) as { error?: string };
-
-        if (!response.ok) {
-          throw new Error(data.error ?? "Unable to delete this ticket.");
-        }
-
-        setTickets((current) => current.filter((item) => item.id !== ticket.id));
-        setSuccess(`Ticket #${ticket.ticketNumber} deleted successfully.`);
-      }
+      setSuccess(await work());
+      refreshList();
     } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "Unable to process that ticket action.",
-      );
+      setError(errorMessage(actionError, "Unable to process that ticket action."));
     } finally {
       setActioningTicketId("");
     }
   }
 
+  async function handleCopyId(ticket: TicketItem) {
+    setError("");
+    setSuccess("");
+    setTicketMenuId("");
+
+    try {
+      await navigator.clipboard.writeText(`#${ticket.ticketNumber}`);
+      setSuccess(`Copied #${ticket.ticketNumber} to your clipboard.`);
+    } catch {
+      setError("Unable to copy the ticket ID right now.");
+    }
+  }
+
+  function handleDeleteTicket(ticket: TicketItem) {
+    const shouldDelete = window.confirm(
+      `Delete ticket #${ticket.ticketNumber}? This cannot be undone.`,
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    void runRowAction(ticket, async () => {
+      const response = await fetch(`/api/tickets/${ticket.id}`, {
+        method: "DELETE",
+      });
+      const data = await readJson<{ error?: string }>(response);
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Unable to delete this ticket.");
+      }
+
+      return `Ticket #${ticket.ticketNumber} deleted successfully.`;
+    });
+  }
+
+  async function runBulkAction(action: BulkAction, value?: string) {
+    const ids = selectedTickets.map((ticket) => ticket.id);
+
+    if (ids.length === 0 || isBulkPending) {
+      return;
+    }
+
+    if (
+      action === "delete" &&
+      !window.confirm(`Delete ${pluralTickets(ids.length)}? This cannot be undone.`)
+    ) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setIsBulkPending(true);
+
+    try {
+      const response = await fetch("/api/tickets/bulk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids, action, value }),
+      });
+      const data = await readJson<{ error?: string; updated?: number }>(response);
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Unable to apply that bulk action.");
+      }
+
+      const updated = data.updated ?? 0;
+      const unchanged = ids.length - updated;
+
+      setSelectedIds(new Set());
+      setSuccess(
+        action === "delete"
+          ? `${pluralTickets(updated)} deleted.`
+          : `${pluralTickets(updated)} updated${
+              unchanged > 0 ? ` (${unchanged} already had that value)` : ""
+            }.`,
+      );
+      refreshList();
+    } catch (bulkError) {
+      setError(errorMessage(bulkError, "Unable to apply that bulk action."));
+    } finally {
+      setIsBulkPending(false);
+    }
+  }
+
+  function closeCreateModal() {
+    if (isCreating) {
+      return;
+    }
+
+    setShowCreateModal(false);
+    setCreateError("");
+  }
+
   async function handleCreateTicket() {
+    if (isCreating) {
+      return;
+    }
+
+    setCreateError("");
     setError("");
     setSuccess("");
 
     if (!subject.trim()) {
-      setError("Please enter a subject for the ticket.");
+      setCreateError("Please enter a subject for the ticket.");
       return;
     }
 
-    const response = await fetch("/api/tickets", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        subject,
-        previewText,
-        requesterName,
-        requesterEmail,
-        priority: createPriority,
-        status: createStatus,
-        source: createSource,
-      }),
-    });
-
-    const data = (await response.json()) as {
-      error?: string;
-      ticket?: Parameters<typeof mapTicketFromApi>[0];
-    };
-
-    if (!response.ok || !data.ticket) {
-      setError(data.error ?? "Unable to create ticket right now.");
+    if (requesterEmail.trim() && !EMAIL_PATTERN.test(requesterEmail.trim())) {
+      setCreateError("Enter a valid requester email address, or leave it empty.");
       return;
     }
 
-    const newTicket = mapTicketFromApi(data.ticket);
+    setIsCreating(true);
 
-    setTickets((current) =>
-      [...current, newTicket].sort((a, b) => b.ticketNumber - a.ticketNumber),
+    try {
+      const response = await fetch("/api/tickets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject,
+          previewText,
+          requesterName,
+          requesterEmail,
+          priority: createPriority,
+          status: createStatus,
+          source: createSource,
+        }),
+      });
+
+      const data = await readJson<{
+        error?: string;
+        ticket?: { ticketNumber: number } | null;
+      }>(response);
+
+      if (!response.ok || !data.ticket) {
+        setCreateError(data.error ?? "Unable to create the ticket right now.");
+        return;
+      }
+
+      setShowCreateModal(false);
+      setSubject("");
+      setPreviewText("");
+      setRequesterName("");
+      setRequesterEmail("");
+      setCreatePriority("MEDIUM");
+      setCreateStatus("OPEN");
+      setCreateSource("WEB");
+      setSuccess(`Ticket #${data.ticket.ticketNumber} created successfully.`);
+      refreshList();
+    } catch {
+      setCreateError("Something went wrong while creating the ticket. Please try again.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  function renderSelectBox(ticket: TicketItem) {
+    return (
+      <input
+        type="checkbox"
+        checked={selectedIds.has(ticket.id)}
+        onChange={() => toggleSelected(ticket.id)}
+        onClick={(event) => event.stopPropagation()}
+        aria-label={`Select ticket #${ticket.ticketNumber}`}
+        className="h-4 w-4 cursor-pointer accent-white"
+      />
     );
-    setShowCreateModal(false);
-    setSubject("");
-    setPreviewText("");
-    setRequesterName("");
-    setRequesterEmail("");
-    setCreatePriority("MEDIUM");
-    setCreateStatus("OPEN");
-    setCreateSource("WEB");
-    setSuccess(`Ticket #${newTicket.ticketNumber} created successfully.`);
-
-    startTransition(() => {
-      router.refresh();
-    });
   }
 
-  function clearFilters() {
-    setSearch("");
-    setPriorityFilter("ALL");
-    setStatusFilter("ALL");
-    setSourceFilter("ALL");
-    setAssigneeFilter("ALL");
-    setInboxFilter("ALL");
-    setTagFilter("ALL");
-    setOpenMenu(null);
+  function renderRowMenu(ticket: TicketItem) {
+    const isBusy = actioningTicketId === ticket.id;
+
+    return (
+      <div className="relative" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          aria-label={`Actions for ticket #${ticket.ticketNumber}`}
+          aria-haspopup="true"
+          aria-expanded={ticketMenuId === ticket.id}
+          disabled={isBusy}
+          onClick={() => {
+            setOpenMenu(null);
+            setTicketMenuId((current) => (current === ticket.id ? "" : ticket.id));
+          }}
+          className="rounded-lg border border-white/10 bg-[#111111] px-3 py-2 text-lg leading-none text-slate-400 transition hover:bg-[#1a1a1a] disabled:opacity-60"
+        >
+          {isBusy ? "…" : "..."}
+        </button>
+
+        {ticketMenuId === ticket.id ? (
+          <TicketActionMenu
+            ticket={ticket}
+            users={users}
+            isBusy={isBusy}
+            onCopyId={() => void handleCopyId(ticket)}
+            onViewDetails={() => router.push(`/dashboard/tickets/${ticket.id}`)}
+            onAssignToMe={() =>
+              void runRowAction(ticket, async () => {
+                await patchTicket(ticket.id, { assignToMe: true });
+                return `Ticket #${ticket.ticketNumber} assigned to you.`;
+              })
+            }
+            onChangeStatus={(status) =>
+              void runRowAction(ticket, async () => {
+                await patchTicket(ticket.id, { status });
+                return `Ticket #${ticket.ticketNumber} is now ${formatTicketLabel(status)}.`;
+              })
+            }
+            onReassign={(assigneeId) =>
+              void runRowAction(ticket, async () => {
+                await patchTicket(ticket.id, { assigneeId: assigneeId || null });
+                const assignee = users.find((user) => user.id === assigneeId);
+                return assignee
+                  ? `Ticket #${ticket.ticketNumber} assigned to ${assignee.fullName}.`
+                  : `Ticket #${ticket.ticketNumber} is now unassigned.`;
+              })
+            }
+            onCloseTicket={() =>
+              void runRowAction(ticket, async () => {
+                await patchTicket(ticket.id, { status: "CLOSED" });
+                return `Ticket #${ticket.ticketNumber} closed successfully.`;
+              })
+            }
+            onDeleteTicket={() => handleDeleteTicket(ticket)}
+          />
+        ) : null}
+      </div>
+    );
   }
 
-  const hasActiveFilters =
-    priorityFilter !== "ALL" ||
-    statusFilter !== "ALL" ||
-    sourceFilter !== "ALL" ||
-    assigneeFilter !== "ALL" ||
-    inboxFilter !== "ALL" ||
-    tagFilter !== "ALL";
+  function renderBadges(ticket: TicketItem) {
+    return (
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className={priorityClass(ticket.priority)}>
+          {formatTicketLabel(ticket.priority)}
+        </span>
+        <span className={statusClass(ticket.status)}>
+          {formatTicketLabel(ticket.status)}
+        </span>
+        {ticket.tags.map((tag) => (
+          <span
+            key={`${ticket.id}-${tag}`}
+            className="rounded-full border border-white/10 bg-[#151515] px-2.5 py-1 text-xs font-medium text-slate-300"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  function renderRequester(ticket: TicketItem) {
+    return (
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1b1b1b] text-xs font-semibold text-white">
+          {(ticket.requesterName ?? "U").charAt(0).toUpperCase()}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-white">
+            {ticket.requesterName ?? "Unknown requester"}
+          </p>
+          <p className="truncate text-xs text-slate-400">
+            {ticket.requesterEmail ?? "No email added"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const isBusyList = isPending || isBulkPending;
 
   return (
     <div className="px-5 py-4 md:px-6">
@@ -578,228 +911,257 @@ export function TicketsClient({
         title="Tickets"
         actionLabel="Create Ticket"
         actionStyle="light"
-        onActionClick={() => setShowCreateModal(true)}
+        onActionClick={() => {
+          setCreateError("");
+          setShowCreateModal(true);
+        }}
       />
 
       <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-1 flex-wrap gap-2.5">
+          <label htmlFor="ticket-search" className="sr-only">
+            Search tickets
+          </label>
           <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="h-9 min-w-[220px] rounded-lg border border-white/10 bg-[#0d0d0d] px-4 text-sm text-white outline-none transition focus:border-white"
+            id="ticket-search"
+            type="search"
+            placeholder="Search subject, ticket #, customer..."
+            value={searchInput}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                window.clearTimeout(searchTimerRef.current);
+                navigate({ q: searchInput.trim() });
+              }
+            }}
+            className="h-9 w-full rounded-lg border border-white/10 bg-[#0d0d0d] px-4 text-sm text-white outline-none transition focus:border-white sm:w-auto sm:min-w-[260px]"
           />
 
-          {[
-            {
-              key: "priority" as const,
-              label: "Priority",
-              value: priorityFilter,
-              options: priorityOptions,
-              setValue: setPriorityFilter,
-            },
-            {
-              key: "status" as const,
-              label: "Status",
-              value: statusFilter,
-              options: statusOptions,
-              setValue: setStatusFilter,
-            },
-            {
-              key: "source" as const,
-              label: "State",
-              value: sourceFilter,
-              options: sourceOptions,
-              setValue: setSourceFilter,
-            },
-            {
-              key: "assignee" as const,
-              label: "Assignee",
-              value: assigneeFilter,
-              options: assigneeOptions,
-              setValue: setAssigneeFilter,
-            },
-            {
-              key: "inbox" as const,
-              label: "Inbox",
-              value: inboxFilter,
-              options: inboxOptions,
-              setValue: setInboxFilter,
-            },
-            {
-              key: "tag" as const,
-              label: "Tags",
-              value: tagFilter,
-              options: tagOptions,
-              setValue: setTagFilter,
-            },
-          ].map((item) => (
-            <div key={item.key} className="relative">
-              <TicketToolbarButton
-                label={item.label}
-                value={formatOptionLabel(item.value)}
-                isActive={openMenu === item.key || item.value !== "ALL"}
-                onClick={() =>
-                  setOpenMenu((current) => (current === item.key ? null : item.key))
-                }
-              />
-              {openMenu === item.key ? (
-                <FilterMenu
+          {filterMenus.map((item) => {
+            const value = filters[item.key];
+            const selectedLabel =
+              item.options.find((option) => option.value === value)?.label ?? "All";
+
+            return (
+              // Clicks inside the chip must not reach the window listener that
+              // closes menus, or the menu closes in the same click (BUG-01).
+              <div
+                key={item.key}
+                className="relative"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <TicketToolbarButton
                   label={item.label}
-                  options={item.options}
-                  selectedValue={item.value}
-                  onSelect={(value) => {
-                    item.setValue(value);
-                    setOpenMenu(null);
+                  value={selectedLabel}
+                  isActive={openMenu === item.key || value !== ""}
+                  isExpanded={openMenu === item.key}
+                  onClick={() => {
+                    setTicketMenuId("");
+                    setOpenMenu((current) => (current === item.key ? null : item.key));
                   }}
                 />
-              ) : null}
-            </div>
-          ))}
+                {openMenu === item.key ? (
+                  <FilterMenu
+                    label={item.label}
+                    options={item.options}
+                    selectedValue={value}
+                    onSelect={(nextValue) => navigate({ [item.key]: nextValue })}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
         </div>
 
         <div className="flex flex-wrap gap-2.5 xl:justify-end">
-          <TicketToolbarButton
-            label="Filter"
-            value={`${filteredTickets.length}`}
-            isActive={hasActiveFilters}
-            onClick={clearFilters}
-          />
+          {activeFilterCount > 0 ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-white/10 bg-[#111111] px-3.5 text-sm font-medium text-white transition hover:bg-[#191919]"
+            >
+              Clear filters ({activeFilterCount})
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            onClick={() => setView("grid")}
-            className={`inline-flex h-9 items-center justify-center rounded-lg border px-3.5 text-sm font-medium transition ${
-              view === "grid"
-                ? "border-white bg-white text-[#050505]"
-                : "border-white/10 bg-[#111111] text-white hover:bg-[#191919]"
-            }`}
-          >
-            Grid
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("list")}
-            className={`inline-flex h-9 items-center justify-center rounded-lg border px-3.5 text-sm font-medium transition ${
-              view === "list"
-                ? "border-white bg-white text-[#050505]"
-                : "border-white/10 bg-[#111111] text-white hover:bg-[#191919]"
-            }`}
-          >
-            List
-          </button>
+          {(["grid", "list"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={view === mode}
+              onClick={() => setView(mode)}
+              className={`inline-flex h-9 items-center justify-center rounded-lg border px-3.5 text-sm font-medium capitalize transition ${
+                view === mode
+                  ? "border-white bg-white text-[#050505]"
+                  : "border-white/10 bg-[#111111] text-white hover:bg-[#191919]"
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
         </div>
       </div>
 
       {error ? (
-        <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <p
+          role="alert"
+          className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+        >
           {error}
         </p>
       ) : null}
 
       {success ? (
-        <p className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+        <p
+          role="status"
+          className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
+        >
           {success}
         </p>
       ) : null}
 
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
+        <label className="inline-flex cursor-pointer items-center gap-3">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(element) => {
+              if (element) {
+                element.indeterminate = someSelected;
+              }
+            }}
+            disabled={tickets.length === 0}
+            onChange={toggleSelectAll}
+            className="h-4 w-4 cursor-pointer accent-white"
+          />
+          Select all on this page
+        </label>
+
+        <div className="flex items-center gap-3">
+          <label htmlFor="ticket-sort">Sort by</label>
+          <select
+            id="ticket-sort"
+            value={sort}
+            onChange={(event) => navigate({ sort: event.target.value as TicketSort })}
+            className={selectClass}
+          >
+            {sortOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {selectedTickets.length > 0 ? (
+        <div
+          role="region"
+          aria-label="Bulk actions"
+          className="mt-4 flex flex-wrap items-center gap-2.5 rounded-xl border border-white/15 bg-[#0d0d0d] px-4 py-3"
+        >
+          <span className="mr-1 text-sm font-semibold text-white">
+            {selectedTickets.length} selected
+          </span>
+          <BulkSelect
+            id="bulk-status"
+            label="Set status"
+            options={statusValues.map((value) => ({ value, label: formatTicketLabel(value) }))}
+            disabled={isBulkPending}
+            onChoose={(value) => void runBulkAction("status", value)}
+          />
+          <BulkSelect
+            id="bulk-priority"
+            label="Set priority"
+            options={priorityValues.map((value) => ({ value, label: formatTicketLabel(value) }))}
+            disabled={isBulkPending}
+            onChoose={(value) => void runBulkAction("priority", value)}
+          />
+          <BulkSelect
+            id="bulk-assign"
+            label="Assign to"
+            options={[{ value: "unassigned", label: "Unassigned" }, ...userOptions]}
+            disabled={isBulkPending}
+            onChoose={(value) => void runBulkAction("assign", value)}
+          />
+          {tagOptions.length > 0 ? (
+            <BulkSelect
+              id="bulk-tag"
+              label="Add tag"
+              options={tagOptions}
+              disabled={isBulkPending}
+              onChoose={(value) => void runBulkAction("tag", value)}
+            />
+          ) : null}
+          <button
+            type="button"
+            disabled={isBulkPending}
+            onClick={() => void runBulkAction("delete")}
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-red-500/20 bg-red-500/10 px-3.5 text-sm font-medium text-red-200 transition hover:bg-red-500/15 disabled:opacity-60"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            disabled={isBulkPending}
+            onClick={() => setSelectedIds(new Set())}
+            className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm text-slate-300 transition hover:text-white disabled:opacity-60"
+          >
+            Clear selection
+          </button>
+          {isBulkPending ? (
+            <span role="status" className="text-sm text-slate-400">
+              Applying...
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div
-        className={`mt-5 ${
+        aria-busy={isBusyList}
+        className={`mt-5 transition-opacity ${isBusyList ? "opacity-60" : ""} ${
           view === "grid" ? "grid gap-4 lg:grid-cols-2" : "space-y-3"
         }`}
       >
-        {filteredTickets.map((ticket) => {
-          const isBusy = actioningTicketId === ticket.id;
-
-          return view === "grid" ? (
+        {tickets.map((ticket) =>
+          view === "grid" ? (
             <article
               key={ticket.id}
               onClick={() => router.push(`/dashboard/tickets/${ticket.id}`)}
-              className="relative cursor-pointer rounded-2xl border border-white/10 bg-[#080808] p-5 transition hover:border-white/20 hover:bg-[#0d0d0d]"
+              className={`relative min-w-0 cursor-pointer rounded-2xl border bg-[#080808] p-5 transition hover:border-white/20 hover:bg-[#0d0d0d] ${
+                selectedIds.has(ticket.id) ? "border-white/40" : "border-white/10"
+              }`}
             >
               <div className="flex items-start justify-between gap-4">
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 text-xs text-slate-300">
+                    {renderSelectBox(ticket)}
                     <span className="font-semibold text-white">
                       #{ticket.ticketNumber}
                     </span>
                     <span className="rounded-lg border border-white/10 bg-[#111111] px-2 py-0.5 text-[11px] text-white">
-                      {formatSource(ticket.source)}
+                      {formatTicketLabel(ticket.source)}
                     </span>
                   </div>
-                  <h2 className="mt-3 text-lg font-semibold text-white">
+                  <h2 className="mt-3 break-words text-lg font-semibold text-white">
                     {ticket.subject}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 line-clamp-2 break-words text-sm text-slate-400">
                     {ticket.previewText ?? "No preview available"}
                   </p>
                 </div>
 
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setTicketMenuId((current) =>
-                        current === ticket.id ? "" : ticket.id,
-                      );
-                    }}
-                    className="rounded-lg border border-white/10 bg-[#111111] px-3 py-2 text-lg text-slate-400 transition hover:bg-[#1a1a1a]"
-                  >
-                    ...
-                  </button>
-
-                  {ticketMenuId === ticket.id ? (
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <TicketActionMenu
-                        isBusy={isBusy}
-                        onCopyId={() => void handleTicketAction(ticket, "copy")}
-                        onViewDetails={() => void handleTicketAction(ticket, "view")}
-                        onAssignToMe={() => void handleTicketAction(ticket, "assign")}
-                        onCloseTicket={() => void handleTicketAction(ticket, "close")}
-                        onDeleteTicket={() => void handleTicketAction(ticket, "delete")}
-                      />
-                    </div>
-                  ) : null}
-                </div>
+                {renderRowMenu(ticket)}
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className={priorityClass(ticket.priority)}>
-                  {formatOptionLabel(ticket.priority)}
-                </span>
-                <span className={statusClass(ticket.status)}>
-                  {formatOptionLabel(ticket.status)}
-                </span>
-                {ticket.tags.map((tag) => (
-                  <span
-                    key={`${ticket.id}-${tag}`}
-                    className="rounded-full border border-white/10 bg-[#151515] px-2.5 py-1 text-xs font-medium text-slate-300"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
+              {renderBadges(ticket)}
 
-              <div className="mt-5 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1b1b1b] text-xs font-semibold text-white">
-                    {(ticket.requesterName ?? "U").charAt(0).toUpperCase()}
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-white">
-                      {ticket.requesterName ?? "Unknown requester"}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      {ticket.requesterEmail ?? "No email added"}
-                    </p>
-                  </div>
-                </div>
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+                {renderRequester(ticket)}
 
                 <div className="text-right">
                   <p className="text-xs text-slate-400">
-                    {formatTicketDate(ticket.createdAt)}
+                    {formatTicketDate(ticket.createdAt, timeZone)}
                   </p>
                   <p className="mt-1 text-sm font-medium text-white">
                     {ticket.assigneeName ?? "Unassigned"}
@@ -811,95 +1173,44 @@ export function TicketsClient({
             <article
               key={ticket.id}
               onClick={() => router.push(`/dashboard/tickets/${ticket.id}`)}
-              className="relative cursor-pointer rounded-2xl border border-white/10 bg-[#080808] transition hover:border-white/20 hover:bg-[#0d0d0d]"
+              className={`relative min-w-0 cursor-pointer rounded-2xl border bg-[#080808] transition hover:border-white/20 hover:bg-[#0d0d0d] ${
+                selectedIds.has(ticket.id) ? "border-white/40" : "border-white/10"
+              }`}
             >
               <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3 text-sm text-slate-300">
-                    <span className="h-4 w-4 rounded border border-white/20" />
+                    {renderSelectBox(ticket)}
                     <span className="font-semibold text-white">
                       #{ticket.ticketNumber}
                     </span>
                     <span className="rounded-lg border border-white/10 bg-[#111111] px-2 py-0.5 text-[11px] text-white">
-                      {formatSource(ticket.source)}
+                      {formatTicketLabel(ticket.source)}
                     </span>
                   </div>
 
                   <div className="mt-3 space-y-1">
-                    <h2 className="text-lg font-semibold text-white">
+                    <h2 className="break-words text-lg font-semibold text-white">
                       {ticket.subject}
                     </h2>
-                    <p className="text-sm text-slate-400">
+                    <p className="line-clamp-2 break-words text-sm text-slate-400">
                       {ticket.previewText ?? "No preview available"}
                     </p>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <span className={priorityClass(ticket.priority)}>
-                      {formatOptionLabel(ticket.priority)}
-                    </span>
-                    <span className={statusClass(ticket.status)}>
-                      {formatOptionLabel(ticket.status)}
-                    </span>
-                    {ticket.tags.map((tag) => (
-                      <span
-                        key={`${ticket.id}-${tag}`}
-                        className="rounded-full border border-white/10 bg-[#151515] px-2.5 py-1 text-xs font-medium text-slate-300"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+                  {renderBadges(ticket)}
 
-                  <div className="mt-4 flex items-center gap-3">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1b1b1b] text-xs font-semibold text-white">
-                      {(ticket.requesterName ?? "U").charAt(0).toUpperCase()}
-                    </span>
-                    <div>
-                      <p className="text-sm text-white">
-                        {ticket.requesterName ?? "Unknown requester"}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {ticket.requesterEmail ?? "No email added"}
-                      </p>
-                    </div>
-                  </div>
+                  <div className="mt-4">{renderRequester(ticket)}</div>
                 </div>
 
-                <div className="flex min-w-[210px] flex-col items-start gap-16 text-sm lg:items-end">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setTicketMenuId((current) =>
-                          current === ticket.id ? "" : ticket.id,
-                        );
-                      }}
-                      className="rounded-lg border border-white/10 bg-[#111111] px-3 py-2 text-lg text-slate-400 transition hover:bg-[#1a1a1a]"
-                    >
-                      ...
-                    </button>
-
-                    {ticketMenuId === ticket.id ? (
-                      <div onClick={(event) => event.stopPropagation()}>
-                        <TicketActionMenu
-                          isBusy={isBusy}
-                          onCopyId={() => void handleTicketAction(ticket, "copy")}
-                          onViewDetails={() => void handleTicketAction(ticket, "view")}
-                          onAssignToMe={() => void handleTicketAction(ticket, "assign")}
-                          onCloseTicket={() => void handleTicketAction(ticket, "close")}
-                          onDeleteTicket={() => void handleTicketAction(ticket, "delete")}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
+                <div className="flex flex-row-reverse items-start justify-between gap-4 text-sm lg:min-w-[210px] lg:flex-col lg:items-end lg:gap-16">
+                  {renderRowMenu(ticket)}
 
                   <div className="space-y-3 text-left lg:text-right">
                     <p className="text-slate-400">
-                      {formatDetailedDate(ticket.createdAt)}
+                      {formatDetailedDate(ticket.createdAt, timeZone)}
                     </p>
-                    <div className="flex items-center gap-3 lg:justify-end">
+                    <div className="flex flex-wrap items-center gap-3 lg:justify-end">
                       <span className="text-slate-400">Assigned to:</span>
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1f1f1f] text-xs font-semibold text-white">
                         {ticket.assigneeInitials}
@@ -912,40 +1223,60 @@ export function TicketsClient({
                 </div>
               </div>
             </article>
-          );
-        })}
+          ),
+        )}
 
-        {filteredTickets.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-[#080808] p-10 text-center text-sm text-slate-400">
-            No tickets match the current search or filters.
+        {tickets.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-white/10 bg-[#080808] p-10 text-center text-sm text-slate-400 lg:col-span-2">
+            {activeFilterCount > 0
+              ? "No tickets match the current search or filters."
+              : "No tickets yet. Create one to get started."}
           </div>
         ) : null}
       </div>
 
       <div className="mt-5 flex flex-col gap-4 text-sm text-slate-300 xl:flex-row xl:items-center xl:justify-between">
-        <p>
-          Showing {filteredTickets.length} ticket
-          {filteredTickets.length === 1 ? "" : "s"} in {view} view.
+        <p aria-live="polite">
+          Showing {firstItem}–{lastItem} of {pluralTickets(total)}
         </p>
 
         <div className="flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-3">
-            <span>Rows per page</span>
-            <div className="inline-flex h-9 items-center rounded-lg border border-white/10 bg-[#111111] px-4 text-white">
-              20
-            </div>
+            <label htmlFor="rows-per-page">Rows per page</label>
+            <select
+              id="rows-per-page"
+              value={pageSize}
+              onChange={(event) => navigate({ pageSize: Number(event.target.value) })}
+              className={selectClass}
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="font-medium text-white">Page 1 of 1</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-medium text-white">
+              Page {page} of {pageCount}
+            </span>
             <div className="flex items-center gap-2">
-              {["<<", "<", ">", ">>"].map((item) => (
+              {[
+                { label: "«", ariaLabel: "First page", target: 1, disabled: page <= 1 },
+                { label: "‹", ariaLabel: "Previous page", target: page - 1, disabled: page <= 1 },
+                { label: "›", ariaLabel: "Next page", target: page + 1, disabled: page >= pageCount },
+                { label: "»", ariaLabel: "Last page", target: pageCount, disabled: page >= pageCount },
+              ].map((item) => (
                 <button
-                  key={item}
+                  key={item.ariaLabel}
                   type="button"
-                  className="inline-flex h-9 min-w-9 items-center justify-center rounded-lg border border-white/10 bg-[#111111] px-3 text-xs text-slate-300"
+                  aria-label={item.ariaLabel}
+                  disabled={item.disabled || isPending}
+                  onClick={() => navigate({ page: item.target })}
+                  className="inline-flex h-9 min-w-9 items-center justify-center rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-slate-300 transition hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {item}
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -954,106 +1285,177 @@ export function TicketsClient({
       </div>
 
       {showCreateModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4">
-          <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0b0b0b] p-6">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-6"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              closeCreateModal();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-ticket-title"
+            className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0b0b0b] p-6"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-400">New Ticket</p>
-                <h2 className="heading-font mt-1 text-2xl font-semibold text-white">
+                <h2
+                  id="create-ticket-title"
+                  className="heading-font mt-1 text-2xl font-semibold text-white"
+                >
                   Create a support ticket
                 </h2>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="rounded-lg border border-white/10 px-3 py-2 text-sm text-white"
+                disabled={isCreating}
+                onClick={closeCreateModal}
+                className="rounded-lg border border-white/10 px-3 py-2 text-sm text-white disabled:opacity-60"
               >
                 Close
               </button>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <input
-                type="text"
-                placeholder="Ticket subject"
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-                className="rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white md:col-span-2"
-              />
-              <input
-                type="text"
-                placeholder="Requester name"
-                value={requesterName}
-                onChange={(event) => setRequesterName(event.target.value)}
-                className="rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
-              />
-              <input
-                type="email"
-                placeholder="Requester email"
-                value={requesterEmail}
-                onChange={(event) => setRequesterEmail(event.target.value)}
-                className="rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
-              />
-              <textarea
-                placeholder="Ticket preview or details"
-                value={previewText}
-                onChange={(event) => setPreviewText(event.target.value)}
-                className="min-h-[110px] rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white md:col-span-2"
-              />
-              <select
-                value={createPriority}
-                onChange={(event) => setCreatePriority(event.target.value)}
-                className="rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
-              <select
-                value={createStatus}
-                onChange={(event) => setCreateStatus(event.target.value)}
-                className="rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none"
-              >
-                <option value="OPEN">Open</option>
-                <option value="IN_PROGRESS">In Progress</option>
-                <option value="RESOLVED">Resolved</option>
-                <option value="CLOSED">Closed</option>
-              </select>
-              <select
-                value={createSource}
-                onChange={(event) => setCreateSource(event.target.value)}
-                className="rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none md:col-span-2"
-              >
-                <option value="WEB">Web</option>
-                <option value="EMAIL">Email</option>
-                <option value="MANUAL">Manual</option>
-              </select>
-            </div>
+            <form
+              className="mt-6 grid gap-4 md:grid-cols-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleCreateTicket();
+              }}
+            >
+              <div className="md:col-span-2">
+                <label htmlFor="create-ticket-subject" className="mb-2 block text-sm font-medium text-white">
+                  Subject
+                </label>
+                <input
+                  id="create-ticket-subject"
+                  type="text"
+                  required
+                  maxLength={200}
+                  placeholder="What does the customer need help with?"
+                  value={subject}
+                  onChange={(event) => setSubject(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="create-ticket-name" className="mb-2 block text-sm font-medium text-white">
+                  Requester name
+                </label>
+                <input
+                  id="create-ticket-name"
+                  type="text"
+                  value={requesterName}
+                  onChange={(event) => setRequesterName(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="create-ticket-email" className="mb-2 block text-sm font-medium text-white">
+                  Requester email
+                </label>
+                <input
+                  id="create-ticket-email"
+                  type="email"
+                  value={requesterEmail}
+                  onChange={(event) => setRequesterEmail(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="create-ticket-details" className="mb-2 block text-sm font-medium text-white">
+                  Details
+                </label>
+                <textarea
+                  id="create-ticket-details"
+                  placeholder="Describe the issue"
+                  value={previewText}
+                  onChange={(event) => setPreviewText(event.target.value)}
+                  className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
+                />
+              </div>
+              <div>
+                <label htmlFor="create-ticket-priority" className="mb-2 block text-sm font-medium text-white">
+                  Priority
+                </label>
+                <select
+                  id="create-ticket-priority"
+                  value={createPriority}
+                  onChange={(event) => setCreatePriority(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none"
+                >
+                  {priorityValues.map((value) => (
+                    <option key={value} value={value}>
+                      {formatTicketLabel(value)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="create-ticket-status" className="mb-2 block text-sm font-medium text-white">
+                  Status
+                </label>
+                <select
+                  id="create-ticket-status"
+                  value={createStatus}
+                  onChange={(event) => setCreateStatus(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none"
+                >
+                  {statusValues.map((value) => (
+                    <option key={value} value={value}>
+                      {formatTicketLabel(value)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="create-ticket-source" className="mb-2 block text-sm font-medium text-white">
+                  Channel
+                </label>
+                <select
+                  id="create-ticket-source"
+                  value={createSource}
+                  onChange={(event) => setCreateSource(event.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none"
+                >
+                  {createSourceValues.map((value) => (
+                    <option key={value} value={value}>
+                      {formatTicketLabel(value)}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {error ? (
-              <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {error}
-              </p>
-            ) : null}
+              {createError ? (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 md:col-span-2"
+                >
+                  {createError}
+                </p>
+              ) : null}
 
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => void handleCreateTicket()}
-                className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#050505] disabled:bg-neutral-400"
-              >
-                {isPending ? "Saving..." : "Create Ticket"}
-              </button>
-            </div>
+              <div className="flex justify-end gap-3 md:col-span-2">
+                <button
+                  type="button"
+                  disabled={isCreating}
+                  onClick={closeCreateModal}
+                  className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#050505] disabled:bg-neutral-400"
+                >
+                  {isCreating ? "Creating..." : "Create Ticket"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

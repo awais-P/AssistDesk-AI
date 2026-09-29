@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { ensureAgentAutomationDefaults } from "@/src/lib/agent-automations";
 import { getCurrentSession } from "@/src/lib/auth";
@@ -60,6 +61,16 @@ export async function POST(
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const { id: agentId } = await context.params;

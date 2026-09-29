@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -13,6 +14,16 @@ export async function DELETE(_request: Request, context: TagRouteContext) {
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const { id } = await context.params;

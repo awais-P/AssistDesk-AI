@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -10,6 +11,8 @@ import {
   widgetPositionOptions,
 } from "@/src/lib/chatbot-config";
 import { prisma } from "@/src/lib/prisma";
+import { clampRateLimitPerMinute } from "@/src/lib/rate-limit";
+import { clampSessionTimeoutMinutes } from "@/src/lib/session-lifecycle";
 import { createWidgetId, isValidDomain, normalizeDomain } from "@/src/lib/setup";
 import { isTrustedUploadUrl } from "@/src/lib/uploads";
 
@@ -33,6 +36,8 @@ type ChatbotPayload = {
   avatarUrl?: string | null;
   conversationStarters?: string[];
   fallbackDelaySeconds?: number;
+  sessionTimeoutMinutes?: number;
+  rateLimitPerMinute?: number;
 };
 
 const chatbotAgentSelect = {
@@ -73,6 +78,16 @@ export async function POST(request: Request) {
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
   }
 
   const body = (await request.json().catch(() => ({}))) as ChatbotPayload;
@@ -209,6 +224,13 @@ export async function POST(request: Request) {
       typeof body.fallbackDelaySeconds === "number" && Number.isFinite(body.fallbackDelaySeconds)
         ? Math.min(600, Math.max(10, Math.round(body.fallbackDelaySeconds)))
         : 60,
+    // Module 5: idle timeout of a widget session and messages allowed per session per minute.
+    ...(body.sessionTimeoutMinutes !== undefined
+      ? { sessionTimeoutMinutes: clampSessionTimeoutMinutes(body.sessionTimeoutMinutes) }
+      : {}),
+    ...(body.rateLimitPerMinute !== undefined
+      ? { rateLimitPerMinute: clampRateLimitPerMinute(body.rateLimitPerMinute) }
+      : {}),
   };
 
   let chatbot;

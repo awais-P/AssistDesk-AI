@@ -109,32 +109,38 @@ enum MessageSender {
 }
 
 model Workspace {
-  id               String            @id @default(cuid())
-  name             String
-  slug             String            @unique
-  supportEmail     String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  users            User[]
-  inboxes          Inbox[]
-  tickets          Ticket[]
-  agents           AIAgent[]
-  chatbots         Chatbot[]
-  tags             Tag[]
-  cannedResponses  CannedResponse[]
-  apiKeys          ApiKey[]
-  settings         WorkspaceSetting?
-  knowledgeSources KnowledgeSource[]
-  knowledgeChunks  KnowledgeChunk[]
-  chatSessions     ChatSession[]
-  agentAutomations AgentAutomation[]
-  ticketMessages   TicketMessage[]
-  automationLogs   AutomationLog[]
-  integrations     Integration[]
-  notifications    Notification[]
-  promptTemplates  PromptTemplate[]
-  contacts         Contact[]
-  sessionEvents    SessionEvent[]
+  id                String            @id @default(cuid())
+  name              String
+  slug              String            @unique
+  supportEmail      String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  users             User[]
+  inboxes           Inbox[]
+  tickets           Ticket[]
+  agents            AIAgent[]
+  chatbots          Chatbot[]
+  tags              Tag[]
+  cannedResponses   CannedResponse[]
+  apiKeys           ApiKey[]
+  settings          WorkspaceSetting?
+  knowledgeSources  KnowledgeSource[]
+  knowledgeChunks   KnowledgeChunk[]
+  chatSessions      ChatSession[]
+  agentAutomations  AgentAutomation[]
+  ticketMessages    TicketMessage[]
+  automationLogs    AutomationLog[]
+  integrations      Integration[]
+  notifications     Notification[]
+  promptTemplates   PromptTemplate[]
+  contacts          Contact[]
+  sessionEvents     SessionEvent[]
+  leads             Lead[]
+  leadEvents        LeadEvent[]
+  webhookEndpoints  WebhookEndpoint[]
+  webhookDeliveries WebhookDelivery[]
+  aiInteractions    AiInteraction[]
+  messageFeedback   MessageFeedback[]
 }
 
 model User {
@@ -154,6 +160,7 @@ model User {
   assignedTickets    Ticket[]  @relation("AssignedTickets")
   createdTickets     Ticket[]  @relation("CreatedTickets")
   sessions           Session[]
+  ownedLeads         Lead[]    @relation("LeadOwner")
 
   @@index([workspaceId])
 }
@@ -218,6 +225,7 @@ model AIAgent {
   knowledgeSources    KnowledgeSource[]
   automations         AgentAutomation[]
   logs                AutomationLog[]
+  aiInteractions      AiInteraction[]
   integrations        Integration[]
 
   @@index([workspaceId])
@@ -269,11 +277,14 @@ model Chatbot {
   requireEmail          Boolean          @default(true)
   requirePhone          Boolean          @default(false)
   emailNotifications    Boolean          @default(true)
+  /// Module 8: lead capture form (fields, trigger, texts). See src/lib/lead-form.ts.
+  leadForm              Json?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
   workspace             Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agent                 AIAgent          @relation(fields: [agentId], references: [id], onDelete: Restrict)
   chatSessions          ChatSession[]
+  leads                 Lead[]
 
   @@index([workspaceId])
   @@index([agentId])
@@ -354,6 +365,7 @@ model Ticket {
   contact        Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
   ticketTags     TicketTag[]
   messages       TicketMessage[]
+  aiInteractions AiInteraction[]
   logs           AutomationLog[]
 
   @@unique([workspaceId, ticketNumber])
@@ -435,15 +447,21 @@ model ApiKey {
 }
 
 model WorkspaceSetting {
-  id                 String    @id @default(cuid())
-  workspaceId        String    @unique
-  theme              String    @default("dark")
-  timezone           String    @default("Asia/Karachi")
-  supportSignature   String?
-  crossChannelMemory Boolean   @default(true)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(cuid())
+  workspaceId         String    @unique
+  theme               String    @default("dark")
+  timezone            String    @default("Asia/Karachi")
+  supportSignature    String?
+  crossChannelMemory  Boolean   @default(true)
+  /// Module 8 FE-3: team emails and Slack incoming-webhook URL (encrypted) told about new leads.
+  leadNotifyEmails    String[]  @default([])
+  leadSlackWebhookUrl String?
+  /// Module 8 FE-2: create leads automatically when a customer shows buying intent
+  /// on WhatsApp/Slack or types their contact details in the website chat.
+  autoCaptureLeads    Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model ChatSession {
@@ -473,6 +491,8 @@ model ChatSession {
   /// Anonymous browser id of a website visitor; memory is shown unredacted only when
   /// it matches the Contact's known browser (see session-memory.ts).
   visitorId              String?
+  /// Module 8: lead form state in this conversation: PROMPTED | CAPTURED | SKIPPED.
+  leadState              String?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
   workspace              Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -481,6 +501,8 @@ model ChatSession {
   contact                Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
   messages               ChatMessage[]
   events                 SessionEvent[]
+  leads                  Lead[]
+  aiInteractions         AiInteraction[]
 
   @@index([workspaceId])
   @@index([chatbotId])
@@ -490,15 +512,16 @@ model ChatSession {
 }
 
 model ChatMessage {
-  id          String        @id @default(cuid())
+  id          String           @id @default(cuid())
   sessionId   String
   sender      MessageSender
   content     String
   attachments Json?
   authorName  String?
-  externalId  String?       @unique
-  createdAt   DateTime      @default(now())
-  session     ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  externalId  String?          @unique
+  createdAt   DateTime         @default(now())
+  session     ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  feedback    MessageFeedback?
 
   @@index([sessionId])
 }
@@ -617,6 +640,7 @@ model Contact {
   sessions        ChatSession[]
   tickets         Ticket[]
   events          SessionEvent[]
+  leads           Lead[]
 
   @@unique([workspaceId, email])
   @@unique([workspaceId, phone])
@@ -656,4 +680,175 @@ model RateLimitBucket {
   updatedAt   DateTime @updatedAt
 
   @@index([updatedAt])
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+}
+
+/// Module 8: a sales lead captured in a conversation (lead form, details the
+/// customer typed, AI tool) or added by the team. One open lead per customer:
+/// a returning customer updates their lead instead of creating a duplicate.
+model Lead {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  chatbotId        String?
+  sessionId        String?
+  contactId        String?
+  ownerId          String?
+  name             String?
+  email            String?
+  phone            String?
+  company          String?
+  /// Custom form answers: [{ key, label, value }].
+  fields           Json?
+  /// What the customer is interested in (from the conversation).
+  intent           String?
+  /// FORM | AUTO (details detected in chat) | MANUAL | AI_TOOL
+  source           String
+  channel          ChannelType       @default(WEB_WIDGET)
+  status           LeadStatus        @default(NEW)
+  score            Int               @default(0)
+  marketingConsent Boolean           @default(false)
+  pageHost         String?
+  lastActivityAt   DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chatbot          Chatbot?          @relation(fields: [chatbotId], references: [id], onDelete: SetNull)
+  session          ChatSession?      @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  contact          Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner            User?             @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  events           LeadEvent[]
+  deliveries       WebhookDelivery[]
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, email])
+  @@index([contactId])
+  @@index([sessionId])
+}
+
+/// Module 8 FE-5: lead timeline (created, updated, status changes, notes, notifications, webhooks).
+model LeadEvent {
+  id          String    @id @default(cuid())
+  workspaceId String
+  leadId      String
+  type        String
+  detail      String?
+  actorName   String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+}
+
+/// Module 8 FE-4: outgoing webhook to a CRM or other system (SRS CI-3, signed).
+model WebhookEndpoint {
+  id             String            @id @default(cuid())
+  workspaceId    String
+  name           String
+  url            String
+  /// Signing secret, encrypted at rest.
+  secret         String
+  events         String[]          @default(["lead.created", "lead.updated"])
+  isActive       Boolean           @default(true)
+  lastDeliveryAt DateTime?
+  lastStatus     String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries     WebhookDelivery[]
+
+  @@index([workspaceId])
+}
+
+/// One webhook send with its retries: PENDING -> SUCCESS, or RETRYING -> FAILED after 4 attempts.
+model WebhookDelivery {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  endpointId     String
+  leadId         String?
+  event          String
+  payload        Json
+  status         String          @default("PENDING")
+  attempts       Int             @default(0)
+  nextAttemptAt  DateTime?
+  responseStatus Int?
+  responseBody   String?
+  error          String?
+  deliveredAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  endpoint       WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  lead           Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, createdAt])
+  @@index([leadId])
+}
+
+/// Module 4 analytics store: one row per customer-facing AI reply (widget, WhatsApp,
+/// Slack, email). Response time, grounding and fallback per question feed the
+/// dashboard (FR-11), FAQ reports (FE-4) and improvement areas (FE-5). Playground
+/// tests are not recorded. Deleted with the conversation or ticket (privacy).
+model AiInteraction {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  agentId      String?
+  chatbotId    String?
+  sessionId    String?
+  ticketId     String?
+  /// The AI's ChatMessage (chat channels) for feedback lookups.
+  messageId    String?      @unique
+  channel      ChannelType
+  /// The customer message that was answered (trimmed).
+  question     String
+  latencyMs    Int
+  tokens       Int          @default(0)
+  model        String?
+  provider     String?
+  /// Best knowledge match score (0–1).
+  confidence   Float        @default(0)
+  /// At least one knowledge passage met the agent's confidence threshold.
+  grounded     Boolean      @default(false)
+  usedFallback Boolean      @default(false)
+  sourceIds    String[]     @default([])
+  /// FE-5: a team member reviewed this answer (e.g. added it to the knowledge base).
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  createdAt    DateTime     @default(now())
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent        AIAgent?     @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  session      ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  ticket       Ticket?      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, grounded, createdAt])
+  @@index([sessionId])
+}
+
+/// Module 6 FE-3 feedback loop: a visitor's thumbs up/down on an AI reply.
+model MessageFeedback {
+  id          String      @id @default(cuid())
+  workspaceId String
+  messageId   String      @unique
+  sessionId   String
+  /// 1 = helpful, -1 = not helpful.
+  rating      Int
+  comment     String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  message     ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([sessionId])
 }

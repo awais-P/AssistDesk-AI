@@ -2,6 +2,8 @@ import { createNotification } from "../notifications";
 import { Prisma } from "@/app/generated/prisma/client";
 import { type ContactIdentity, resolveContact } from "../contacts";
 import { generateSessionReply, loadAgentForReplies } from "../conversation-runtime";
+import { extractContactDetails } from "../lead-form";
+import { evaluateLeadCapture } from "../leads";
 import { prisma } from "../prisma";
 import { RATE_LIMITS, consumeRateLimit } from "../rate-limit";
 import {
@@ -127,6 +129,42 @@ export async function handleChannelInbound({
     data: { lastSyncedAt: new Date() },
     select: { id: true },
   });
+
+  // Module 8 FE-2: an email typed in the chat joins the customer record, and buying
+  // intent from a reachable customer creates (or updates) their lead.
+  try {
+    const typed = extractContactDetails(text);
+
+    if (typed.email && contact && !contact.email) {
+      await resolveContact(integration.workspaceId, { ...identity, email: typed.email }, channel);
+      await prisma.chatSession.update({
+        where: { id: session.id },
+        data: { customerEmail: typed.email },
+        select: { id: true },
+      });
+    }
+
+    const leadSession = await prisma.chatSession.findUnique({
+      where: { id: session.id },
+      select: {
+        id: true,
+        workspaceId: true,
+        channel: true,
+        chatbotId: true,
+        contactId: true,
+        leadState: true,
+        customerName: true,
+        customerEmail: true,
+        customerPhone: true,
+      },
+    });
+
+    if (leadSession) {
+      await evaluateLeadCapture({ session: leadSession, message: text });
+    }
+  } catch (error) {
+    console.error(`[${channel.toLowerCase()}] Lead capture failed:`, error);
+  }
 
   if (session.status === "ESCALATED") {
     return { status: "human" as const };

@@ -99,7 +99,14 @@ export async function generateSessionReply({
     hydrateKnowledgeSources(agent.knowledgeSources),
     prisma.chatSession.findUnique({
       where: { id: sessionId },
-      select: { summary: true, summarizedMessageCount: true, messageCount: true, contactId: true, previousSessionId: true },
+      select: {
+        summary: true,
+        summarizedMessageCount: true,
+        messageCount: true,
+        contactId: true,
+        previousSessionId: true,
+        chatbotId: true,
+      },
     }),
     buildCustomerContext(sessionId),
   ]);
@@ -147,6 +154,26 @@ export async function generateSessionReply({
   }
 
   await prisma.$transaction([
+    // Module 4 analytics store: the question, response time and how it was answered.
+    prisma.aiInteraction.create({
+      data: {
+        workspaceId,
+        agentId: agent.id,
+        chatbotId: session?.chatbotId ?? null,
+        sessionId,
+        messageId: message.id,
+        channel: channel === "PLAYGROUND" ? "WEB_WIDGET" : channel,
+        question: latest.content.slice(0, 1000),
+        latencyMs: Math.max(0, Math.round(response.latencyMs)),
+        tokens: response.tokens,
+        model: response.modelUsed,
+        provider: response.providerUsed,
+        confidence: response.confidence,
+        grounded: response.usedSourceIds.length > 0,
+        usedFallback: response.usedFallback,
+        sourceIds: response.usedSourceIds,
+      },
+    }),
     prisma.automationLog.create({
       data: {
         workspaceId,

@@ -84,6 +84,8 @@ export default async function DashboardOverviewPage({
     knowledgeGroups,
     knowledgeWarnings,
     alerts,
+    leadsCaptured,
+    leadsHot,
   ] = await Promise.all([
     prisma.automationLog.groupBy({
       by: ["agentId", "status"],
@@ -127,6 +129,13 @@ export default async function DashboardOverviewPage({
       where: { workspaceId, status: "SYNCED", processingError: { not: null } },
     }),
     listNotifications(workspaceId, session.user.id, 8),
+    // FR-11.3: leads captured in the selected period, and how many are hot (score 70+).
+    prisma.lead.count({
+      where: { workspaceId, createdAt: { gte: rangeStart } },
+    }),
+    prisma.lead.count({
+      where: { workspaceId, createdAt: { gte: rangeStart }, score: { gte: 70 } },
+    }),
   ]);
 
   const totals = emptyStats();
@@ -194,6 +203,8 @@ export default async function DashboardOverviewPage({
         waitingChats,
         teamOnline,
         teamSize,
+        leadsCaptured,
+        leadsHot,
       }}
       agents={agentRows}
       knowledge={{

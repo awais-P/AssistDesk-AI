@@ -49,6 +49,51 @@ function createTransport(settings: SmtpSettings) {
   });
 }
 
+/**
+ * Internal notification email to the team (e.g. "New lead", Module 8 FE-3), sent
+ * through the platform SMTP account. Returns the delivery status instead of throwing.
+ */
+export async function sendTeamEmail({
+  to,
+  subject,
+  text,
+}: {
+  to: string[];
+  subject: string;
+  text: string;
+}): Promise<{ status: EmailDeliveryStatus; error: string | null }> {
+  const recipients = to.map((address) => address.trim()).filter(Boolean);
+
+  if (recipients.length === 0) {
+    return { status: "NO_RECIPIENT", error: "No recipients." };
+  }
+
+  const smtp = getDefaultSmtp();
+
+  if (!smtp) {
+    return {
+      status: "NOT_CONFIGURED",
+      error: "No platform SMTP sender is configured (ASSISTDESK_SMTP_HOST).",
+    };
+  }
+
+  try {
+    await createTransport(smtp).sendMail({
+      from: {
+        name: "AssistDesk",
+        address: process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`,
+      },
+      to: recipients,
+      subject: subject.slice(0, 200),
+      text,
+    });
+
+    return { status: "SENT", error: null };
+  } catch (error) {
+    return { status: "FAILED", error: error instanceof Error ? error.message.slice(0, 300) : "Send failed." };
+  }
+}
+
 /** Verifies SMTP credentials before an admin saves them (FR-15.6). */
 export async function verifySmtpSettings(settings: SmtpSettings) {
   await createTransport(settings).verify();

@@ -445,6 +445,11 @@ export async function buildContactContext({
           },
         },
       },
+      leads: {
+        orderBy: { lastActivityAt: "desc" },
+        take: 1,
+        select: { status: true, intent: true, company: true },
+      },
       tickets: {
         where: {
           status: { in: ["OPEN", "IN_PROGRESS"] },
@@ -477,14 +482,21 @@ export async function buildContactContext({
     return `- ${channelLabel(item.channel)} · ${formatRelativeAge(item.lastActivityAt)} · ${state}${unverified}:\n  ${body.replace(/\n/g, "\n  ")}`;
   });
 
+  // Module 8: the AI knows this customer is a sales lead and what they want.
+  const lead = contact.leads[0];
+  const leadLine = lead
+    ? `Sales lead (${lead.status.toLowerCase()})${lead.company ? ` from ${lead.company}` : ""}${lead.intent ? `: ${lead.intent}` : ""}`
+    : null;
+
   // Nothing beyond "we know this person" → no memory block.
-  if (!contact.memory && sessionLines.length === 0 && contact.tickets.length === 0) {
+  if (!contact.memory && sessionLines.length === 0 && contact.tickets.length === 0 && !leadLine) {
     return { text: null, carriedSessions: [] };
   }
 
   const parts = [
     `Known customer (${identity.join(", ") || "identity from an earlier visit"}). Channels used: ${[...channels].map(channelLabel).join(", ")}.`,
     contact.memory ? `Profile: ${contact.memory}` : null,
+    leadLine,
     sessionLines.length ? `Recent conversations:\n${sessionLines.join("\n")}` : null,
     contact.tickets.length
       ? `Open tickets:\n${contact.tickets

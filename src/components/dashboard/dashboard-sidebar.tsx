@@ -32,6 +32,17 @@ const iconPaths: Record<string, ReactNode> = {
       <path d="M7.5 17a4.5 4.5 0 0 1 9 0" />
     </>
   ),
+  leads: (
+    <>
+      <path d="M4 5h16l-6 7.5V19l-4 1.5v-8Z" />
+    </>
+  ),
+  analytics: (
+    <>
+      <path d="M4 4v16h16" />
+      <path d="m7.5 14.5 3.5-4 3 2.5 5-6" />
+    </>
+  ),
   reports: <path d="M4 20h16M6 20v-6M11 20V5M16 20v-9" />,
   users: (
     <>

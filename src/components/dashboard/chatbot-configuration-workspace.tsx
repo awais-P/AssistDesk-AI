@@ -11,6 +11,10 @@ import {
 import { useRouter } from "next/navigation";
 import { ChatbotWidgetPreview } from "@/src/components/dashboard/chatbot-widget-preview";
 import {
+  LeadFormBuilder,
+  getLeadFormErrors,
+} from "@/src/components/dashboard/lead-form-builder";
+import {
   allowedDomainsHelpText,
   avatarMimeTypes,
   buildEmbedSnippet,
@@ -36,6 +40,7 @@ import {
   parseChatbotDomainInput,
   widgetPositionOptions,
 } from "@/src/lib/chatbot-config";
+import type { LeadFormConfig } from "@/src/lib/lead-form";
 
 type AgentOption = {
   id: string;
@@ -69,6 +74,7 @@ type ChatbotConfigurationWorkspaceProps = {
     requireEmail: boolean;
     requirePhone: boolean;
     emailNotifications: boolean;
+    leadForm: LeadFormConfig;
   };
   agentOptions: AgentOption[];
 };
@@ -164,6 +170,7 @@ export function ChatbotConfigurationWorkspace({
     ai: true,
     appearance: true,
     messages: true,
+    leadCapture: true,
     notifications: true,
   });
   const [name, setName] = useState(chatbot.name);
@@ -204,6 +211,7 @@ export function ChatbotConfigurationWorkspace({
   const [emailNotifications, setEmailNotifications] = useState(
     chatbot.emailNotifications,
   );
+  const [leadForm, setLeadForm] = useState<LeadFormConfig>(chatbot.leadForm);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -392,6 +400,13 @@ export function ChatbotConfigurationWorkspace({
       return;
     }
 
+    const leadFormErrors = getLeadFormErrors(leadForm);
+
+    if (leadFormErrors.length > 0) {
+      setError(`Lead capture: ${leadFormErrors[0]}`);
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -426,6 +441,10 @@ export function ChatbotConfigurationWorkspace({
           requireEmail,
           requirePhone,
           emailNotifications,
+          leadForm: {
+            ...leadForm,
+            consentText: leadForm.consentText?.trim() || null,
+          },
         }),
       });
 
@@ -1238,6 +1257,26 @@ export function ChatbotConfigurationWorkspace({
                   </div>
                 </div>
               </div>
+            </AccordionSection>
+
+            <AccordionSection
+              title="Lead capture"
+              isOpen={openSections.leadCapture}
+              onToggle={() => toggleSection("leadCapture")}
+              icon={
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                  <path d="M5 19.5c.8-3.2 3.6-5 7-5 1.3 0 2.5.3 3.5.8" />
+                  <path d="M18 15v6" />
+                  <path d="M15 18h6" />
+                </svg>
+              }
+            >
+              <LeadFormBuilder
+                value={leadForm}
+                onChange={setLeadForm}
+                primaryColor={isPrimaryColorValid ? primaryColor : chatbot.primaryColor}
+              />
             </AccordionSection>
 
             <AccordionSection

@@ -31,6 +31,7 @@ export const RATE_LIMITS = {
   widgetMessagePerWidget: { limit: 600, windowSeconds: 60 },
   widgetNewSessionPerIp: { limit: 10, windowSeconds: 60 * 60 },
   widgetAttachmentPerIp: { limit: 10, windowSeconds: 60 },
+  widgetLeadPerIp: { limit: 10, windowSeconds: 10 * 60 },
   channelMessagePerConversation: { limit: 20, windowSeconds: 60 },
   emailInboundPerIntegration: { limit: 60, windowSeconds: 60 },
   loginPerIdentifier: { limit: 5, windowSeconds: 10 * 60 },

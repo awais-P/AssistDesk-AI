@@ -293,6 +293,26 @@ async function generateTicketAiReply(ticket: ReplyTicket, agent: TicketAgent) {
   });
 
   const isConfident = response.confidence >= agent.confidenceThreshold;
+
+  // Module 4 analytics store (email channel).
+  await prisma.aiInteraction.create({
+    data: {
+      workspaceId: ticket.workspaceId,
+      agentId: agent.id,
+      ticketId: ticket.id,
+      channel: "EMAIL",
+      question: question.slice(0, 1000),
+      latencyMs: Math.max(0, Math.round(response.latencyMs)),
+      tokens: response.tokens,
+      model: response.modelUsed,
+      provider: response.providerUsed,
+      confidence: response.confidence,
+      grounded: response.usedSourceIds.length > 0,
+      usedFallback: response.usedFallback,
+      sourceIds: response.usedSourceIds,
+    },
+  });
+
   const aiMessage = await prisma.ticketMessage.create({
     data: {
       workspaceId: ticket.workspaceId,

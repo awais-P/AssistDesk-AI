@@ -18,14 +18,14 @@ The SDS (Ch. 4.1.3) and the SDS slides claim **Modules 1, 7 and 10, plus Module 
 | M7 | User Dashboard | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~70%~~ → 90%** *(2026-09-29)* | Done: Overview with per-agent performance + notifications bell (FE-3); tickets with server pagination/filters/bulk actions (FR-5); Prompts page (FR-9); real Reports; users/profile with RBAC, temporary passwords and password change (FE-5); mobile menu; loading/error pages. Remaining: agent attachments/emoji in Chats (FR-6.6/6.7), customer presence dot (FR-6.2), API Keys page (M11). |
 | M10 | Knowledge Base Management | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~60%~~ → 90%** *(2026-09-29)* | Done: real embeddings (OpenRouter text-embedding-3-small), Pinecone store with namespace per workspace (switches on with PINECONE_API_KEY/INDEX), section-aware chunking, hybrid semantic+keyword retrieval with the confidence threshold, durable indexing queue with recovery, vector purge on delete, search/sort/pagination, chunk viewer and Test retrieval. Remaining: live Pinecone test with a real key, scanned-PDF OCR. |
 | M5 | Real-Time Context & Session *(the half module)* | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅, FE-6 ✅ | **~~25%~~ → 90%** *(2026-09-29)* | Done: session lifecycle (ACTIVE ⇄ ESCALATED → CLOSED, reason + resolution, closed sessions final and linked to the next), secret hashed widget tokens, per-channel expiry + cron, Contact-based Unified Memory Buffer across Website/WhatsApp/Slack/Email, 3-layer memory (history, rolling summary, customer profile) with trust-based redaction, Postgres rate limiter with 429 + logs, SSE live updates (2–52 ms), email threading, Chats context panel, Contacts pages. Full write-up: [M5_SESSION_CONTEXT.md](M5_SESSION_CONTEXT.md). Remaining: voice channel (M3 scope), multi-instance push (Redis/NOTIFY), email OTP identity verification. |
-| M6 | LLM Management & Fast Inference | FE-1 ✅, FE-2 ✅, FE-4 ◐, others ✗ | 30% (bonus) | Multi-provider runtime and per-agent model choice already work. Missing: feedback loop, streaming, voice (VAD/TTS). |
+| M6 | LLM Management & Fast Inference | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ◐, others ✗ | 35% (bonus) | Multi-provider runtime and per-agent model choice work; feedback loop (widget 👍/👎 feeding Analytics → Improve) added with M4. Missing: streaming, voice (VAD/TTS). |
 | M11 | Integrations & RBAC | FE-1 ◐, FE-3 ✅, FE-4 ✅, FE-5 ◐ | 45% (bonus) | RBAC enforced on all mutating APIs (Owner/Admin/Manager/Agent), Slack/WhatsApp/email channels. Missing: audit log, API keys page, CRM connectors. |
-| M4 | Monitoring & Analytics | FE-1 ◐, FE-2 ✅, FE-3 ◐, FE-4 ◐ | 35% | Transcripts stored; Overview KPIs and Reports use real numbers. Missing: charts (24h latency), trends, FAQ insights, exports. |
+| M4 | Monitoring & Analytics | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~40%~~ → 90%** *(2026-09-30)* | Done: AiInteraction analytics store (latency, grounding, fallback per AI reply on every channel), Analytics pages Overview (FR-11.1–11.7: KPIs incl. live sessions, 24h latency chart, volume, resolution mix, recent interactions with channel icons), Reports (FAQ clusters by meaning/wording, behaviour heatmap, leads, tickets), Improve (knowledge gaps → add to knowledge base, 👎 replies, escalation reasons), transcripts download, anonymised CSV exports, widget 👍/👎. Full write-up: [M4_ANALYTICS.md](M4_ANALYTICS.md). Remaining: tool-action analytics (after M2), rollups for very large tenants. |
 | M2 | Agentic Tool & Action Mgmt | FE-5 ◐ | 10% | "Automations" are regex rules and AutomationLog acts as an action log. No tool registry and no LangGraph. |
-| M8 | Lead Generation | FE-2 ◐ | 10% | The widget can require name/email/phone. No Lead model, page, webhooks or notifications. |
+| M8 | Lead Generation | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~10%~~ → 92%** *(2026-09-30)* | Done: per-chatbot lead form builder with triggers (buying intent / after N messages / first message), inline widget form that pauses the AI, automatic capture from known or typed details and WhatsApp/Slack intent, one open lead per customer joined to the M5 Contact, score + temperature, intent summary, notifications (dashboard, email, Slack), signed webhooks with 3 retries + delivery log, CSV export, Leads list/detail/settings pages, Chats panel lead, Leads KPI. Full write-up: [M8_LEAD_GENERATION.md](M8_LEAD_GENERATION.md). Remaining: LLM-driven capture via the M2 `capture_lead` tool, API-key access (M11). |
 | M9 | Support Escalation | FE-1 ◐ | 15% | Human takeover from the Chats page (M5): take over, hand back, team replies pause the AI, AI reply limit → human-only. Missing: escalation rules, queues/assignment, SLA. |
 | M3 | Subscription & Payment | — | 0% | Stripe is installed but unused. |
-| | **Overall (11 modules, equal weight)** | | **≈ 29% → ≈ 46%** *(2026-09-29)* | 29% matched the SDS 30% claim; after M1, M7, M10 and M5 it is ≈ 46%. Next: M2, M8, M4 to pass 60%. |
+| | **Overall (11 modules, equal weight)** | | **≈ 29% → ≈ 59%** *(2026-09-30)* | 29% matched the SDS 30% claim; after M1, M7, M10, M5, M8 and M4 it is ≈ 59%. M2 (Agentic Tools) takes it past 60%. |
 
 ✅ done · ◐ partial · ✗ missing
 
@@ -54,11 +54,11 @@ This choice follows the **Module-based Work Division table in the Proposal** exa
 | Module | Now | Target | | Module | Now | Target |
 |---|---|---|---|---|---|---|
 | M1 | 65% → **92%** ✅ | 85% | | M2 | 10% | 75% |
-| M7 | 70% → **90%** ✅ | 90% | | M8 | 10% | 85% |
-| M10 | 60% → **90%** ✅ | 85% | | M4 | 20% | 85% |
-| M5 | 25% → **90%** ✅ | 90% | | M6 | 30% | 45% |
+| M7 | 70% → **90%** ✅ | 90% | | M8 | 10% → **92%** ✅ | 85% |
+| M10 | 60% → **90%** ✅ | 85% | | M4 | 20% → **90%** ✅ | 85% |
+| M5 | 25% → **90%** ✅ | 90% | | M6 | 30% → 35% | 45% |
 | M9 | 5% → 15% | 30% | | M11 | 25% → 45% | 45% |
-| M3 | 0% | 0% | | **Overall** | **≈29%** | **≈65%** |
+| M3 | 0% | 0% | | **Overall** | **≈29% → ≈59%** | **≈65%** |
 
 ---
 
@@ -141,6 +141,8 @@ Use **TanStack Query** for the Chats page polling and **Zustand** for the active
 
 ### P3 — M8 Lead Generation (Sun 4 → Wed 7 Oct) · Ahmad
 
+> ✅ **Done 2026-09-30, ahead of schedule.** Built as planned plus automatic capture on WhatsApp/Slack, lead scoring, `lead.deleted` webhooks and a pause-and-resume AI flow. Details in [M8_LEAD_GENERATION.md](M8_LEAD_GENERATION.md) and the CHANGELOG; the table below is the original plan.
+
 | FE | Deliverable |
 |---|---|
 | FE-1 Lead capture forms | A per-chatbot **Lead Form builder** (fields: name, email, phone, company, plus custom text/select fields, each required or optional). Trigger: on start, after N messages, or when the AI detects buying intent (a simple LLM classification). It renders as an inline card in the widget (SRS FR-17.5). |
@@ -165,6 +167,8 @@ Use **TanStack Query** for the Chats page polling and **Zustand** for the active
 ---
 
 ### P5 — M4 Monitoring & Analytics + M6 FE-3 (Fri 9 → Mon 12 Oct) · Awais (Ahmad: tests)
+
+> ✅ **Done 2026-09-30 (before M2, at the user's request).** Built as planned, except: SVG charts instead of recharts (no new dependency), and tool-usage analytics wait for M2. The API Keys page (M11 FE-2) listed below is not done yet. Details in [M4_ANALYTICS.md](M4_ANALYTICS.md).
 
 - **Event capture (FE-1):** record `latencyMs`, tokens, model, `resolvedBy` (AI/HUMAN) and escalated flag for every AI reply, in `AutomationLog` or a new `InteractionMetric`.
 - **Analytics dashboard (FE-3, SRS FR-11.1–11.7):** KPI cards for avg AI response time, % AI-resolved without escalation, leads captured, active sessions and CSAT (from the feedback below). A **24 h latency line chart**, conversation volume by channel, and a **Recent interactions** table with channel icons, status and duration. Date-range picker. Use `recharts` (or a lightweight SVG chart).

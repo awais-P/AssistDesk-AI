@@ -48,6 +48,24 @@ export const dashboardItems: DashboardItem[] = [
     group: "Main",
   },
   {
+    href: "/dashboard/leads",
+    title: "Leads",
+    section: "leads",
+    description:
+      "Follow up on everyone who asked to be contacted or showed buying intent, on any channel.",
+    moduleLabel: "Module 8 - Lead Generation System",
+    group: "Main",
+  },
+  {
+    href: "/dashboard/analytics",
+    title: "Analytics",
+    section: "analytics",
+    description:
+      "Response time, automation rate, leads, live sessions, latency and recent interactions across every channel.",
+    moduleLabel: "Module 4 - Monitoring & Analytics",
+    group: "Main",
+  },
+  {
     href: "/dashboard/reports",
     title: "Reports",
     section: "reports",

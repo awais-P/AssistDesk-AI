@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { authorizeWidgetRequest, decideWidgetReply } from "@/src/lib/chatbot-widget";
-import { normalizeEmail, normalizePhone } from "@/src/lib/contacts";
+import { authorizeWidgetRequest } from "@/src/lib/chatbot-widget";
+import { normalizeEmail, normalizePhone, resolveContact } from "@/src/lib/contacts";
+import { extractContactDetails, parseLeadForm, publicLeadForm } from "@/src/lib/lead-form";
+import { evaluateLeadCapture } from "@/src/lib/leads";
 import { createNotification } from "@/src/lib/notifications";
 import { isWorkspaceOnline } from "@/src/lib/presence";
 import { prisma } from "@/src/lib/prisma";
@@ -15,7 +17,7 @@ import { appendSessionMessage, recordSessionEvent } from "@/src/lib/session-life
 import {
   MAX_WIDGET_MESSAGE_LENGTH,
   parseWidgetAttachments,
-  replyWithAgent,
+  respondToVisitor,
   runFallbackIfDue,
   serializeWidgetMessage,
 } from "@/src/lib/widget-conversation";
@@ -70,12 +72,26 @@ export async function GET(request: Request, context: WidgetMessagesRouteContext)
     where: { sessionId: session.id },
     orderBy: { createdAt: "desc" },
     take: 100,
+    include: { feedback: { select: { rating: true } } },
   });
+
+  const leadForm = session.leadState === "PROMPTED" ? parseLeadForm(chatbot.leadForm) : null;
 
   return NextResponse.json({
     session: serializeWidgetSession(session),
     messages: messages.reverse().map(serializeWidgetMessage),
     operatorsOnline,
+    leadPrompt:
+      leadForm?.enabled && session.status !== "CLOSED"
+        ? {
+            form: publicLeadForm(leadForm),
+            prefill: {
+              name: session.customerName ?? "",
+              email: session.customerEmail ?? "",
+              phone: session.customerPhone ?? "",
+            },
+          }
+        : null,
   });
 }
 
@@ -245,54 +261,63 @@ export async function POST(request: Request, context: WidgetMessagesRouteContext
     });
   }
 
-  const decision = await decideWidgetReply({
-    chatbot,
-    sessionId: session.id,
-    sessionStatus: session.status,
+  // Module 8 FE-2: contact details the visitor types in the chat are remembered and
+  // linked to their customer record, like details given in a form.
+  let current = session;
+  const typed = extractContactDetails(content);
+
+  if ((typed.email && !session.customerEmail) || (typed.phone && !session.customerPhone)) {
+    const contact = await resolveContact(
+      chatbot.workspaceId,
+      {
+        name: session.customerName,
+        email: typed.email,
+        phone: typed.phone,
+        visitorId: text(body.visitorId, 64) || null,
+      },
+      "WEB_WIDGET",
+    );
+    current = await prisma.chatSession.update({
+      where: { id: session.id },
+      data: {
+        customerEmail: session.customerEmail ?? typed.email,
+        customerPhone: session.customerPhone ?? typed.phone,
+        ...(contact ? { contactId: contact.id } : {}),
+      },
+      include: { chatbot: { select: { sessionTimeoutMinutes: true } } },
+    });
+  }
+
+  // A visitor who keeps chatting instead of filling in the lead form has skipped it.
+  if (current.leadState === "PROMPTED") {
+    current = await prisma.chatSession.update({
+      where: { id: session.id },
+      data: { leadState: "SKIPPED" },
+      include: { chatbot: { select: { sessionTimeoutMinutes: true } } },
+    });
+    await recordSessionEvent({
+      workspaceId: chatbot.workspaceId,
+      sessionId: session.id,
+      contactId: current.contactId,
+      type: "LEAD_FORM_SKIPPED",
+      detail: "The visitor kept chatting without filling in the lead form.",
+    });
+  }
+
+  // Module 8 FE-1: show the lead form (and hold the AI) or capture the lead directly.
+  const leadDecision = await evaluateLeadCapture({
+    session: current,
+    message: content,
+    chatbotLeadForm: chatbot.leadForm,
+    pageHost: access.isPreview ? null : access.host,
   });
   const newMessages = [userMessage];
+  let waitingForHuman = false;
 
-  if (decision.action === "AI_NOW") {
-    const aiMessage = await replyWithAgent(chatbot, session.id);
-
-    if (aiMessage) {
-      newMessages.push(aiMessage);
-    }
-  } else {
-    const notice = decision.action === "SYSTEM" ? decision.content : decision.notice;
-
-    if (decision.action === "SYSTEM" && session.aiMessageCount >= chatbot.maxAiMessages) {
-      await recordSessionEvent({
-        workspaceId: chatbot.workspaceId,
-        sessionId: session.id,
-        contactId: session.contactId,
-        type: "AI_LIMIT_REACHED",
-        detail: `AI reply limit (${chatbot.maxAiMessages}) reached; conversation is now human-only.`,
-      });
-    }
-
-    if (notice && decision.action === "WAIT_FOR_HUMAN") {
-      await createNotification({
-        workspaceId: chatbot.workspaceId,
-        type: "CHAT_WAITING",
-        severity: "WARNING",
-        title: `${session.customerName || session.customerEmail || "A visitor"} is waiting for a team reply`,
-        body: content.slice(0, 160),
-        link: "/dashboard/chats",
-        dedupeMinutes: 10,
-      });
-    }
-
-    if (notice) {
-      newMessages.push(
-        await appendSessionMessage({
-          sessionId: session.id,
-          workspaceId: chatbot.workspaceId,
-          sender: "SYSTEM",
-          content: notice,
-        }),
-      );
-    }
+  if (leadDecision.action !== "PROMPT") {
+    const reply = await respondToVisitor(chatbot, session.id, content);
+    newMessages.push(...reply.messages);
+    waitingForHuman = reply.waitingForHuman;
   }
 
   const fresh = await prisma.chatSession.findUniqueOrThrow({
@@ -307,6 +332,12 @@ export async function POST(request: Request, context: WidgetMessagesRouteContext
     sessionStarted: resolved.started,
     previousSession: resolved.previous,
     messages: newMessages.map(serializeWidgetMessage),
-    waitingForHuman: decision.action === "WAIT_FOR_HUMAN",
+    waitingForHuman,
+    // The AI waits until the visitor submits or skips this form.
+    leadPrompt:
+      leadDecision.action === "PROMPT"
+        ? { form: publicLeadForm(leadDecision.form), prefill: leadDecision.prefill }
+        : null,
+    leadCaptured: leadDecision.action === "CAPTURED",
   });
 }

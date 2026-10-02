@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { ChatbotConfigurationWorkspace } from "@/src/components/dashboard/chatbot-configuration-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
+import { parseLeadForm } from "@/src/lib/lead-form";
 import { prisma } from "@/src/lib/prisma";
 
 type ChatbotDetailPageProps = {
@@ -82,6 +83,7 @@ export default async function ChatbotDetailPage({
         requireEmail: chatbot.requireEmail,
         requirePhone: chatbot.requirePhone,
         emailNotifications: chatbot.emailNotifications,
+        leadForm: parseLeadForm(chatbot.leadForm),
       }}
       agentOptions={agents.map((agent) => ({
         id: agent.id,

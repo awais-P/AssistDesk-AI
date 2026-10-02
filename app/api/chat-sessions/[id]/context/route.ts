@@ -58,7 +58,7 @@ export async function GET(_request: Request, context: ChatSessionContextRouteCon
   }
 
   const contactId = chatSession.contactId;
-  const [otherSessions, tickets, aiContext, workspaceSettings] = await Promise.all([
+  const [otherSessions, tickets, aiContext, workspaceSettings, lead] = await Promise.all([
     contactId
       ? prisma.chatSession.findMany({
           where: { contactId, id: { not: chatSession.id } },
@@ -89,6 +89,15 @@ export async function GET(_request: Request, context: ChatSessionContextRouteCon
     prisma.workspaceSetting.findUnique({
       where: { workspaceId: session.user.workspaceId },
       select: { crossChannelMemory: true },
+    }),
+    // Module 8: this conversation's lead, or the customer's latest one.
+    prisma.lead.findFirst({
+      where: {
+        workspaceId: session.user.workspaceId,
+        OR: [{ sessionId: chatSession.id }, ...(contactId ? [{ contactId }] : [])],
+      },
+      orderBy: { lastActivityAt: "desc" },
+      select: { id: true, status: true, score: true, source: true, intent: true, createdAt: true },
     }),
   ]);
 
@@ -141,6 +150,8 @@ export async function GET(_request: Request, context: ChatSessionContextRouteCon
         }
       : null,
     crossChannelMemory: workspaceSettings?.crossChannelMemory !== false,
+    lead: lead ? { ...lead, createdAt: lead.createdAt.toISOString() } : null,
+    leadState: chatSession.leadState,
     aiContext: aiContext.text,
     otherSessions: otherSessions.map((item) => ({
       ...item,

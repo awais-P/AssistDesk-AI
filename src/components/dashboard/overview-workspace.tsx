@@ -34,6 +34,8 @@ type OverviewWorkspaceProps = {
     waitingChats: number;
     teamOnline: number;
     teamSize: number;
+    leadsCaptured: number;
+    leadsHot: number;
   };
   agents: OverviewAgentRow[];
   knowledge: {
@@ -215,7 +217,10 @@ export function OverviewWorkspace({
         <Link href="/dashboard/reports" className="font-semibold text-white hover:underline">
           Reports
         </Link>
-        .
+        .{" "}
+        <Link href="/dashboard/analytics" className="font-semibold text-white hover:underline">
+          View analytics &rarr;
+        </Link>
       </p>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -273,6 +278,16 @@ export function OverviewWorkspace({
           value={`${formatNumber(kpis.teamOnline)} / ${formatNumber(kpis.teamSize)}`}
           hint="Members active on the dashboard in the last 2 minutes."
           href="/dashboard/users"
+        />
+        <KpiCard
+          label="Leads captured"
+          value={formatNumber(kpis.leadsCaptured)}
+          hint={
+            kpis.leadsCaptured > 0
+              ? `New leads in the ${rangeLabel}, ${formatNumber(kpis.leadsHot)} of them hot (score 70+).`
+              : `No new leads in the ${rangeLabel}. Turn on the lead form in Chatbots to start capturing them.`
+          }
+          href="/dashboard/leads"
         />
       </div>
 

@@ -18,6 +18,125 @@ Entry template:
 
 ---
 
+## 2026-09-30 — Module 4 (Monitoring & Analytics) completed
+**Module:** M4 (bonus: M6 FE-3 feedback loop)   **Roadmap phase:** P5   **Author:** Claude (with Muhammad Awais)
+**Result:** M4 ≈ 40% → ≈ 90%. All five features and the whole analytics mock-up M-11 (FR-11.1–11.7) run on real data. Tool-action analytics will come with M2. Full write-up and demo script: **[M4_ANALYTICS.md](M4_ANALYTICS.md)**.
+
+**Database: migration `20260930150000_module4_analytics`:**
+- New **`AiInteraction`** analytics store: one row per customer-facing AI reply (question, latency, tokens, model, confidence, grounded, fallback, sources, review state). Recorded in `conversation-runtime.ts` (widget, WhatsApp, Slack) and `ticket-workflow.ts` (email); playground tests are excluded.
+- New **`MessageFeedback`** (👍/👎 plus an optional comment per AI reply).
+
+**Added:**
+- **Analytics logic** (`src/lib/analytics.ts`, `src/lib/analytics-math.ts`):
+  - ranges 24h/7d/30d/90d/custom (max 180 days), channel filter, workspace time zone, previous-period comparison;
+  - FR-11 KPIs; 24 hourly latency buckets (avg, p95, gaps); daily volume by channel; resolution mix; channels; activity heatmap; recent interactions; per-agent quality;
+  - FAQ clustering (word overlap, containment, light stemming, semantic embeddings when configured);
+  - customer behaviour, leads and tickets reports;
+  - improvement areas: knowledge gaps, unhelpful replies, escalation reasons, unanswered.
+- **APIs:**
+  - `GET /api/analytics`, `/live` (FR-11.4 polling), `/reports`, `/improvements`;
+  - `POST /api/analytics/interactions/review` (Manager+);
+  - `GET /api/analytics/export?type=interactions|conversations|faq` (CSV, anonymised, Manager+);
+  - `GET /api/chat-sessions/[id]/transcript` (text/JSON, FE-2);
+  - `POST /api/widget/[id]/feedback`.
+- **Analytics pages** (sidebar "Analytics"; the ticket Reports page stays):
+  - shared `analytics-nav.tsx` (tabs, date range, channel);
+  - **Overview:** FR-11.1–11.4 KPI cards with live polling, secondary metrics, 24-hour latency chart with tooltips, volume chart, resolution mix, channels, recent interactions with channel icons and green/amber status, agent table, exports;
+  - **Reports:** FAQ with filter and sort, customer behaviour with heatmap, leads, tickets;
+  - **Improve:** knowledge gaps with "Add answer to knowledge base" (saved as a Q/A text source and marked handled) and "Mark as handled"; unhelpful replies; escalations; unanswered conversations.
+  - All charts are inline SVG; no new dependency.
+- **Widget:** 👍/👎 on every AI reply, with an optional "What was missing?" note; the rating is restored on reload.
+- **Tests:** `tests/unit/analytics.test.ts` (16 cases; the suite now has 113) and a 43-check end-to-end script (see M4 doc §6).
+
+**Fixed:**
+- **UI-04:** there were no FR-11 analytics.
+- New **AI-15:** FAQ grouping missed "deliver/delivery" and short questions contained in longer ones.
+- The knowledge-gap review limit (200 ids) is raised to 1,000.
+
+**Notes / follow-ups:**
+- Tool analytics come with M2.
+- Rollup tables are needed for large tenants (OPS-11).
+- Wording-only knowledge-gap grouping (AI-16).
+- Customer and ticket counts ignore the channel filter (UI-42).
+
+---
+
+## 2026-09-30 — Module 8 (Lead Generation System) completed
+**Module:** M8 (bonus: FR-11.3 Leads KPI from M4)   **Roadmap phase:** P3   **Author:** Claude (with Muhammad Awais)
+**Result:** M8 ≈ 10% → ≈ 92%. All five features (FE-1 to FE-5) and the SRS lead events are implemented. Full write-up and demo script: **[M8_LEAD_GENERATION.md](M8_LEAD_GENERATION.md)**.
+
+**Database: migration `20260930090000_module8_leads`:**
+- New `Lead` (with enum `LeadStatus` NEW / CONTACTED / QUALIFIED / CONVERTED / LOST), `LeadEvent` (timeline), `WebhookEndpoint`, `WebhookDelivery`.
+- `Chatbot.leadForm` (JSON form config) and `ChatSession.leadState` (PROMPTED / CAPTURED / SKIPPED).
+- `WorkspaceSetting.leadNotifyEmails`, `leadSlackWebhookUrl` (encrypted) and `autoCaptureLeads`.
+
+**Added:**
+- **FE-1 lead forms** (`src/lib/lead-form.ts`):
+  - per-chatbot form: up to 8 fields (name/email/phone/company plus custom text, long text, number, dropdown), title/description/button/thank-you texts, marketing-consent checkbox, allow-skip;
+  - trigger: buying intent / after N messages / after the first message;
+  - server-side sanitising and per-field validation;
+  - an inline card in the widget; the AI pauses while it is open and then answers the held question;
+  - skip, or typing on, counts as skipped; asked once per conversation; survives a reload.
+- **FE-2 automatic collection:**
+  - known details (pre-chat fields, typed in chat, customer record) prefill the form or capture the lead without showing it;
+  - emails and phones typed in any message are detected and linked to the Contact;
+  - buying intent on WhatsApp/Slack from a reachable customer creates the lead (intent rules in English, Roman Urdu and Urdu; complaints excluded).
+- **Lead service** (`src/lib/leads.ts`):
+  - one open lead per customer (a returning customer updates it);
+  - joins the M5 Contact (including the browser id);
+  - score 0–100 with hot/warm/cold;
+  - background "Interested in" summary;
+  - timeline events; session context updated;
+  - a lead line in customer memory.
+- **FE-3 notifications:** dashboard alert, email to up to 10 team addresses (`sendTeamEmail` in `mailer.ts`), a Slack incoming-webhook message, a "Send test" button, and per-lead results logged (failures raise a warning).
+- **FE-4 webhooks** (`src/lib/webhooks.ts`):
+  - events `lead.created` / `lead.updated` / `lead.status_changed` / `lead.deleted`;
+  - HMAC-SHA256 `X-AssistDesk-Signature` (`t=…,v1=…`) plus `X-AssistDesk-Delivery` for idempotency;
+  - public-URL (SSRF) check, no redirects, 10 s timeout;
+  - retries after 30 s / 2 min / 10 min, then FAILED with a timeline event and an alert;
+  - delivery log with payloads; manual retry; secret shown once and rotatable;
+  - `/api/cron/webhooks`, and retries also sent while the Leads page is open.
+- **FE-4 export:** CSV of the filtered list with custom columns, UTF-8 BOM and CSV-injection defusing (Manager+).
+- **FE-5 lead database:**
+  - `/dashboard/leads`: status pills, search, filters (source, channel, temperature, owner, dates), sortable columns, pagination, add lead, export, settings;
+  - `/dashboard/leads/[id]`: status/owner, edit, score breakdown, conversation, notes, timeline, deliveries, resend, delete;
+  - `/dashboard/leads/settings`: notifications, auto-capture, webhooks.
+- **Other UI:**
+  - Chatbot → **Lead capture** builder with live preview (`lead-form-builder.tsx`);
+  - Chats context panel **Lead** section with "Create lead";
+  - **Leads** sidebar item;
+  - Overview **Leads captured** KPI (FR-11.3).
+- **APIs:**
+  - `app/api/leads/**` (list, create, detail/patch/delete, notes, resend, export, settings, settings/test);
+  - `app/api/webhooks/**` (CRUD, test, rotate, deliveries, retry);
+  - `app/api/widget/[widgetId]/lead`; `app/api/cron/webhooks`.
+- **Refactor:**
+  - `respondToVisitor()` in `widget-conversation.ts`, shared by messages and the lead form;
+  - pure identity helpers moved to `src/lib/identity.ts` (re-exported by `contacts.ts`).
+- **Tests:** `tests/unit/leads.test.ts` (19 cases; the suite now has 97, all passing), a 72-check end-to-end script with a signature-verifying local receiver, and browser checks (see M8 doc §7).
+
+**Fixed:**
+- **UI-25:** there was no Leads page.
+- New **BUG-30:** a lead-form submission created a second Contact, which made the customer look unverified.
+- New **UI-40:** the widget asked for the email twice while the lead form was open.
+- Lead deletion is race-safe (404 instead of 500).
+- "Forget this customer" now deletes their leads too.
+
+**Updated:**
+- `.env.example`: `ASSISTDESK_ALLOW_PRIVATE_WEBHOOKS`, `/api/cron/webhooks`.
+- The chatbot save API accepts `leadForm`; the Chats context API returns `lead` / `leadState`; the widget config returns the public form.
+
+**Notes / follow-ups:**
+- Rule-based intent detection (AI-14) will be complemented by the M2 `capture_lead` tool.
+- There is no API-key access for external systems yet (M11).
+- Email notifications need platform SMTP.
+- Webhook DNS-rebinding window (SEC-33).
+- Status counts are workspace totals (UI-41).
+- The PGlite test DB is unreliable for concurrent requests (OPS-10).
+- During testing the free AI tier hit its daily limit, so replies used the knowledge-base fallback.
+
+---
+
 ## 2026-09-29 — Module 5 (Real-Time Context & Session Management) completed
 **Module:** M5 (bonus: SEC-08, SEC-18, SEC-30, BUG-07, BUG-08, AI-08)   **Roadmap phase:** P1   **Author:** Claude (with Muhammad Awais)
 **Result:** M5 ≈ 25% → ≈ 90%. All six features (FE-1 to FE-6) and all SRS backend events are implemented. Voice is deferred to Module 3. The full design, the "different scenario" and a demo script are in **[M5_SESSION_CONTEXT.md](M5_SESSION_CONTEXT.md)**.

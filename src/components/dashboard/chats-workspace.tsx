@@ -7,6 +7,12 @@ import type {
   ChatAttachmentItem,
   ChatSessionListItem,
 } from "@/src/lib/chat-session-list";
+import {
+  leadSourceLabels,
+  leadStatusLabels,
+  leadTemperature,
+  type LeadStatusValue,
+} from "@/src/lib/lead-form";
 
 // Re-exported so existing importers of these types keep working.
 export type { ChatAttachmentItem, ChatSessionListItem };
@@ -112,6 +118,15 @@ type SessionContext = {
     detail: string | null;
     createdAt: string;
   }[];
+  lead?: {
+    id: string;
+    status: LeadStatusValue;
+    score: number;
+    source: string;
+    intent: string | null;
+    createdAt: string;
+  } | null;
+  leadState?: "PROMPTED" | "CAPTURED" | "SKIPPED" | null;
 };
 
 type ContextState = {
@@ -341,6 +356,36 @@ function ticketStatusClass(status: string) {
 
   if (status === "RESOLVED") {
     return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  }
+
+  return "border-white/10 bg-[#111111] text-slate-400";
+}
+
+function leadStatusClass(status: string) {
+  if (status === "NEW") {
+    return "border-sky-500/20 bg-sky-500/10 text-sky-200";
+  }
+
+  if (status === "CONTACTED" || status === "QUALIFIED") {
+    return "border-amber-500/20 bg-amber-500/10 text-amber-200";
+  }
+
+  if (status === "CONVERTED") {
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  }
+
+  return "border-white/10 bg-[#111111] text-slate-400";
+}
+
+function leadTemperatureClass(score: number) {
+  const temperature = leadTemperature(score);
+
+  if (temperature === "HOT") {
+    return "border-red-500/20 bg-red-500/10 text-red-200";
+  }
+
+  if (temperature === "WARM") {
+    return "border-amber-500/20 bg-amber-500/10 text-amber-200";
   }
 
   return "border-white/10 bg-[#111111] text-slate-400";
@@ -764,6 +809,7 @@ type ContextPanelProps = {
   summaryError: string;
   onSummarise: () => void;
   onRetry: () => void;
+  onRefreshContext: () => void;
   onOpenSession: (sessionId: string) => void;
 };
 
@@ -778,9 +824,37 @@ function ContextPanel({
   summaryError,
   onSummarise,
   onRetry,
+  onRefreshContext,
   onOpenSession,
 }: ContextPanelProps) {
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [leadPending, setLeadPending] = useState(false);
+  const [leadError, setLeadError] = useState("");
+
+  async function handleCreateLead() {
+    setLeadPending(true);
+    setLeadError("");
+
+    try {
+      const response = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: session.id }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+
+      if (!response.ok) {
+        setLeadError(data.error ?? "Couldn't create the lead. Please try again.");
+        return;
+      }
+
+      onRefreshContext();
+    } catch {
+      setLeadError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setLeadPending(false);
+    }
+  }
 
   if (!context) {
     if (error) {
@@ -912,6 +986,85 @@ function ContextPanel({
             </p>
           </>
         )}
+      </PanelSection>
+
+      <PanelSection
+        title="Lead"
+        action={
+          context.lead ? (
+            <Link href={`/dashboard/leads/${context.lead.id}`} className={textLinkClass}>
+              Open lead
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleCreateLead()}
+              disabled={leadPending}
+              className={actionButtonClass}
+            >
+              {leadPending ? (
+                <>
+                  <Spinner />
+                  Creating...
+                </>
+              ) : (
+                "Create lead"
+              )}
+            </button>
+          )
+        }
+      >
+        {context.lead ? (
+          <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${leadStatusClass(context.lead.status)}`}
+              >
+                {leadStatusLabels[context.lead.status] ?? humanizeCode(context.lead.status)}
+              </span>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${leadTemperatureClass(context.lead.score)}`}
+                title={`Lead score ${context.lead.score}/100`}
+              >
+                {humanizeCode(leadTemperature(context.lead.score))} · {context.lead.score}
+              </span>
+            </div>
+            <dl className="mt-3 space-y-2">
+              <DetailRow label="Source">
+                {leadSourceLabels[context.lead.source] ?? humanizeCode(context.lead.source)}
+              </DetailRow>
+              <DetailRow label="Created">
+                <span title={absolute(context.lead.createdAt) ?? undefined}>
+                  {relative(context.lead.createdAt)}
+                </span>
+              </DetailRow>
+            </dl>
+            {context.lead.intent ? (
+              <p className="mt-3 break-words text-xs leading-5 text-slate-400">
+                <span className="text-slate-500">Intent: </span>
+                {context.lead.intent}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-sm leading-6 text-slate-500">
+            Not a lead yet. Create one to track follow-up with this customer.
+          </p>
+        )}
+        {context.leadState === "PROMPTED" ? (
+          <p className="mt-3 text-xs leading-5 text-sky-200">
+            Lead form shown — waiting for the visitor.
+          </p>
+        ) : context.leadState === "SKIPPED" ? (
+          <p className="mt-3 text-xs leading-5 text-slate-500">
+            Visitor skipped the lead form.
+          </p>
+        ) : null}
+        {leadError ? (
+          <p className="mt-3 text-xs leading-5 text-red-300" role="alert">
+            {leadError}
+          </p>
+        ) : null}
       </PanelSection>
 
       <PanelSection title="Session">
@@ -2547,6 +2700,7 @@ export function ChatsWorkspace({
                   summaryError={summaryForSelected?.error ?? ""}
                   onSummarise={() => void handleSummarise()}
                   onRetry={() => setContextReloadToken((value) => value + 1)}
+                  onRefreshContext={() => setContextReloadToken((value) => value + 1)}
                   onOpenSession={openSession}
                 />
               </div>

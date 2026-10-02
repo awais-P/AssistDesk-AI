@@ -10,6 +10,8 @@ import {
   type WidgetPosition,
   widgetPositionOptions,
 } from "@/src/lib/chatbot-config";
+import type { Prisma } from "@/app/generated/prisma/client";
+import { parseLeadForm } from "@/src/lib/lead-form";
 import { prisma } from "@/src/lib/prisma";
 import { clampRateLimitPerMinute } from "@/src/lib/rate-limit";
 import { clampSessionTimeoutMinutes } from "@/src/lib/session-lifecycle";
@@ -38,6 +40,7 @@ type ChatbotPayload = {
   fallbackDelaySeconds?: number;
   sessionTimeoutMinutes?: number;
   rateLimitPerMinute?: number;
+  leadForm?: unknown;
 };
 
 const chatbotAgentSelect = {
@@ -230,6 +233,10 @@ export async function POST(request: Request) {
       : {}),
     ...(body.rateLimitPerMinute !== undefined
       ? { rateLimitPerMinute: clampRateLimitPerMinute(body.rateLimitPerMinute) }
+      : {}),
+    // Module 8: the lead capture form, sanitised (fields, trigger, texts).
+    ...(body.leadForm !== undefined
+      ? { leadForm: parseLeadForm(body.leadForm) as unknown as Prisma.InputJsonValue }
       : {}),
   };
 

@@ -76,6 +76,7 @@ export function serializeWidgetSession(session: WidgetSession) {
     idleTimeoutMinutes: getIdleTimeoutMinutes(session),
     closedReason: session.closedReason,
     continuesPrevious: Boolean(session.previousSessionId),
+    leadState: session.leadState,
   };
 }
 

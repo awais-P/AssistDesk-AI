@@ -100,7 +100,7 @@ export async function PATCH(request: Request, context: ContactRouteContext) {
  * "Forget this customer" (privacy request): deletes the Contact, so no channel links
  * to it and the AI loses its memory of them. With `?erase=conversations` their chat
  * sessions (and messages) are deleted too; tickets are business records and stay,
- * unlinked. Manager role or higher.
+ * unlinked; their leads are deleted. Manager role or higher.
  */
 export async function DELETE(request: Request, context: ContactRouteContext) {
   const session = await getCurrentSession();
@@ -137,6 +137,8 @@ export async function DELETE(request: Request, context: ContactRouteContext) {
       });
     }
 
+    // Leads hold the same personal data (Module 8), so they are erased too.
+    await tx.lead.deleteMany({ where: { contactId: contact.id } });
     await tx.sessionEvent.deleteMany({ where: { contactId: contact.id } });
     await tx.contact.delete({ where: { id: contact.id } });
   });

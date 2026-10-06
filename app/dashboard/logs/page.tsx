@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { LogsWorkspace } from "@/src/components/dashboard/logs-workspace";
+import { ActionLogsWorkspace } from "@/src/components/dashboard/tools/action-logs-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 
@@ -12,6 +13,7 @@ type LogsPageProps = {
     action?: string | string[];
     status?: string | string[];
     q?: string | string[];
+    tab?: string | string[];
   }>;
 };
 
@@ -24,6 +26,11 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
 
   if (!session) {
     redirect("/login");
+  }
+
+  // Module 2 FE-5: the AI's reasoning runs and actions have their own tab.
+  if (firstParam(params.tab) === "actions") {
+    return <ActionLogsWorkspace />;
   }
 
   const workspaceId = session.user.workspaceId;

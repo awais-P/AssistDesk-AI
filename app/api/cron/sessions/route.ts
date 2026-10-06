@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/src/lib/prisma";
 import { safeEqual } from "@/src/lib/secrets";
 import { expireIdleSessions } from "@/src/lib/session-lifecycle";
+import { expireStaleConfirmations } from "@/src/lib/tools/registry";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,13 @@ async function run(request: Request) {
     where: { updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
   });
 
+  // Module 2: actions still waiting for a "yes" after the confirmation window.
+  const expiredConfirmations = await expireStaleConfirmations();
+
   return NextResponse.json({
     success: true,
     expiredSessions: closed,
+    expiredConfirmations,
     removedRateLimitBuckets: buckets.count,
     durationMs: Date.now() - startedAt,
   });

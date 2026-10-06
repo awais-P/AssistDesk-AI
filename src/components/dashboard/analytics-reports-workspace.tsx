@@ -14,6 +14,7 @@ import {
   Panel,
   SEQUENTIAL_RAMP,
   SERIES_COLOR,
+  STATUS_COLORS,
   StatTile,
   channelLabel,
   formatDateTime,
@@ -87,6 +88,7 @@ export function AnalyticsReportsWorkspace({ data, canExport }: AnalyticsReportsW
         <FaqSection data={data} improveHref={improveHref} />
         <BehaviorSection behavior={data.behavior} timeZone={data.range.timeZone} channelFiltered={channelFiltered} />
         <LeadsSection leads={data.leads} />
+        <ActionsSection actions={data.actions} />
         <TicketsSection tickets={data.tickets} channelFiltered={channelFiltered} />
       </div>
     </div>
@@ -659,6 +661,128 @@ function LeadsSection({ leads }: { leads: AnalyticsReports["leads"] }) {
               value,
             }))}
             emptyText="No leads in this period."
+          />
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+// ---------- AI actions (Module 2 FE-5) ----------
+
+const runStatusLabels: Record<string, string> = {
+  COMPLETED: "Completed",
+  AWAITING_CONFIRMATION: "Waiting for customer's yes",
+  MAX_STEPS: "Step limit reached",
+  FALLBACK: "Fallback answer",
+  FAILED: "No AI reply",
+};
+
+function formatMs(ms: number | null) {
+  if (ms === null) return "—";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`;
+}
+
+function ActionsSection({ actions }: { actions: AnalyticsReports["actions"] }) {
+  return (
+    <section aria-labelledby="actions-title">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id="actions-title" className="text-lg font-semibold text-white">
+            AI actions
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            What agents with actions did for customers in this period (Playground and admin tests excluded).
+          </p>
+        </div>
+        <Link href="/dashboard/logs?tab=actions" className={`text-sm ${textLinkClass}`}>
+          Action logs →
+        </Link>
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label="Messages handled"
+          value={formatNumber(actions.runs)}
+          detail={`${formatNumber(actions.runsWithActions)} needed at least one action`}
+        />
+        <StatTile label="Completed" value={formatPercent(actions.completedRate)} detail="Answered by the reasoning chain itself" />
+        <StatTile label="Fallback answers" value={formatPercent(actions.fallbackRate)} detail="No model could finish; a fallback replied" />
+        <StatTile
+          label="Average run"
+          value={formatMs(actions.avgRunMs)}
+          detail={actions.avgSteps === null ? "No runs yet" : `${actions.avgSteps} reasoning steps on average`}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Panel title="By action" description="Success rate counts finished calls (done or failed).">
+            {actions.tools.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-500">No actions in this period.</p>
+            ) : (
+              <div className="-mx-1 overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left text-sm">
+                  <thead className="text-xs text-slate-500">
+                    <tr>
+                      <th className="px-1 pb-2 font-medium">Action</th>
+                      <th className="px-1 pb-2 text-right font-medium">Calls</th>
+                      <th className="px-1 pb-2 text-right font-medium">Done</th>
+                      <th className="px-1 pb-2 text-right font-medium">Failed</th>
+                      <th className="px-1 pb-2 text-right font-medium" title="Refused, cancelled or declined by the customer">Not run</th>
+                      <th className="px-1 pb-2 text-right font-medium">Success</th>
+                      <th className="px-1 pb-2 text-right font-medium">Avg / p95 time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 tabular-nums">
+                    {actions.tools.map((tool) => (
+                      <tr key={tool.key}>
+                        <td className="px-1 py-2">
+                          <Link href={`/dashboard/logs?tab=actions&view=actions&tool=${tool.key}`} className="text-slate-200 hover:text-white hover:underline">
+                            {tool.name}
+                          </Link>
+                          {tool.pending ? <span className="ml-2 text-xs text-slate-500">{tool.pending} waiting</span> : null}
+                        </td>
+                        <td className="px-1 py-2 text-right text-slate-200">{formatNumber(tool.calls)}</td>
+                        <td className="px-1 py-2 text-right text-slate-400">{formatNumber(tool.success)}</td>
+                        <td className="px-1 py-2 text-right text-slate-400">{formatNumber(tool.failed)}</td>
+                        <td className="px-1 py-2 text-right text-slate-400">{formatNumber(tool.declined)}</td>
+                        <td className="px-1 py-2 text-right">
+                          {tool.successRate === null ? (
+                            <span className="text-slate-500">—</span>
+                          ) : (
+                            <span className="inline-flex items-center justify-end gap-1.5 text-slate-200">
+                              <span
+                                aria-hidden="true"
+                                className="h-2 w-2 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    tool.successRate >= 0.9 ? STATUS_COLORS.good : tool.successRate >= 0.7 ? STATUS_COLORS.warning : STATUS_COLORS.critical,
+                                }}
+                              />
+                              {formatPercent(tool.successRate)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-1 py-2 text-right text-slate-400">
+                          {formatMs(tool.avgLatencyMs)} / {formatMs(tool.p95LatencyMs)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+        </div>
+        <Panel title="How runs ended">
+          <BarList
+            items={orderedEntries(actions.byStatus, Object.keys(runStatusLabels)).map(([key, value]) => ({
+              key,
+              label: runStatusLabels[key] ?? formatEnum(key),
+              value,
+            }))}
+            emptyText="No runs in this period."
           />
         </Panel>
       </div>

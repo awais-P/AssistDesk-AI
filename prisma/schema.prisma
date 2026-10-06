@@ -141,6 +141,10 @@ model Workspace {
   webhookDeliveries WebhookDelivery[]
   aiInteractions    AiInteraction[]
   messageFeedback   MessageFeedback[]
+  agentTools        AgentTool[]
+  agentRuns         AgentRun[]
+  toolExecutions    ToolExecution[]
+  appointments      Appointment[]
 }
 
 model User {
@@ -203,30 +207,41 @@ model Inbox {
 }
 
 model AIAgent {
-  id                  String            @id @default(cuid())
-  workspaceId         String
-  inboxId             String?
-  name                String
-  provider            String            @default("Groq")
-  model               String            @default("llama-3.3-70b-versatile")
-  apiKey              String?
-  systemPrompt        String?
-  temperature         Float             @default(0.7)
-  confidenceThreshold Float             @default(0.5)
-  tone                String            @default("FRIENDLY")
-  responseLength      String            @default("BALANCED")
-  maxTokens           Int               @default(512)
-  status              AgentStatus       @default(DRAFT)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  workspace           Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  inbox               Inbox?            @relation(fields: [inboxId], references: [id], onDelete: SetNull)
-  chatbots            Chatbot[]
-  knowledgeSources    KnowledgeSource[]
-  automations         AgentAutomation[]
-  logs                AutomationLog[]
-  aiInteractions      AiInteraction[]
-  integrations        Integration[]
+  id                    String             @id @default(cuid())
+  workspaceId           String
+  inboxId               String?
+  name                  String
+  provider              String             @default("Groq")
+  model                 String             @default("llama-3.3-70b-versatile")
+  apiKey                String?
+  systemPrompt          String?
+  temperature           Float              @default(0.7)
+  confidenceThreshold   Float              @default(0.5)
+  tone                  String             @default("FRIENDLY")
+  responseLength        String             @default("BALANCED")
+  maxTokens             Int                @default(512)
+  /// Module 2: let this agent call tools (actions) while answering.
+  toolsEnabled          Boolean            @default(false)
+  /// Module 2: maximum reasoning steps (tool rounds) per customer message.
+  maxToolSteps          Int                @default(4)
+  /// Module 2: hand the conversation to a human when a tool fails.
+  escalateOnToolFailure Boolean            @default(true)
+  /// Module 2 FE-4: intent → action rules [{ id, phrases[], toolKey, mode: PREFER | ALWAYS }].
+  intentRules           Json?
+  status                AgentStatus        @default(DRAFT)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inbox                 Inbox?             @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  chatbots              Chatbot[]
+  knowledgeSources      KnowledgeSource[]
+  automations           AgentAutomation[]
+  logs                  AutomationLog[]
+  aiInteractions        AiInteraction[]
+  integrations          Integration[]
+  toolBindings          AgentToolBinding[]
+  agentRuns             AgentRun[]
+  toolExecutions        ToolExecution[]
 
   @@index([workspaceId])
   @@index([inboxId])
@@ -366,6 +381,8 @@ model Ticket {
   ticketTags     TicketTag[]
   messages       TicketMessage[]
   aiInteractions AiInteraction[]
+  agentRuns      AgentRun[]
+  toolExecutions ToolExecution[]
   logs           AutomationLog[]
 
   @@unique([workspaceId, ticketNumber])
@@ -447,21 +464,25 @@ model ApiKey {
 }
 
 model WorkspaceSetting {
-  id                  String    @id @default(cuid())
-  workspaceId         String    @unique
-  theme               String    @default("dark")
-  timezone            String    @default("Asia/Karachi")
-  supportSignature    String?
-  crossChannelMemory  Boolean   @default(true)
+  id                     String    @id @default(cuid())
+  workspaceId            String    @unique
+  theme                  String    @default("dark")
+  timezone               String    @default("Asia/Karachi")
+  supportSignature       String?
+  crossChannelMemory     Boolean   @default(true)
   /// Module 8 FE-3: team emails and Slack incoming-webhook URL (encrypted) told about new leads.
-  leadNotifyEmails    String[]  @default([])
-  leadSlackWebhookUrl String?
+  leadNotifyEmails       String[]  @default([])
+  leadSlackWebhookUrl    String?
   /// Module 8 FE-2: create leads automatically when a customer shows buying intent
   /// on WhatsApp/Slack or types their contact details in the website chat.
-  autoCaptureLeads    Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  autoCaptureLeads       Boolean   @default(true)
+  /// Module 2: appointment booking (book_appointment tool). Hours: { days: [1..7], start: "09:00", end: "17:00" }.
+  appointmentSlotMinutes Int       @default(30)
+  appointmentHours       Json?
+  appointmentDaysAhead   Int       @default(14)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  workspace              Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model ChatSession {
@@ -503,6 +524,9 @@ model ChatSession {
   events                 SessionEvent[]
   leads                  Lead[]
   aiInteractions         AiInteraction[]
+  agentRuns              AgentRun[]
+  toolExecutions         ToolExecution[]
+  appointments           Appointment[]
 
   @@index([workspaceId])
   @@index([chatbotId])
@@ -641,6 +665,7 @@ model Contact {
   tickets         Ticket[]
   events          SessionEvent[]
   leads           Lead[]
+  appointments    Appointment[]
 
   @@unique([workspaceId, email])
   @@unique([workspaceId, phone])
@@ -851,4 +876,168 @@ model MessageFeedback {
 
   @@index([workspaceId, createdAt])
   @@index([sessionId])
+}
+
+enum ToolType {
+  BUILT_IN
+  HTTP
+}
+
+enum ToolExecutionStatus {
+  SUCCESS
+  ERROR
+  DENIED
+  PENDING_CONFIRMATION
+  CANCELLED
+}
+
+/// Module 2 tool registry: an action the AI can take. Built-in tools run inside
+/// AssistDesk (tickets, leads, appointments, escalation); HTTP tools call the
+/// customer's own systems (order status, invoices, CRM…).
+model AgentTool {
+  id                   String             @id @default(cuid())
+  workspaceId          String
+  /// snake_case name the model calls, unique per workspace.
+  key                  String
+  name                 String
+  /// What the tool does and when to use it (sent to the model).
+  description          String
+  type                 ToolType
+  builtInKey           String?
+  /// [{ name, type: string|number|integer|boolean, description, required, enum? }]
+  parameters           Json
+  httpMethod           String?
+  /// URL template with {param} placeholders (URL-encoded).
+  httpUrl              String?
+  /// [{ name, value (encrypted when secret), secret }]
+  httpHeaders          Json?
+  /// JSON body template with {param} placeholders; empty = all inputs as JSON.
+  httpBody             String?
+  httpTimeoutMs        Int                @default(10000)
+  /// Dot paths kept from the response for the model (empty = whole response, trimmed).
+  responseFields       String[]           @default([])
+  requiresConfirmation Boolean            @default(false)
+  isEnabled            Boolean            @default(true)
+  lastTestedAt         DateTime?
+  lastTestStatus       String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  workspace            Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bindings             AgentToolBinding[]
+  executions           ToolExecution[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
+}
+
+/// Which agents may use which tools.
+model AgentToolBinding {
+  id        String    @id @default(cuid())
+  agentId   String
+  toolId    String
+  createdAt DateTime  @default(now())
+  agent     AIAgent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tool      AgentTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, toolId])
+  @@index([toolId])
+}
+
+/// One reasoning chain (LangGraph run) for one customer message: the question, the
+/// steps and the final answer. Its ToolExecutions are the action log (FE-5).
+model AgentRun {
+  id          String          @id @default(cuid())
+  workspaceId String
+  agentId     String?
+  sessionId   String?
+  ticketId    String?
+  channel     ChannelType
+  /// CHAT | EMAIL | PLAYGROUND
+  source      String
+  question    String
+  answer      String?
+  /// COMPLETED | MAX_STEPS | AWAITING_CONFIRMATION | FALLBACK | FAILED
+  status      String
+  steps       Int             @default(0)
+  toolCalls   Int             @default(0)
+  model       String?
+  latencyMs   Int             @default(0)
+  error       String?
+  /// FE-5 chain of thought: the decisions of this run in order (rules matched, the
+  /// model's thoughts, actions by execution id, model errors, fallbacks).
+  trace       Json?
+  createdAt   DateTime        @default(now())
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent       AIAgent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  session     ChatSession?    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  ticket      Ticket?         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  executions  ToolExecution[]
+
+  @@index([workspaceId, createdAt])
+  @@index([sessionId])
+  @@index([ticketId])
+}
+
+/// Module 2 FE-5 action log: one tool call, with the reason the model gave for it.
+model ToolExecution {
+  id          String              @id @default(cuid())
+  workspaceId String
+  runId       String?
+  agentId     String?
+  toolId      String?
+  toolKey     String
+  toolName    String
+  sessionId   String?
+  ticketId    String?
+  step        Int                 @default(1)
+  /// The model's stated reason for this action ("chain of thought").
+  reasoning   String?
+  input       Json
+  output      Json?
+  status      ToolExecutionStatus
+  error       String?
+  latencyMs   Int                 @default(0)
+  /// MODEL | RULE | CONFIRMATION | TEST
+  triggeredBy String              @default("MODEL")
+  dryRun      Boolean             @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run         AgentRun?           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agent       AIAgent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  tool        AgentTool?          @relation(fields: [toolId], references: [id], onDelete: SetNull)
+  session     ChatSession?        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  ticket      Ticket?             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([sessionId, status])
+  @@index([runId])
+  @@index([toolKey])
+}
+
+/// Module 2 FE-1: appointments booked by the AI (book_appointment) or the team.
+model Appointment {
+  id              String       @id @default(cuid())
+  workspaceId     String
+  contactId       String?
+  sessionId       String?
+  name            String
+  email           String?
+  phone           String?
+  topic           String?
+  startsAt        DateTime
+  durationMinutes Int          @default(30)
+  /// BOOKED | CANCELLED | COMPLETED
+  status          String       @default("BOOKED")
+  notes           String?
+  /// AI | TEAM
+  createdBy       String       @default("AI")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact         Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  session         ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, startsAt])
+  @@index([contactId])
 }

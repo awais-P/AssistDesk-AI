@@ -19,6 +19,7 @@ function normalizeTab(value?: string) {
     value === "overview" ||
     value === "sources" ||
     value === "automations" ||
+    value === "actions" ||
     value === "playground" ||
     value === "settings"
   ) {

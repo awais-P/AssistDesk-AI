@@ -6,7 +6,12 @@ import {
   generateAgentReply,
   toRuntimeAgent,
 } from "@/src/lib/llm-runtime";
+import { runAgentReply } from "@/src/lib/agent-engine/run-agent";
+import { getAgentRunDetail } from "@/src/lib/action-logs";
+import { safeTimeZone } from "@/src/lib/analytics-math";
+import { normalizeEmail, normalizePhone } from "@/src/lib/identity";
 import { prisma } from "@/src/lib/prisma";
+import { loadAgentToolset } from "@/src/lib/tools/registry";
 
 type PlaygroundRouteContext = {
   params: Promise<{
@@ -17,6 +22,8 @@ type PlaygroundRouteContext = {
 type PlaygroundPayload = {
   message?: string;
   history?: Array<{ role?: string; content?: string }>;
+  /** Module 2: pretend to be this customer when testing tools. */
+  customer?: { name?: unknown; email?: unknown; phone?: unknown };
 };
 
 function parseHistory(history: PlaygroundPayload["history"]): ConversationTurn[] {
@@ -94,13 +101,43 @@ export async function POST(
     })),
   );
 
-  const response = await generateAgentReply({
-    agent: toRuntimeAgent(agent),
-    question: message,
-    sources: hydratedSources,
-    history: parseHistory(body.history),
-    channel: "PLAYGROUND",
-  });
+  const history = parseHistory(body.history);
+  // Module 2: agents with tools reason here too, in test mode — lookups run for real,
+  // actions that change something (tickets, bookings, leads, HTTP writes) are only simulated.
+  const toolset = await loadAgentToolset(session.user.workspaceId, agent.id);
+  const settings = await prisma.workspaceSetting.findUnique({ where: { workspaceId: session.user.workspaceId }, select: { timezone: true } });
+  const testCustomer = {
+    name: typeof body.customer?.name === "string" ? body.customer.name.trim().slice(0, 120) || null : null,
+    email: typeof body.customer?.email === "string" ? normalizeEmail(body.customer.email) : null,
+    phone: typeof body.customer?.phone === "string" ? normalizePhone(body.customer.phone) : null,
+  };
+  const response =
+    toolset.tools.length > 0 && toolset.settings
+      ? await runAgentReply({
+          agent: { ...toRuntimeAgent(agent), id: agent.id },
+          workspaceId: session.user.workspaceId,
+          channel: "PLAYGROUND",
+          source: "PLAYGROUND",
+          question: message,
+          history,
+          sources: hydratedSources,
+          tools: toolset.tools,
+          settings: toolset.settings,
+          ctx: {
+            workspaceId: session.user.workspaceId,
+            sessionId: null,
+            ticketId: null,
+            contactId: null,
+            channel: "PLAYGROUND",
+            verifiedIdentity: false,
+            customer: testCustomer,
+            timeZone: safeTimeZone(settings?.timezone ?? "UTC"),
+            dryRun: true,
+            triggeredBy: "MODEL",
+          },
+        })
+      : await generateAgentReply({ agent: toRuntimeAgent(agent), question: message, sources: hydratedSources, history, channel: "PLAYGROUND" });
+  const agentic = response as Partial<{ runId: string; status: string; trace: unknown[]; toolCalls: number }>;
 
   await prisma.automationLog.create({
     data: {
@@ -131,5 +168,12 @@ export async function POST(
     modelUsed: response.modelUsed,
     latencyMs: response.latencyMs,
     tokens: response.tokens,
+    // Module 2 FE-5: the chain of thought of this test (empty when the agent has no tools).
+    toolsEnabled: toolset.tools.length > 0,
+    runId: agentic.runId ?? null,
+    runStatus: agentic.status ?? null,
+    toolCalls: agentic.toolCalls ?? 0,
+    trace: agentic.trace ?? [],
+    run: agentic.runId ? await getAgentRunDetail(session.user.workspaceId, agentic.runId) : null,
   });
 }

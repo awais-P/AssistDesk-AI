@@ -13,6 +13,7 @@ import {
   leadTemperature,
   type LeadStatusValue,
 } from "@/src/lib/lead-form";
+import { ChatActionsSection } from "./tools/chat-actions-section";
 
 // Re-exported so existing importers of these types keep working.
 export type { ChatAttachmentItem, ChatSessionListItem };
@@ -1156,6 +1157,8 @@ function ContextPanel({
           </p>
         ) : null}
       </PanelSection>
+
+      <ChatActionsSection sessionId={session.id} refreshKey={session.messages.at(-1)?.id ?? null} />
 
       <PanelSection title="AI memory">
         {!memoryEnabled ? (

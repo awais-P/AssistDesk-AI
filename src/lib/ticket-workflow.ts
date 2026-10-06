@@ -6,6 +6,9 @@ import { sendTicketReplyEmail } from "./mailer";
 import { prisma } from "./prisma";
 import { recordSessionEvent } from "./session-lifecycle";
 import { buildContactContext } from "./session-memory";
+import { runAgentReply } from "./agent-engine/run-agent";
+import { safeTimeZone } from "./analytics-math";
+import { loadAgentToolset } from "./tools/registry";
 
 function normalize(value: string | null | undefined) {
   return (value || "").trim().toLowerCase();
@@ -283,16 +286,44 @@ async function generateTicketAiReply(ticket: ReplyTicket, agent: TicketAgent) {
     })),
   );
 
-  const response = await generateAgentReply({
-    agent: toRuntimeAgent(agent),
-    question,
-    sources: hydratedSources,
-    history,
-    channel: "EMAIL",
-    memory: { customerContext: customer?.text ?? null },
-  });
+  const memory = { customerContext: customer?.text ?? null };
+  // Module 2: an agent with tools can act on emails too (no chat, so actions that need
+  // the customer's confirmation are refused and offered via the team instead).
+  const toolset = await loadAgentToolset(ticket.workspaceId, agent.id);
+  const settings = toolset.tools.length > 0 ? await prisma.workspaceSetting.findUnique({ where: { workspaceId: ticket.workspaceId }, select: { timezone: true } }) : null;
+  const response =
+    toolset.tools.length > 0 && toolset.settings
+      ? await runAgentReply({
+          agent: { ...toRuntimeAgent(agent), id: agent.id },
+          workspaceId: ticket.workspaceId,
+          channel: "EMAIL",
+          source: "EMAIL",
+          question,
+          history,
+          sources: hydratedSources,
+          memory,
+          tools: toolset.tools,
+          settings: toolset.settings,
+          ctx: {
+            workspaceId: ticket.workspaceId,
+            sessionId: null,
+            ticketId: ticket.id,
+            contactId: ticket.contactId,
+            channel: "EMAIL",
+            // Replies go to the sender's address, so the requester counts as verified.
+            verifiedIdentity: true,
+            customer: { name: ticket.requesterName, email: ticket.requesterEmail, phone: null },
+            timeZone: safeTimeZone(settings?.timezone ?? "UTC"),
+            dryRun: false,
+            triggeredBy: "MODEL",
+          },
+        })
+      : await generateAgentReply({ agent: toRuntimeAgent(agent), question, sources: hydratedSources, history, channel: "EMAIL", memory });
 
-  const isConfident = response.confidence >= agent.confidenceThreshold;
+  // An answer built from successful actions counts as confident even without a knowledge match.
+  const agentic = response as Partial<{ toolCalls: number; status: string }>;
+  const actedSuccessfully = (agentic.toolCalls ?? 0) > 0 && agentic.status === "COMPLETED";
+  const isConfident = response.confidence >= agent.confidenceThreshold || actedSuccessfully;
 
   // Module 4 analytics store (email channel).
   await prisma.aiInteraction.create({

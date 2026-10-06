@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { LogsTabs } from "./logs-tabs";
 
 type LogItem = {
   id: string;
@@ -152,6 +153,7 @@ export function LogsWorkspace({
         <p className="mt-3 max-w-2xl text-sm text-slate-400">
           Monitor automation jobs and AI model usage
         </p>
+        <LogsTabs active="automation" />
       </div>
 
       <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-end">

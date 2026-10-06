@@ -1,3 +1,5 @@
+import { runAgentReply } from "./agent-engine/run-agent";
+import { safeTimeZone } from "./analytics-math";
 import { hydrateKnowledgeSources } from "./knowledge-runtime";
 import {
   type ConversationTurn,
@@ -7,7 +9,8 @@ import {
 } from "./llm-runtime";
 import { prisma } from "./prisma";
 import { appendSessionMessage, recordSessionEvent } from "./session-lifecycle";
-import { HISTORY_WINDOW, buildCustomerContext, scheduleMemoryRefresh } from "./session-memory";
+import { HISTORY_WINDOW, buildCustomerContext, isVerifiedIdentity, scheduleMemoryRefresh } from "./session-memory";
+import { loadAgentToolset } from "./tools/registry";
 
 const HISTORY_MESSAGE_LIMIT = HISTORY_WINDOW;
 
@@ -106,6 +109,13 @@ export async function generateSessionReply({
         contactId: true,
         previousSessionId: true,
         chatbotId: true,
+        channel: true,
+        visitorId: true,
+        customerName: true,
+        customerEmail: true,
+        customerPhone: true,
+        contact: { select: { visitorId: true } },
+        workspace: { select: { settings: { select: { timezone: true } } } },
       },
     }),
     buildCustomerContext(sessionId),
@@ -113,14 +123,38 @@ export async function generateSessionReply({
   // The rolling summary only covers messages older than the history window.
   const conversationSummary =
     session?.summary && session.messageCount > HISTORY_WINDOW ? session.summary : null;
-  const response = await generateAgentReply({
-    agent: toRuntimeAgent(agent, extraSystemPrompt),
-    question: `${latest.content}${describeAttachments(latest.attachments)}`,
-    sources,
-    history,
-    channel,
-    memory: { customerContext: customerContext.text, conversationSummary },
-  });
+  const question = `${latest.content}${describeAttachments(latest.attachments)}`;
+  const memory = { customerContext: customerContext.text, conversationSummary };
+  const runtimeAgent = toRuntimeAgent(agent, extraSystemPrompt);
+  // Module 2: agents with tools reason and act through the LangGraph engine.
+  const toolset = channel === "PLAYGROUND" ? { tools: [], settings: null } : await loadAgentToolset(workspaceId, agent.id);
+  const response =
+    toolset.tools.length > 0 && toolset.settings && session
+      ? await runAgentReply({
+          agent: { ...runtimeAgent, id: agent.id },
+          workspaceId,
+          channel,
+          source: "CHAT",
+          question,
+          history,
+          sources,
+          memory,
+          tools: toolset.tools,
+          settings: toolset.settings,
+          ctx: {
+            workspaceId,
+            sessionId,
+            ticketId: null,
+            contactId: session.contactId,
+            channel: session.channel,
+            verifiedIdentity: isVerifiedIdentity(session),
+            customer: { name: session.customerName, email: session.customerEmail, phone: session.customerPhone },
+            timeZone: safeTimeZone(session.workspace.settings?.timezone ?? "UTC"),
+            dryRun: false,
+            triggeredBy: "MODEL",
+          },
+        })
+      : await generateAgentReply({ agent: runtimeAgent, question, sources, history, channel, memory });
 
   const message = await appendSessionMessage({
     sessionId,

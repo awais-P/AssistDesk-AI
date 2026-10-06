@@ -3,6 +3,8 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown, { type Components } from "react-markdown";
+import { AgentToolsPanel } from "@/src/components/dashboard/tools/agent-tools-panel";
+import { RunTimeline, type TimelineRun } from "@/src/components/dashboard/tools/run-timeline";
 import {
   MAX_AGENT_MAX_TOKENS,
   MIN_AGENT_MAX_TOKENS,
@@ -106,6 +108,7 @@ type AgentTabKey =
   | "overview"
   | "sources"
   | "automations"
+  | "actions"
   | "playground"
   | "settings";
 
@@ -114,6 +117,8 @@ type PlaygroundReplyMeta = {
   latencyMs: number;
   usedFallback: boolean;
   fallbackReason: string | null;
+  /** Module 2 FE-5: the reasoning run behind this reply (agents with actions). */
+  run?: TimelineRun | null;
 };
 
 type PlaygroundMessage = {
@@ -135,6 +140,8 @@ type PlaygroundResponse = {
   modelUsed?: string;
   latencyMs?: number;
   tokens?: number;
+  toolsEnabled?: boolean;
+  run?: TimelineRun | null;
 };
 
 const PLAYGROUND_HISTORY_LIMIT = 10;
@@ -154,6 +161,7 @@ const tabItems: Array<{ key: AgentTabKey; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "sources", label: "Sources" },
   { key: "automations", label: "Automations" },
+  { key: "actions", label: "Actions" },
   { key: "playground", label: "Playground" },
   { key: "settings", label: "Settings" },
 ];
@@ -478,6 +486,14 @@ function AgentTabIcon({ tab }: { tab: AgentTabKey }) {
     );
   }
 
+  if (tab === "actions") {
+    return (
+      <svg {...commonProps}>
+        <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5Z" />
+      </svg>
+    );
+  }
+
   if (tab === "playground") {
     return (
       <svg {...commonProps}>
@@ -590,6 +606,10 @@ export function AgentConfigurationWorkspace({
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [playgroundInput, setPlaygroundInput] = useState("");
   const [playgroundMessages, setPlaygroundMessages] = useState<PlaygroundMessage[]>([]);
+  const [expandedRuns, setExpandedRuns] = useState<string[]>([]);
+  const [playgroundToolsEnabled, setPlaygroundToolsEnabled] = useState(false);
+  const [playgroundCustomer, setPlaygroundCustomer] = useState({ name: "", email: "" });
+  const [showCustomerFields, setShowCustomerFields] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   // Guards against a second send before React re-renders with isSendingMessage=true.
   const isSendingRef = useRef(false);
@@ -1128,6 +1148,7 @@ export function AgentConfigurationWorkspace({
         body: JSON.stringify({
           message: trimmedInput,
           history,
+          customer: playgroundCustomer,
         }),
       });
 
@@ -1157,8 +1178,10 @@ export function AgentConfigurationWorkspace({
           latencyMs: data.latencyMs ?? 0,
           usedFallback: Boolean(data.usedFallback),
           fallbackReason: data.fallbackReason ?? null,
+          run: data.run ?? null,
         },
       };
+      setPlaygroundToolsEnabled(Boolean(data.toolsEnabled));
 
       setPlaygroundMessages((current) => [...current, agentReply]);
       setUsage((current) => ({
@@ -2229,6 +2252,55 @@ export function AgentConfigurationWorkspace({
         </p>
       ) : null}
 
+      <div className="rounded-xl border border-white/10 bg-[#0a0a0a] px-4 py-3 text-sm text-slate-300">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p>
+            Testing as{" "}
+            <span className="font-semibold text-white">
+              {playgroundCustomer.name || playgroundCustomer.email
+                ? [playgroundCustomer.name, playgroundCustomer.email].filter(Boolean).join(" · ")
+                : "an anonymous visitor"}
+            </span>
+            {playgroundToolsEnabled ? (
+              <span className="text-slate-500">
+                {" "}
+                — actions run in test mode: lookups are real, anything that would change data is only simulated.
+              </span>
+            ) : null}
+          </p>
+          <button
+            type="button"
+            aria-expanded={showCustomerFields}
+            onClick={() => setShowCustomerFields((open) => !open)}
+            className="text-xs font-semibold text-slate-300 underline-offset-2 hover:text-white hover:underline"
+          >
+            {showCustomerFields ? "Done" : "Change"}
+          </button>
+        </div>
+        {showCustomerFields ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <input
+              aria-label="Test customer name"
+              value={playgroundCustomer.name}
+              onChange={(event) => setPlaygroundCustomer((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Customer name (optional)"
+              className="h-10 rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-white outline-none focus:border-white"
+            />
+            <input
+              aria-label="Test customer email"
+              type="email"
+              value={playgroundCustomer.email}
+              onChange={(event) => setPlaygroundCustomer((current) => ({ ...current, email: event.target.value }))}
+              placeholder="Customer email (optional)"
+              className="h-10 rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-white outline-none focus:border-white"
+            />
+            <p className="text-xs text-slate-500 sm:col-span-2">
+              Used by actions like booking or creating a ticket, as if the customer had typed them in the chat.
+            </p>
+          </div>
+        ) : null}
+      </div>
+
       <section className="rounded-2xl border border-white/10 bg-[#0a0a0a]">
         <div className="min-h-[520px] px-5 py-5">
           {playgroundMessages.length === 0 && !isSendingMessage ? (
@@ -2285,6 +2357,24 @@ export function AgentConfigurationWorkspace({
                         <span>{formatAgentRuntimeLabel(message.meta.modelUsed)}</span>
                         <span aria-hidden="true">•</span>
                         <span>{formatLatency(message.meta.latencyMs)}</span>
+                        {message.meta.run ? (
+                          <>
+                            <span aria-hidden="true">•</span>
+                            <button
+                              type="button"
+                              aria-expanded={expandedRuns.includes(message.id)}
+                              onClick={() =>
+                                setExpandedRuns((current) =>
+                                  current.includes(message.id) ? current.filter((id) => id !== message.id) : [...current, message.id],
+                                )
+                              }
+                              className="font-semibold text-slate-300 underline-offset-2 hover:text-white hover:underline"
+                            >
+                              {expandedRuns.includes(message.id) ? "Hide reasoning" : "Show reasoning"}
+                              {message.meta.run.toolCalls ? ` (${message.meta.run.toolCalls} action${message.meta.run.toolCalls === 1 ? "" : "s"})` : ""}
+                            </button>
+                          </>
+                        ) : null}
                         {message.meta.usedFallback ? (
                           <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-200">
                             Knowledge-base fallback — AI provider unavailable
@@ -2293,6 +2383,12 @@ export function AgentConfigurationWorkspace({
                               : ""}
                           </span>
                         ) : null}
+                      </div>
+                    ) : null}
+
+                    {message.meta?.run && expandedRuns.includes(message.id) ? (
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-[#090909] p-4">
+                        <RunTimeline run={message.meta.run} />
                       </div>
                     ) : null}
                   </div>
@@ -2786,7 +2882,7 @@ export function AgentConfigurationWorkspace({
         </p>
       ) : null}
 
-      <div className="mt-6 grid gap-2 rounded-2xl bg-[#1a1a1a] p-1 lg:grid-cols-5">
+      <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl bg-[#1a1a1a] p-1 sm:grid-cols-3 lg:grid-cols-6">
         {tabItems.map((tab) => (
           <button
             key={tab.key}
@@ -2808,6 +2904,7 @@ export function AgentConfigurationWorkspace({
         {activeTab === "overview" ? renderOverview : null}
         {activeTab === "sources" ? renderSources : null}
         {activeTab === "automations" ? renderAutomations : null}
+        {activeTab === "actions" ? <AgentToolsPanel agentId={agent.id} onOpenPlayground={() => changeTab("playground")} /> : null}
         {activeTab === "playground" ? renderPlayground : null}
         {activeTab === "settings" ? renderSettings : null}
       </div>

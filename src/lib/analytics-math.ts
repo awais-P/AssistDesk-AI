@@ -376,3 +376,35 @@ export function anonymizeCustomer(name: string | null, id: string) {
 
   return `${initials || "Visitor"} · ${id.slice(-4).toUpperCase()}`;
 }
+
+export type ToolUsageRow = { toolKey: string; toolName: string; status: string; latencyMs: number };
+
+/**
+ * Module 2 × Module 4: per-action usage for the Reports page — calls, outcomes and
+ * timing. Success rate counts finished calls only (done or failed), not ones refused,
+ * cancelled or still waiting for the customer's yes.
+ */
+export function summarizeToolUsage(rows: ToolUsageRow[]) {
+  const byKey = new Map<string, { key: string; name: string; calls: number; success: number; failed: number; declined: number; pending: number; latencies: number[] }>();
+
+  for (const row of rows) {
+    const entry = byKey.get(row.toolKey) ?? { key: row.toolKey, name: row.toolName, calls: 0, success: 0, failed: 0, declined: 0, pending: 0, latencies: [] };
+    entry.calls += 1;
+    if (row.status === "SUCCESS") entry.success += 1;
+    else if (row.status === "ERROR") entry.failed += 1;
+    else if (row.status === "PENDING_CONFIRMATION") entry.pending += 1;
+    else entry.declined += 1;
+    if ((row.status === "SUCCESS" || row.status === "ERROR") && row.latencyMs > 0) entry.latencies.push(row.latencyMs);
+    // The newest name wins when a tool was renamed (rows arrive newest first).
+    byKey.set(row.toolKey, entry);
+  }
+
+  return [...byKey.values()]
+    .map(({ latencies, ...entry }) => ({
+      ...entry,
+      successRate: ratio(entry.success, entry.success + entry.failed),
+      avgLatencyMs: latencies.length ? Math.round(average(latencies) as number) : null,
+      p95LatencyMs: latencies.length ? Math.round(percentile(latencies, 95) as number) : null,
+    }))
+    .sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name));
+}

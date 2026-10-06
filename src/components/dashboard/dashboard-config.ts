@@ -57,6 +57,15 @@ export const dashboardItems: DashboardItem[] = [
     group: "Main",
   },
   {
+    href: "/dashboard/appointments",
+    title: "Appointments",
+    section: "appointments",
+    description:
+      "Appointments booked by the AI in chat or by your team, with business hours for booking.",
+    moduleLabel: "Module 2 - Agentic Tools",
+    group: "Main",
+  },
+  {
     href: "/dashboard/analytics",
     title: "Analytics",
     section: "analytics",
@@ -90,6 +99,15 @@ export const dashboardItems: DashboardItem[] = [
     description:
       "Create, edit, and configure assistant identity, tone, and future model behavior.",
     moduleLabel: "Module 1 - Assistant Creation & Omnichannel Integration",
+    group: "AI",
+  },
+  {
+    href: "/dashboard/tools",
+    title: "Tools",
+    section: "tools",
+    description:
+      "Actions your AI agents can take: built-in actions and connections to your own systems.",
+    moduleLabel: "Module 2 - Agentic Tools",
     group: "AI",
   },
   {

@@ -12,6 +12,7 @@ import {
   latencyBuckets,
   percentile,
   ratio,
+  summarizeToolUsage,
   safeTimeZone,
   zonedParts,
 } from "./analytics-math";
@@ -504,7 +505,7 @@ export async function loadAnalyticsReports(workspaceId: string, range: Analytics
   const { from, to, channel, timeZone } = range;
   const interactionWhere: Prisma.AiInteractionWhereInput = { workspaceId, createdAt: { gte: from, lt: to }, ...channelWhere(channel) };
 
-  const [questions, sessions, newContacts, activeContacts, leads, tickets] = await Promise.all([
+  const [questions, sessions, newContacts, activeContacts, leads, tickets, toolRows, runs] = await Promise.all([
     prisma.aiInteraction.findMany({
       where: interactionWhere,
       select: { id: true, question: true, createdAt: true, channel: true, grounded: true, usedFallback: true },
@@ -526,6 +527,25 @@ export async function loadAnalyticsReports(workspaceId: string, range: Analytics
     prisma.ticket.findMany({
       where: { workspaceId, createdAt: { gte: from, lt: to } },
       select: { status: true, source: true, priority: true },
+      take: MAX_ROWS,
+    }),
+    // Module 2: real actions only (no admin tests or Playground simulations).
+    prisma.toolExecution.findMany({
+      where: {
+        workspaceId,
+        createdAt: { gte: from, lt: to },
+        triggeredBy: { not: "TEST" },
+        dryRun: false,
+        NOT: { run: { is: { source: "PLAYGROUND" } } },
+        ...(channel ? { run: { channel: channel as ChannelType } } : {}),
+      },
+      select: { toolKey: true, toolName: true, status: true, latencyMs: true },
+      orderBy: { createdAt: "desc" },
+      take: MAX_ROWS,
+    }),
+    prisma.agentRun.findMany({
+      where: { workspaceId, createdAt: { gte: from, lt: to }, source: { not: "PLAYGROUND" }, ...channelWhere(channel) },
+      select: { status: true, steps: true, toolCalls: true, latencyMs: true },
       take: MAX_ROWS,
     }),
   ]);
@@ -597,6 +617,17 @@ export async function loadAnalyticsReports(workspaceId: string, range: Analytics
       byStatus: count(tickets, (ticket) => ticket.status),
       bySource: count(tickets, (ticket) => ticket.source),
       byPriority: count(tickets, (ticket) => ticket.priority),
+    },
+    // Module 2 FE-5: how the AI's actions performed.
+    actions: {
+      runs: runs.length,
+      runsWithActions: runs.filter((run) => run.toolCalls > 0).length,
+      completedRate: ratio(runs.filter((run) => run.status === "COMPLETED" || run.status === "AWAITING_CONFIRMATION").length, runs.length),
+      fallbackRate: ratio(runs.filter((run) => run.status === "FALLBACK" || run.status === "FAILED").length, runs.length),
+      avgSteps: runs.length ? Math.round((average(runs.map((run) => run.steps)) as number) * 10) / 10 : null,
+      avgRunMs: runs.length ? Math.round(average(runs.map((run) => run.latencyMs)) as number) : null,
+      byStatus: count(runs, (run) => run.status),
+      tools: summarizeToolUsage(toolRows),
     },
   };
 }

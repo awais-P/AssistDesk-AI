@@ -11,6 +11,7 @@ import {
   getManagedFallbackModels,
 } from "./agent-config";
 import { decryptSecret } from "./secrets";
+import { cleanModelError, recordModelFailure, withoutGoneModels } from "./model-health";
 
 export type AgentRuntimeConfig = {
   provider: string;
@@ -31,7 +32,7 @@ export type ConversationTurn = {
 
 export type ReplyChannel = "WEB_WIDGET" | "SLACK" | "WHATSAPP" | "EMAIL" | "PLAYGROUND";
 
-type AgentLlmReply = {
+export type AgentLlmReply = {
   reply: string;
   confidence: number;
   tokens: number;
@@ -52,7 +53,7 @@ type ChatPrompt = {
 
 type ProviderResult = { reply: string; tokens: number };
 
-const CUSTOM_PROVIDER_TIMEOUT_MS = 20_000;
+export const CUSTOM_PROVIDER_TIMEOUT_MS = 20_000;
 const MANAGED_CHAIN_BUDGET_MS = 25_000;
 const MANAGED_CALL_TIMEOUT_MS = 12_000;
 const MAX_HISTORY_TURNS = 12;
@@ -71,7 +72,7 @@ export type ConversationMemory = {
   conversationSummary?: string | null;
 };
 
-function getAppUrl() {
+export function getAppUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://assistdesk.ai").replace(/\/$/, "");
 }
 
@@ -88,7 +89,7 @@ export function buildRetrievalQuery(question: string, history: ConversationTurn[
     : question;
 }
 
-async function buildPrompt({
+export async function buildPrompt({
   agent,
   question,
   sources,
@@ -372,7 +373,7 @@ function callCustomProvider(
   }
 }
 
-function resolveManagedModel(model: string) {
+export function resolveManagedModel(model: string) {
   if (model.startsWith("groq/")) {
     return {
       provider: "Groq",
@@ -421,7 +422,7 @@ async function callManagedChain(model: string, prompt: ChatPrompt) {
   const deadline = Date.now() + MANAGED_CHAIN_BUDGET_MS;
   const errors: string[] = [];
 
-  for (const candidate of getManagedFallbackModels(model)) {
+  for (const candidate of withoutGoneModels(getManagedFallbackModels(model), (item) => item)) {
     const resolved = resolveManagedModel(candidate);
     const remaining = deadline - Date.now();
 
@@ -449,8 +450,9 @@ async function callManagedChain(model: string, prompt: ChatPrompt) {
       errors.push(`${candidate}: ${result.reply ? "unusable reply" : "empty reply"}`);
       console.error(`[llm] managed model ${candidate} returned an unusable reply, trying the next one.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = cleanModelError(error instanceof Error ? error.message : String(error));
       errors.push(`${candidate}: ${message}`);
+      recordModelFailure(candidate, message);
       console.error(`[llm] managed model ${candidate} failed: ${message}`);
     }
   }

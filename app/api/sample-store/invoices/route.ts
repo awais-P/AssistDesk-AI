@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { isSampleStoreAuthorized, sampleInvoice } from "@/src/lib/sample-store";
+import { isSampleStoreAuthorized, isSampleStoreEnabled, sampleInvoice } from "@/src/lib/sample-store";
 
 /** Sample store: generate an invoice for an order (demo for the "invoice" HTTP tool). */
 export async function POST(request: Request) {
+  if (!isSampleStoreEnabled()) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
   if (!isSampleStoreAuthorized(request)) {
     return NextResponse.json({ error: "Missing or wrong API key." }, { status: 401 });
   }

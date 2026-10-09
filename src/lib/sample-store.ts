@@ -16,6 +16,11 @@ const CATALOG = [
 const STATUSES = ["PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERED"] as const;
 const CARRIERS = ["TCS", "Leopards Courier", "M&P"];
 
+/** On in development; in production only when ASSISTDESK_SAMPLE_STORE="true" (demo deployments). */
+export function isSampleStoreEnabled() {
+  return process.env.NODE_ENV !== "production" || process.env.ASSISTDESK_SAMPLE_STORE === "true";
+}
+
 export function isSampleStoreAuthorized(request: Request) {
   return request.headers.get("authorization") === `Bearer ${SAMPLE_STORE_KEY}`;
 }

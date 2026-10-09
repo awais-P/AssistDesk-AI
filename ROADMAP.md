@@ -20,16 +20,17 @@ The SDS (Ch. 4.1.3) and the SDS slides claim **Modules 1, 7 and 10, plus Module 
 | M5 | Real-Time Context & Session *(the half module)* | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅, FE-6 ✅ | **~~25%~~ → 90%** *(2026-09-29)* | Done: session lifecycle (ACTIVE ⇄ ESCALATED → CLOSED, reason + resolution, closed sessions final and linked to the next), secret hashed widget tokens, per-channel expiry + cron, Contact-based Unified Memory Buffer across Website/WhatsApp/Slack/Email, 3-layer memory (history, rolling summary, customer profile) with trust-based redaction, Postgres rate limiter with 429 + logs, SSE live updates (2–52 ms), email threading, Chats context panel, Contacts pages. Full write-up: [M5_SESSION_CONTEXT.md](M5_SESSION_CONTEXT.md). Remaining: voice channel (M3 scope), multi-instance push (Redis/NOTIFY), email OTP identity verification. |
 | M6 | LLM Management & Fast Inference | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ◐, others ✗ | 35% (bonus) | Multi-provider runtime and per-agent model choice work; feedback loop (widget 👍/👎 feeding Analytics → Improve) added with M4. Missing: streaming, voice (VAD/TTS). |
 | M11 | Integrations & RBAC | FE-1 ◐, FE-3 ✅, FE-4 ✅, FE-5 ◐ | 45% (bonus) | RBAC enforced on all mutating APIs (Owner/Admin/Manager/Agent), Slack/WhatsApp/email channels. Missing: audit log, API keys page, CRM connectors. |
-| M4 | Monitoring & Analytics | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~40%~~ → 90%** *(2026-09-30)* | Done: AiInteraction analytics store (latency, grounding, fallback per AI reply on every channel), Analytics pages Overview (FR-11.1–11.7: KPIs incl. live sessions, 24h latency chart, volume, resolution mix, recent interactions with channel icons), Reports (FAQ clusters by meaning/wording, behaviour heatmap, leads, tickets), Improve (knowledge gaps → add to knowledge base, 👎 replies, escalation reasons), transcripts download, anonymised CSV exports, widget 👍/👎. Full write-up: [M4_ANALYTICS.md](M4_ANALYTICS.md). Remaining: tool-action analytics (after M2), rollups for very large tenants. |
-| M2 | Agentic Tool & Action Mgmt | FE-5 ◐ | 10% | "Automations" are regex rules and AutomationLog acts as an action log. No tool registry and no LangGraph. |
-| M8 | Lead Generation | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~10%~~ → 92%** *(2026-09-30)* | Done: per-chatbot lead form builder with triggers (buying intent / after N messages / first message), inline widget form that pauses the AI, automatic capture from known or typed details and WhatsApp/Slack intent, one open lead per customer joined to the M5 Contact, score + temperature, intent summary, notifications (dashboard, email, Slack), signed webhooks with 3 retries + delivery log, CSV export, Leads list/detail/settings pages, Chats panel lead, Leads KPI. Full write-up: [M8_LEAD_GENERATION.md](M8_LEAD_GENERATION.md). Remaining: LLM-driven capture via the M2 `capture_lead` tool, API-key access (M11). |
+| M4 | Monitoring & Analytics | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~40%~~ → 90%** *(2026-09-30)* | Done: AiInteraction analytics store (latency, grounding, fallback per AI reply on every channel), Analytics pages Overview (FR-11.1–11.7: KPIs incl. live sessions, 24h latency chart, volume, resolution mix, recent interactions with channel icons), Reports (FAQ clusters by meaning/wording, behaviour heatmap, leads, tickets), Improve (knowledge gaps → add to knowledge base, 👎 replies, escalation reasons), transcripts download, anonymised CSV exports, widget 👍/👎. Full write-up: [M4_ANALYTICS.md](M4_ANALYTICS.md). Tool-action analytics added with M2 (Reports → AI actions). Remaining: rollups for very large tenants. |
+| M2 | Agentic Tool & Action Mgmt | FE-1 ✅, FE-2 ✅, FE-2b ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~10%~~ → 90%** *(2026-10-09)* | Done: tool registry with 8 built-in actions (ticket status, create ticket, capture lead, hand over, availability, **appointment booking**, KB search, customer info) and custom HTTP tools for your own systems (order tracking and invoice templates + demo store, encrypted secret headers, SSRF guard); **LangGraph** multi-step reasoning with model fallback; server-side customer confirmation for actions that change data; intent → action rules; auto hand-over on failure; Tools page, agent Actions tab, Appointments page; **chain of thought** in Logs → AI actions (filters/sort/pagination), Playground, Chats panel and Analytics. Full write-up: [M2_AGENTIC_TOOLS.md](M2_AGENTIC_TOOLS.md). Remaining: OAuth connectors (Shopify/HubSpot), appointment reminders/calendar sync, a confirm button in the widget. |
+| M8 | Lead Generation | FE-1 ✅, FE-2 ✅, FE-3 ✅, FE-4 ✅, FE-5 ✅ | **~~10%~~ → 92%** *(2026-09-30)* | Done: per-chatbot lead form builder with triggers (buying intent / after N messages / first message), inline widget form that pauses the AI, automatic capture from known or typed details and WhatsApp/Slack intent, one open lead per customer joined to the M5 Contact, score + temperature, intent summary, notifications (dashboard, email, Slack), signed webhooks with 3 retries + delivery log, CSV export, Leads list/detail/settings pages, Chats panel lead, Leads KPI. Full write-up: [M8_LEAD_GENERATION.md](M8_LEAD_GENERATION.md). LLM-driven capture through the M2 `capture_lead` action added. Remaining: API-key access (M11). |
 | M9 | Support Escalation | FE-1 ◐ | 15% | Human takeover from the Chats page (M5): take over, hand back, team replies pause the AI, AI reply limit → human-only. Missing: escalation rules, queues/assignment, SLA. |
 | M3 | Subscription & Payment | — | 0% | Stripe is installed but unused. |
-| | **Overall (11 modules, equal weight)** | | **≈ 29% → ≈ 59%** *(2026-09-30)* | 29% matched the SDS 30% claim; after M1, M7, M10, M5, M8 and M4 it is ≈ 59%. M2 (Agentic Tools) takes it past 60%. |
+| | **Overall (11 modules, equal weight)** | | **≈ 29% → ≈ 66%** *(2026-10-09)* | 29% matched the SDS 30% claim; after M1, M7, M10, M5, M8, M4 and M2 it is ≈ 66% — **past the 60% target** with 7 of 11 modules at ≈ 90%. |
 
 ✅ done · ◐ partial · ✗ missing
 
 **Honest risk for the evaluation:** SDS Chapter 5 describes unit, functional and integration tests, but **the repo has no tests or test runner** (DOC-01). The SRS also names Pinecone, LangGraph, Zustand, TanStack Query and Firecrawl, none of which are used yet (DOC-02/03/04). The 60% build fixes most of this.
+*Update 2026-10-09:* 139 unit tests and 42 integration tests on a real database now exist (DOC-01 partly fixed: the SDS Ch. 5 tables still need rewriting). Pinecone, LangGraph and Firecrawl are used (DOC-02, DOC-04 fixed). Zustand and TanStack Query are still unused (DOC-03).
 
 ---
 
@@ -53,12 +54,12 @@ This choice follows the **Module-based Work Division table in the Proposal** exa
 
 | Module | Now | Target | | Module | Now | Target |
 |---|---|---|---|---|---|---|
-| M1 | 65% → **92%** ✅ | 85% | | M2 | 10% | 75% |
+| M1 | 65% → **92%** ✅ | 85% | | M2 | 10% → **90%** ✅ | 75% |
 | M7 | 70% → **90%** ✅ | 90% | | M8 | 10% → **92%** ✅ | 85% |
 | M10 | 60% → **90%** ✅ | 85% | | M4 | 20% → **90%** ✅ | 85% |
 | M5 | 25% → **90%** ✅ | 90% | | M6 | 30% → 35% | 45% |
 | M9 | 5% → 15% | 30% | | M11 | 25% → 45% | 45% |
-| M3 | 0% | 0% | | **Overall** | **≈29% → ≈59%** | **≈65%** |
+| M3 | 0% | 0% | | **Overall** | **≈29% → ≈66%** ✅ | **≈65%** |
 
 ---
 
@@ -154,6 +155,8 @@ Use **TanStack Query** for the Chats page polling and **Zustand** for the active
 ---
 
 ### P4 — M2 Agentic Tool & Action Management (Sun 4 → Fri 9 Oct) · Awais lead, Ahmad FE-3/4 from Wed 7
+
+> ✅ **Done 2026-10-09, on schedule**, in four tested increments (tools → reasoning → admin → visibility). Built as planned plus: appointment booking with business hours, server-side customer confirmation (English/Roman Urdu), a demo store for the order-tracking and invoice templates, a stored chain of thought per run, Chats panel and Analytics views, and retired-model detection. Differences: 25 s budget and 15 s per model call instead of 20 s / 8 s (free models are slow); max steps is configurable 1–8 (default 4). Details in [M2_AGENTIC_TOOLS.md](M2_AGENTIC_TOOLS.md) and the CHANGELOG; the list below is the original plan.
 
 - **Tool registry** (`AgentTool` model): name, description, `type` (BUILT_IN / HTTP), a JSON-Schema of parameters, HTTP method, URL template, headers (secrets encrypted), `requiresConfirmation`, and enabled per agent.
 - **Built-in tools (FE-1):** `lookup_ticket_status`, `create_ticket`, `capture_lead` (→ M8), `escalate_to_human` (→ M5 takeover), `search_knowledge_base`, `book_appointment` (writes an `Appointment` row), and `get_customer_info` (Contact).

@@ -18,6 +18,78 @@ Entry template:
 
 ---
 
+## 2026-10-09 — Module 2 (Agentic Tool & Action Management) completed
+**Module:** M2   **Roadmap phase:** P4   **Author:** Claude (with Muhammad Awais)
+**Result:** M2 ≈ 10% → ≈ 90%. All five features plus the SRS events (log every tool call; on failure inform the customer and escalate) work on every channel, built in four tested increments. LangGraph (SRS CON-4) is now real. Full write-up and demo script: **[M2_AGENTIC_TOOLS.md](M2_AGENTIC_TOOLS.md)**. Increments 1–4 were pushed as `8ee6a25`.
+
+**Database: migrations `20261003090000_module2_tools`, `20261006090000_module2_run_trace`:**
+- New `AgentTool`, `AgentToolBinding`, `AgentRun` (with `trace`, the chain of thought), `ToolExecution` (the action log, with the model's reason), `Appointment`.
+- `AIAgent`: `toolsEnabled`, `maxToolSteps`, `escalateOnToolFailure`, `intentRules`. `WorkspaceSetting`: booking hours, slot length, days ahead.
+
+**Added:**
+- **Increment 1: tools.**
+  - Registry (`src/lib/tools/registry.ts`) that validates, holds for confirmation, executes and logs every call.
+  - 8 built-in actions (`builtin-tools.ts`): customer info, ticket status (own tickets only), create ticket, capture lead (M8), hand over to a human (M5 takeover), check availability, book appointment (serializable re-check), search knowledge base.
+  - Custom HTTP tools (`http-tool.ts`): URL/body templates, encrypted secret headers, response-field filter, SSRF guard, no redirects, 100 KB cap.
+  - Server-side confirmation in English and Roman Urdu with a 30-minute window.
+  - Appointment slot maths (time zones, DST).
+  - Sample store (`/api/sample-store/*`) for the order-tracking and invoice templates.
+- **Increment 2: reasoning.**
+  - LangGraph `StateGraph` (`agent-engine/graph.ts`) with step limit, 25 s budget, at most 4 calls per step, and tools removed on the last step.
+  - Multi-provider model chain through `ChatOpenAI`.
+  - Intent rules: Suggest, or Always run first (forced `tool_choice` with retry).
+  - Fallbacks: confirmed-action reply → answer from tool results (`tool-summary.ts`) → knowledge-base answer.
+  - Auto hand-over on unrecovered tool failure.
+  - Wired into widget/WhatsApp/Slack (`conversation-runtime.ts`), email tickets (`ticket-workflow.ts`) and the Playground (test mode: lookups real, writes simulated).
+- **Increment 3: admin.**
+  - APIs: tools CRUD and test, agent tool settings, appointments, booking hours, free slots — all with RBAC (SRS SEC-2).
+  - Pages: **Tools** (built-ins, HTTP tool builder with live checks, templates, test drawer, 30-day stats), agent **Actions** tab (bindings, steps, hand-over, intent rules with a live preview), **Appointments** (views, search, day groups, complete/cancel/notes, team booking, booking hours).
+- **Increment 4: visibility (FE-5).**
+  - Stored chain of thought (`run-trace.ts`).
+  - **Logs → AI actions**: runs or actions; filters, sort, pagination (UI-4); summary; deep links; timeline drawer (`run-timeline.tsx`).
+  - Playground “Show reasoning” and “Testing as”.
+  - Chats side-panel **AI actions**.
+  - Analytics → Reports **AI actions**: per-action success rate, avg/p95 time, run outcomes.
+- **Resilience:**
+  - Retired-model memory (`model-health.ts`): a 404 or “unavailable” model is skipped for 6 hours.
+  - Cleaner model errors.
+  - The sessions cron expires unanswered confirmations.
+- **Tests:** 26 new unit cases (the unit suite now has 139) and an integration suite on a real database (`vitest.integration.config.mts`, `npm run test:integration`): `tools`, `agent-engine`, `tool-admin`, `action-logs` (42 cases), plus an opt-in real-model test. A real-model end-to-end widget run passed **16/16**.
+- **Docs:** `M2_AGENTIC_TOOLS.md`; `.env.example`: `ASSISTDESK_ALLOW_PRIVATE_TOOLS`, `ASSISTDESK_SAMPLE_STORE`.
+
+**Fixed (found while testing; details in VULNERABILITIES.md):**
+- **SEC-38:** placeholders in a tool URL's host were accepted, because the check ran after they were replaced.
+- **BUG-31:** a masked email the model echoed back (`s***@example.com`) was stored on the appointment.
+- **BUG-32:** a just-confirmed booking was proposed again in the same turn. Also, the customer was asked twice when the model asked first.
+- **BUG-33:** unanswered confirmations stayed “waiting” forever.
+- **AI-17:** the AI promised a confirmation email that is never sent.
+- **UI-43:** real Playground lookups were labelled “Test mode”, and Playground actions counted in the stats.
+- Smaller fixes:
+  - built-in actions appeared in random order;
+  - team booking could only pick the first 8 times of a day;
+  - sample-store dates were UTC and contradicted the status;
+  - vitest configs used the deprecated `__dirname`.
+- Closes **DOC-02** (LangGraph and Pinecone both used now). **AI-10**, **AI-14** and **OPS-03** are partly fixed.
+
+**Updated:**
+- `ROADMAP.md`: M2 ≈ 90%; overall ≈ 67%.
+- The sample store is off in production unless `ASSISTDESK_SAMPLE_STORE=true`.
+- In development, the private-URL error explains `ASSISTDESK_ALLOW_PRIVATE_TOOLS`.
+
+**Notes / follow-ups:**
+- Set a free Groq key before the demo.
+- Checks on 2026-10-09: `npm run build` passes (with `NODE_OPTIONS=--max-old-space-size=3072` on this low-memory machine); typecheck clean; lint has no errors.
+- New open items:
+  - SEC-34: tool DNS rebinding, and admin-chosen destinations;
+  - SEC-35: rule-based confirmation words;
+  - SEC-36: prompt injection through API results;
+  - SEC-37: public demo key on the sample store;
+  - AI-18: free-model tool-calling quality;
+  - OPS-12: per-process model memory.
+- Appointment reminders and calendar sync are future work.
+
+---
+
 ## 2026-09-30 — Module 4 (Monitoring & Analytics) completed
 **Module:** M4 (bonus: M6 FE-3 feedback loop)   **Roadmap phase:** P5   **Author:** Claude (with Muhammad Awais)
 **Result:** M4 ≈ 40% → ≈ 90%. All five features and the whole analytics mock-up M-11 (FR-11.1–11.7) run on real data. Tool-action analytics will come with M2. Full write-up and demo script: **[M4_ANALYTICS.md](M4_ANALYTICS.md)**.

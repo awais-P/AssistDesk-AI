@@ -80,7 +80,12 @@ export async function validateHttpToolUrl(template: string, parameterNames: stri
     } catch (error) {
       return {
         ok: false as const,
-        error: error instanceof UnsafeUrlError ? "This URL points to a local or private network address. Use a public API URL." : "This URL could not be checked.",
+        error:
+          error instanceof UnsafeUrlError
+            ? `This URL points to a local or private network address. Use a public API URL.${
+                process.env.NODE_ENV !== "production" ? " (For local testing, set ASSISTDESK_ALLOW_PRIVATE_TOOLS=true in .env and restart.)" : ""
+              }`
+            : "This URL could not be checked.",
       };
     }
   }

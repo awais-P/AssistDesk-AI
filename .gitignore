@@ -51,3 +51,6 @@ next-env.d.ts
 
 # security issue register: kept local while critical issues are open (public repo)
 /VULNERABILITIES.md
+
+# End-to-end script output
+/scripts/e2e/*.results.json

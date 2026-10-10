@@ -49,6 +49,9 @@ export type GraphResult = {
   unrecoveredFailures: Array<{ toolKey: string; error: string }>;
 };
 
+/** Tool calls run per reasoning step; extra calls in the same step are deferred. */
+export const MAX_CALLS_PER_STEP = 4;
+
 const GraphState = Annotation.Root({
   ...MessagesAnnotation.spec,
   steps: Annotation<number>({ reducer: (_current, next) => next, default: () => 0 }),
@@ -152,7 +155,20 @@ export async function runAgentGraph({
     const results: ToolMessage[] = [];
 
     // At most 4 calls per step, run in order (later calls may depend on earlier ones).
-    for (const call of (last.tool_calls ?? []).slice(0, 4)) {
+    const calls = last.tool_calls ?? [];
+
+    // Every tool call must get an answer, or OpenAI-compatible APIs reject the next request:
+    // the extra ones are told to wait for the next step instead of being dropped.
+    const deferred = calls.slice(MAX_CALLS_PER_STEP).map(
+      (call) =>
+        new ToolMessage({
+          tool_call_id: call.id ?? `${call.name}_${state.steps}_deferred`,
+          name: call.name,
+          content: JSON.stringify({ error: `Not run: at most ${MAX_CALLS_PER_STEP} actions per step. Call it again in the next step if it is still needed.` }),
+        }),
+    );
+
+    for (const call of calls.slice(0, MAX_CALLS_PER_STEP)) {
       const tool = toolsByKey.get(call.name);
       const callId = call.id ?? `${call.name}_${state.steps}`;
 
@@ -192,7 +208,7 @@ export async function runAgentGraph({
       results.push(new ToolMessage({ tool_call_id: callId, name: call.name, content: JSON.stringify(result.output) }));
     }
 
-    return { messages: results };
+    return { messages: [...results, ...deferred] };
   };
 
   const graph = new StateGraph(GraphState)

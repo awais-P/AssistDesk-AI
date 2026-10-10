@@ -133,15 +133,15 @@ The migrations are `20260929180000_module5_sessions`, `20260929190000_module5_em
 | Website widget (hard cap) | **24 h** after start (`MAX_DURATION`) | A tab left open does not keep one session forever. |
 | Slack | **4 h** | Threads pause naturally for hours. |
 | WhatsApp | **24 h** | Matches Meta's 24-hour customer-service window. |
-| Email | **7 days** | Email is slow by nature. |
-| Voice (future) | **10 min** | A call is one sitting. |
+| Email | **7 days** | Email is slow by nature. *(Defined for later: email conversations currently run through Tickets, so no email chat session uses it.)* |
+| Voice (future) | **10 min** | A call is one sitting. *(Not used: there is no voice channel yet.)* |
 | Any chat in human takeover | at least **60 min** | Agents need time to research. |
 
 Expiry is applied in three places, so it is prompt without depending on any one mechanism:
 
 1. **Lazily**, when the session is next used: a widget GET, POST or stream, or an inbound channel message.
 2. **When the dashboard looks**: the Chats page, the list API and the live stream each close due sessions.
-3. **On a schedule**: `GET/POST /api/cron/sessions` with `Authorization: Bearer $CRON_SECRET`, meant to run every ~5 minutes. It also removes old rate-limit counters.
+3. **On a schedule**: `GET/POST /api/cron/sessions` with `Authorization: Bearer $CRON_SECRET`, meant to run every ~5 minutes. It also removes old rate-limit counters. *Nothing in the repo schedules it yet (no `vercel.json`) and it needs `CRON_SECRET`; without it, sessions still expire lazily when used and when the Chats page loads.*
 
 Closing a session writes the reason and resolution, posts a friendly notice to the customer (for example *"This conversation was closed after 30 minutes of inactivity. Send a message any time to start a new one — we'll remember what we talked about."*), logs `SESSION_EXPIRED` or `SESSION_CLOSED` with the duration, and schedules the final summary and the customer-memory update.
 
@@ -152,7 +152,7 @@ Closing a session writes the reason and resolution, posts a friendly notice to t
 - Without a valid token the API reveals **nothing**: no transcript, no name, no email.
 - An old token of a closed session can still read that ended conversation (read-only). Sending a message with it starts a new linked session and returns a new token.
 - The widget also creates an anonymous **visitor id** (random UUID) per browser. This lets a returning visitor be recognised without any personal data, and it is the basis of the trust level in §6.3.
-- Session starts are limited to 10 per IP per hour.
+- Session starts are limited to 10 per chatbot and IP per hour.
 
 ### 5.4 Channel flows
 
@@ -225,13 +225,13 @@ All limits live in PostgreSQL (`RateLimitBucket`, one atomic `INSERT … ON CONF
 | Widget messages per **conversation** | chatbot setting, **10 / min** (1–120) | 429 + `Retry-After`, `RATE_LIMITED` event, dashboard alert |
 | Widget messages per **IP** | 30 / min | 429 |
 | Widget messages per **widget** (whole bot) | 600 / min | 429 |
-| New widget sessions per IP | 10 / hour | 429 |
+| New widget sessions per chatbot and IP | 10 / hour | 429 |
 | Widget attachment uploads per IP | 10 / min | 429 |
 | WhatsApp/Slack messages per conversation | 20 / min | Messages dropped; the customer is told **once** per window |
 | Inbound emails per integration | 60 / min | 429 (the provider retries later) |
 | Failed logins per account / per IP | 5 / 30 per 10 min | 429 (replaces the in-memory limiter, SEC-30) |
 | Sign-ups per IP | 5 / hour | 429 |
-| AI test / "Summarise now" per user | 30 / min | 429 |
+| "Summarise now", lead/webhook tests per user | 30 / min | 429 (the agent Playground is not rate-limited yet) |
 
 The widget shows the server's "please wait N seconds" message and disables Send until the window passes.
 
@@ -299,7 +299,7 @@ The widget shows the server's "please wait N seconds" message and disables Send 
 | FE-4 session history | `SessionEvent`, Chats filters and panel, Contacts timeline, `previousSessionId` chain |
 | FE-5 expiration | `CHANNEL_IDLE_MINUTES`, `getExpiryReason`, lazy, page and cron expiry, notices |
 | FE-6 rate limiting | `rate-limit.ts`, the limits in §7, `RATE_LIMITED` events and alerts |
-| SRS event: allowed domain | The widget token is issued only for allowed domains (Module 1) and is checked on every call |
+| SRS event: allowed domain | The widget token is issued only for allowed domains (Module 1) and is checked on every call. 🟡 Refused origins get 403 but are not logged yet. |
 | SRS event: append to buffer | `appendSessionMessage` |
 | SRS event: context on channel switch | `CONTEXT_CARRIED` event plus the memory block |
 | SRS event: 429 + log | `tooManyRequests` + `RATE_LIMITED` |
@@ -321,7 +321,7 @@ The widget shows the server's "please wait N seconds" message and disables Send 
   - retrieval query;
   - email reference parsing, subject cleaning, quote stripping and Message-ID;
   - rate-limit helpers.
-- **End-to-end** (scripted against a real dev server and database, 60 checks). Run 2 passed **56/56**; later runs added the privacy checks, which passed:
+- **End-to-end** (scripted against a real dev server and database, 60 checks; recorded run with a script that was not kept; the same areas are now covered by `scripts/e2e/e2e-all.mjs`, 131/131 on 10 Oct). Run 2 passed **56/56**; later runs added the privacy checks, which passed:
   - session start with a hashed token;
   - no access without a token;
   - in-session recall ("what was my order number?" → **#1042**);

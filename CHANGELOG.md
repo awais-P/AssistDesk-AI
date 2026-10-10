@@ -18,6 +18,40 @@ Entry template:
 
 ---
 
+## 2026-10-10 — Full verification pass (all modules vs Proposal / SRS / SDS)
+**Module:** all   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Result:** Full write-up: **[VERIFICATION_REPORT.md](VERIFICATION_REPORT.md)**.
+- Every Proposal feature of M1, M7, M10, M5, M8, M4 and M2 is in the code. Some SRS functional requirements, NFR timings and named technologies are missing or done differently; all are listed in the report.
+- Honest FR-level completion is **≈ 63%** (ROADMAP said ≈ 66%), still above the 60% target.
+
+**Verified (fresh database):**
+- all 18 migrations apply, with no schema drift;
+- `tsc` clean; ESLint 0 errors;
+- unit tests **139/139**; integration tests **43/43**;
+- `next build` passes.
+- End-to-end: `scripts/e2e/e2e-all.mjs` passed **131/131** against the live app with real AI answers, and found no application defects. The Module 2 re-run was blocked by the free AI quota (50 requests/day), not a defect.
+
+**Fixed:**
+- **BUG-34:** the reasoning engine dropped tool calls beyond the 4th in a step without a reply, which OpenAI-compatible APIs reject. They are now answered as deferred (`MAX_CALLS_PER_STEP`), with a new integration test.
+
+**Updated (document accuracy):**
+- **ROADMAP:** verified percentages per module (M1 80, M7 85, M10 78, M5 80, M8 88, M4 84, M2 88, M9 32). Pinecone is marked "coded, not configured".
+- **M4 doc:** tool analytics now exist; the Leads KPI counts every source; the on-close record and latency are worded accurately; chatbot preview traffic is counted.
+- **M5 doc:** email and voice expiry policies are unused; the cron is not scheduled; the Playground is not rate-limited; session starts are limited per chatbot and IP; refused origins are not logged.
+- **M8 doc:** retries need the cron or the leads API; forgetting a customer sends no `lead.deleted` webhooks; `capture_lead` exists.
+- **M2 doc:** timeout range corrected.
+- **All three module docs:** end-to-end numbers are marked as recorded runs whose scripts are not yet in the repo.
+
+**Notes / follow-ups (VULNERABILITIES):**
+- **DOC-07:** the SDS is out of date (17 of 36 models) and must be updated.
+- **DOC-08 (fixed):** the end-to-end scripts are now in `scripts/e2e/`, with a README.
+- **UI-44:** settings that do nothing — 2 automations, the email-notifications toggle, inbox auto-reply.
+- **OPS-13:** cron jobs are not scheduled; webhook retries depend on them.
+- **SEC-39:** the Playground has no rate limit, and refused requests are not logged.
+- **DATA-10:** "Forget customer" sends no `lead.deleted` webhooks.
+
+---
+
 ## 2026-10-09 — Module 2 (Agentic Tool & Action Management) completed
 **Module:** M2   **Roadmap phase:** P4   **Author:** Claude (with Muhammad Awais)
 **Result:** M2 ≈ 10% → ≈ 90%. All five features plus the SRS events (log every tool call; on failure inform the customer and escalate) work on every channel, built in four tested increments. LangGraph (SRS CON-4) is now real. Full write-up and demo script: **[M2_AGENTIC_TOOLS.md](M2_AGENTIC_TOOLS.md)**. Increments 1–4 were pushed as `8ee6a25`.

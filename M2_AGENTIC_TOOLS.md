@@ -1,6 +1,6 @@
 # Module 2: Agentic Tool & Action Management
 
-**Status:** ≈ 90% (2026-10-09) · **Owner:** Muhammad Awais (FE-1, FE-2), Ahmad Mujtaba Shahid (FE-3, FE-4 per the Proposal work split)
+**Status:** ≈ 88% verified (2026-10-10, see [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md)) · **Owner:** Muhammad Awais (FE-1, FE-2), Ahmad Mujtaba Shahid (FE-3, FE-4 per the Proposal work split)
 **SRS:** Module 2 FE-1 – FE-5, CON-4 (LangGraph), SEC-2 (RBAC on tool execution), UI-4 (paginated, filterable, sortable logs)
 **Companion files:** [CHANGELOG.md](CHANGELOG.md) · [ROADMAP.md](ROADMAP.md) · VULNERABILITIES.md (local only)
 
@@ -112,7 +112,7 @@ Admins can switch each one off, reword its description (with “restore default�
 | Headers | Secret headers (`Authorization`, API keys…) are **encrypted at rest** (AES-256-GCM), shown masked (`••••9876`), and kept when an edit leaves them blank. |
 | Body template | JSON; `"{name}"` alone keeps the input's type. |
 | Response fields | Dot paths kept for the model (`status, items, customer.name`); everything else is dropped. The result is trimmed to 4,000 characters. |
-| Timeout | 3–15 s. |
+| Timeout | 3, 5, 10 or 15 s in the builder (the API accepts 1–15 s). |
 | Ask first | On by default for anything that isn't `GET`. |
 
 **Safety (SSRF and abuse):** https only in production; **no placeholders in the host** (inputs can never choose the server); the host must resolve to a **public address** (private, loopback and link-local are blocked unless `ASSISTDESK_ALLOW_PRIVATE_TOOLS=true` in development); redirects refused; 100 KB response cap; secret header values never reach logs or the model.

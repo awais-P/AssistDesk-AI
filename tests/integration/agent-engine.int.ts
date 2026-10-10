@@ -4,6 +4,7 @@ import { AIMessage, type BaseMessage, ToolMessage } from "@langchain/core/messag
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ToolCallingModel } from "@/src/lib/agent-engine/model-chain";
 import { type AgentReplyInput, runAgentReply } from "@/src/lib/agent-engine/run-agent";
+import { MAX_CALLS_PER_STEP } from "@/src/lib/agent-engine/graph";
 import { parseRunTrace } from "@/src/lib/agent-engine/run-trace";
 import { prisma } from "@/src/lib/prisma";
 import { ensureBuiltInTools, loadAgentToolset } from "@/src/lib/tools/registry";
@@ -273,6 +274,31 @@ describe("resilience", () => {
     expect(result.reply).toBe("Here is what I found.");
     expect(result.toolCalls).toBe(2);
     expect(calls.at(-1)?.tools).toEqual([]);
+  });
+
+  it("answers every tool call, deferring the ones over the per-step limit", async () => {
+    const sessionId = await newSession();
+    let secondCallMessages: BaseMessage[] = [];
+    const greedy: ToolCallingModel = {
+      id: "scripted/greedy",
+      async invoke(messages) {
+        if (!toolResults(messages).length) {
+          return new AIMessage({
+            content: "",
+            tool_calls: Array.from({ length: 6 }, (_, index) => ({ id: `call_${index}`, name: "get_customer_info", args: { reason: `lookup ${index}` }, type: "tool_call" as const })),
+          });
+        }
+        secondCallMessages = messages;
+        return new AIMessage("Done.");
+      },
+    };
+    const result = await runAgentReply(await input(sessionId, "tell me about me", [greedy]));
+    expect(result.reply).toBe("Done.");
+    expect(result.toolCalls).toBe(MAX_CALLS_PER_STEP);
+    // OpenAI-compatible APIs need an answer for every tool_call id.
+    const answered = secondCallMessages.filter((message) => message instanceof ToolMessage).map((message) => (message as ToolMessage).tool_call_id);
+    expect(answered.sort()).toEqual(["call_0", "call_1", "call_2", "call_3", "call_4", "call_5"]);
+    expect(String(secondCallMessages.filter((message) => message instanceof ToolMessage).at(-1)?.content)).toContain("Not run");
   });
 
   it("tells the model about unknown tools instead of crashing", async () => {

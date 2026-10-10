@@ -1,6 +1,6 @@
 # Module 4: Monitoring & Analytics
 
-> **Status:** about 90% implemented (30 Sep 2026). The analytics dashboard of mock-up M-11 (FR-11.1–11.7), reports, improvement areas, transcripts and exports all work from real data. The one missing piece is tool-action analytics, which comes when Module 2 adds tools.
+> **Status:** about 90% implemented (30 Sep 2026). The analytics dashboard of mock-up M-11 (FR-11.1–11.7), reports, improvement areas, transcripts and exports all work from real data. Tool-action analytics were added with Module 2 (Reports → AI actions). Verified at ≈ 84% when the SRS definitions are counted strictly. *(Verification 10 Oct: see [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md).)*
 > **Owner (Proposal work split):** Muhammad Awais (Ahmad: tests)
 > **Related:** [M5_SESSION_CONTEXT.md](M5_SESSION_CONTEXT.md) (sessions and resolutions) · [M8_LEAD_GENERATION.md](M8_LEAD_GENERATION.md) (leads) · [CHANGELOG.md](CHANGELOG.md) · [ROADMAP.md](ROADMAP.md)
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | FR-11.1 | Average AI response time (ms) for the period | Average and p95 of `AiInteraction.latencyMs`, with the change vs the previous period |
 | FR-11.2 | Automation rate = AI-resolved / total × 100 | Conversations finished in the period with resolution `AI_RESOLVED`, divided by all finished conversations (M5 resolutions). Open conversations are not counted yet. |
-| FR-11.3 | Leads captured in the period | M8 leads created in the period, plus how many are hot |
+| FR-11.3 | Leads captured in the period | M8 leads created in the period, plus how many are hot. *Note:* this counts every lead source (form, automatic, AI action, manual), which is broader than the SRS wording (widget submissions only). |
 | FR-11.4 | Live sessions, refreshed in real time, zero shown | Active and with-team sessions, polled every 15 s (`/api/analytics/live`) |
 | FR-11.5 | 24-hour latency line chart, HH:MM axis, hover tooltips | Hourly average and p95 for the last 24 hours in the workspace time zone. Empty hours are gaps, not zeros. |
 | FR-11.6 | Recent interactions: customer, channel, status, duration, newest first; AI Resolved green, Escalated amber | 15 latest conversations with the status (AI resolved / Escalated / Unanswered / Active / With team) and the duration from first to last message |
@@ -31,8 +31,8 @@
 
 The SRS backend events are met:
 
-- **Latency recorded per AI call:** a timestamp at query and at reply, persisted to the analytics store.
-- **Interaction record on session close:** channel, resolution, duration and an anonymised customer id in exports.
+- **Latency recorded per AI call:** the model's generation time per reply is stored in the analytics store (not the full receipt-to-dispatch time; see §8).
+- **Interaction record on session close:** ⚠️ implemented differently. No row is written on close; channel, resolution, duration and an anonymised customer id are derived from the session at query time and in exports.
 - **Dashboard aggregation:** KPIs, the chart and the table are aggregated on load and whenever a filter changes.
 
 ---
@@ -99,7 +99,7 @@ The SRS backend events are met:
 | **`AiInteraction`** | workspace, agent, chatbot, session or ticket, `messageId` (the AI's ChatMessage), channel, `question`, `latencyMs`, `tokens`, `model`, `provider`, `confidence`, `grounded`, `usedFallback`, `sourceIds`, `reviewedAt` / `reviewedBy` (FE-5), `createdAt`. Indexed by workspace + time (+ grounded). |
 | **`MessageFeedback`** | workspace, `messageId` (unique), session, `rating` (1 / -1), `comment`. |
 
-The rows are written in `conversation-runtime.ts` (widget, WhatsApp, Slack) and `ticket-workflow.ts` (email). Playground tests are **not** recorded, so the numbers reflect real customers.
+The rows are written in `conversation-runtime.ts` (widget, WhatsApp, Slack) and `ticket-workflow.ts` (email). Playground tests are **not** recorded. Chatbot *preview* conversations (the preview on the chatbot settings page) are recorded as website traffic.
 
 ## 5. API
 
@@ -121,7 +121,7 @@ The rows are written in `conversation-runtime.ts` (widget, WhatsApp, Slack) and 
   - time-zone parts (UTC+5 day rollover), 24 hourly buckets with gaps, heatmap, date keys;
   - stemming; FAQ clustering by wording, by containment and by vectors;
   - range parsing (default, custom cap, future dates, invalid input).
-- **End-to-end** (43 checks against the dev server, generating real traffic):
+- **End-to-end** (43 checks against the dev server, generating real traffic; recorded run with a script that was not kept; the same areas are now covered by `scripts/e2e/e2e-all.mjs`, 131/131 on 10 Oct):
   - analytics rows recorded with links, and grounded vs unanswered distinguished;
   - 👍/👎 saved and restored on reload; another visitor's message and user messages can't be rated;
   - AI-resolved, human-handled and unanswered endings;
@@ -145,7 +145,7 @@ The rows are written in `conversation-runtime.ts` (widget, WhatsApp, Slack) and 
 
 ## 8. Limitations and future work
 
-- **Tool-action analytics** (success rate per tool) will be added with Module 2. `AiInteraction` is the place to join them.
+- ~~Tool-action analytics~~ done with Module 2: Reports → AI actions (calls, success rate, avg/p95 time per action).
 - Voice latency is not measured yet; there is no voice channel (Module 3).
 - Aggregation runs on page load with caps of 20,000 rows per query and 1,500 FAQ questions. That suits the target scale; a larger deployment would add nightly rollups.
 - Customer counts (new/returning) and ticket numbers ignore the channel filter.

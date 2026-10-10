@@ -137,7 +137,7 @@ Configured in **Leads → Settings** (Admin):
 - **Retries:**
   - Attempt 1 is sent right away; retries follow after 30 s, 2 min and 10 min.
   - A delivery is marked FAILED after 4 attempts, which logs a lead timeline event and raises a dashboard alert.
-  - Due retries are sent by `/api/cron/webhooks` (`CRON_SECRET`, every minute) and whenever the Leads page is open.
+  - Due retries are sent by `/api/cron/webhooks` (`CRON_SECRET`, meant to run every minute) and when the leads API is called (filter, sort or page changes on the Leads page). *Nothing in the repo schedules the cron yet (no `vercel.json`): set up Vercel Cron or another scheduler for automatic retries.*
   - "Retry" in the delivery log sends one more attempt right away.
 - **Delivery log:** status, attempts, HTTP code, response excerpt, error, and the exact JSON payload.
 
@@ -213,7 +213,7 @@ Payload example (`lead.created`):
 | `ChatSession.leadState` | PROMPTED / CAPTURED / SKIPPED for this conversation. |
 | `WorkspaceSetting.leadNotifyEmails`, `leadSlackWebhookUrl` (encrypted), `autoCaptureLeads` | Notification and capture settings. |
 
-Privacy: "Forget this customer" (M5) also deletes their leads, and deleting a lead sends `lead.deleted`.
+Privacy: "Forget this customer" (M5) also deletes their leads. Deleting a single lead sends `lead.deleted`; forgetting a customer currently does **not** send `lead.deleted` for their leads, and webhook delivery logs keep the lead data.
 
 ---
 
@@ -247,7 +247,7 @@ Privacy: "Forget this customer" (M5) also deletes their leads, and deleting a le
   - contact extraction without false positives on order numbers or dates;
   - score and temperature; CSV quoting and formula defusing;
   - webhook signature verification, including replay protection.
-- **End-to-end:** 72 checks against a real dev server, a PostgreSQL database and a **local receiver that verifies signatures**.
+- **End-to-end:** 72 checks against a real dev server, a PostgreSQL database and a **local receiver that verifies signatures** (recorded run with a script that was not kept; the same areas are now covered by `scripts/e2e/e2e-all.mjs`, 131/131 on 10 Oct).
   - Latest clean run: 71/72. The one miss was a garbled-query false failure from the PGlite test database; that check passed on its own afterwards, including the signed `lead.deleted` webhook.
   - Checks include:
     - the form on intent and the AI pausing; the form surviving a reload;
@@ -291,7 +291,7 @@ Privacy: "Forget this customer" (M5) also deletes their leads, and deleting a le
 
 ## 9. Limitations and future work
 
-- Intent detection is rule-based (AI-14). Module 2's `capture_lead` tool will let the LLM decide and fill fields from the conversation.
+- Intent detection for the lead form is rule-based (AI-14). Since Module 2, agents with actions can also capture leads themselves with the `capture_lead` action.
 - There is no API-key API for external systems yet (Module 11). Webhooks and CSV cover FE-4 today.
 - Email notifications need platform SMTP (`ASSISTDESK_SMTP_*`).
 - The webhook DNS-rebinding window is shared with SEC-28 (SEC-33).

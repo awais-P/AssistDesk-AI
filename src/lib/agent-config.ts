@@ -23,9 +23,9 @@ type AgentModelConfig = {
 export const agentProviderOptions: AgentProviderOption[] = [
   {
     value: "Default",
-    label: "Default (OpenRouter)",
+    label: "Default (Managed)",
     description:
-      "Managed AssistDesk OpenRouter models with automatic failover.",
+      "Managed AssistDesk models (Groq, Gemini, OpenRouter) with automatic failover.",
     managed: true,
   },
   {
@@ -62,32 +62,46 @@ export const agentProviderOptions: AgentProviderOption[] = [
 
 export const agentModelCatalog: AgentModelConfig[] = [
   {
+    value: "groq/llama-3.3-70b-versatile",
+    label: "Groq Llama 3.3 70B (fast)",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    value: "groq/llama-3.1-8b-instant",
+    label: "Groq Llama 3.1 8B Instant",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    value: "google/gemini-2.5-flash",
+    label: "Google Gemini 2.5 Flash",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    value: "openrouter/google/gemma-4-31b-it:free",
+    label: "OpenRouter Gemma 4 31B Free",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    value: "openrouter/qwen/qwen3.8-27b:free",
+    label: "OpenRouter Qwen 3.8 27B Free",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    value: "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    label: "OpenRouter Nemotron 3 Super 120B Free",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    // Routes to any free model (sometimes a safety classifier), so it is tried last.
+    // OpenRouter retires free models often: check https://openrouter.ai/models?max_price=0.
     value: "openrouter/openrouter/free",
     label: "OpenRouter Free Auto",
-    provider: "Default",
-    managed: true,
-  },
-  {
-    value: "openrouter/google/gemma-3-27b-it:free",
-    label: "OpenRouter Gemma 3 27B Free",
-    provider: "Default",
-    managed: true,
-  },
-  {
-    value: "openrouter/meta-llama/llama-3.3-70b-instruct:free",
-    label: "OpenRouter Llama 3.3 70B Free",
-    provider: "Default",
-    managed: true,
-  },
-  {
-    value: "openrouter/deepseek/deepseek-chat-v3-0324:free",
-    label: "OpenRouter DeepSeek Chat V3 Free",
-    provider: "Default",
-    managed: true,
-  },
-  {
-    value: "openrouter/qwen/qwen-2.5-72b-instruct:free",
-    label: "OpenRouter Qwen 2.5 72B Free",
     provider: "Default",
     managed: true,
   },
@@ -104,26 +118,44 @@ export const agentModelCatalog: AgentModelConfig[] = [
     managed: false,
   },
   {
+    value: "claude-haiku-4-5-20251001",
+    label: "Claude Haiku 4.5",
+    provider: "Anthropic",
+    managed: false,
+  },
+  {
+    value: "claude-sonnet-5",
+    label: "Claude Sonnet 5",
+    provider: "Anthropic",
+    managed: false,
+  },
+  {
+    value: "claude-opus-5-5",
+    label: "Claude Opus 5.5",
+    provider: "Anthropic",
+    managed: false,
+  },
+  {
     value: "claude-3-5-haiku-latest",
-    label: "Claude 3.5 Haiku",
+    label: "Claude 3.5 Haiku (legacy)",
     provider: "Anthropic",
     managed: false,
   },
   {
-    value: "claude-3-7-sonnet-latest",
-    label: "Claude 3.7 Sonnet",
-    provider: "Anthropic",
+    value: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
+    provider: "Google",
     managed: false,
   },
   {
-    value: "gemini-2.0-flash-lite",
-    label: "Gemini 2.0 Flash Lite",
+    value: "gemini-2.5-flash-lite",
+    label: "Gemini 2.5 Flash Lite",
     provider: "Google",
     managed: false,
   },
   {
     value: "gemini-2.0-flash",
-    label: "Gemini 2.0 Flash",
+    label: "Gemini 2.0 Flash (legacy)",
     provider: "Google",
     managed: false,
   },
@@ -140,20 +172,20 @@ export const agentModelCatalog: AgentModelConfig[] = [
     managed: false,
   },
   {
-    value: "google/gemma-3-27b-it:free",
-    label: "Gemma 3 27B Free",
+    value: "google/gemma-4-31b-it:free",
+    label: "Gemma 4 31B Free",
     provider: "OpenRouter",
     managed: false,
   },
   {
-    value: "meta-llama/llama-3.3-70b-instruct:free",
-    label: "Llama 3.3 70B Instruct Free",
+    value: "qwen/qwen3.8-27b:free",
+    label: "Qwen 3.8 27B Free",
     provider: "OpenRouter",
     managed: false,
   },
   {
-    value: "deepseek/deepseek-chat-v3-0324:free",
-    label: "DeepSeek Chat V3 Free",
+    value: "nvidia/nemotron-3-super-120b-a12b:free",
+    label: "Nemotron 3 Super 120B Free",
     provider: "OpenRouter",
     managed: false,
   },
@@ -163,11 +195,100 @@ export const agentModelOptions = agentModelCatalog
   .filter((model) => model.provider === "Default")
   .map((model) => model.value);
 
-export const managedOpenRouterFallbackModels = agentModelCatalog
-  .filter(
-    (model) => model.provider === "Default" && model.value.startsWith("openrouter/"),
-  )
+export const managedFallbackModels = agentModelCatalog
+  .filter((model) => model.provider === "Default")
   .map((model) => model.value);
+
+export const agentToneOptions = [
+  {
+    value: "FRIENDLY",
+    label: "Friendly",
+    instruction: "Use a warm, friendly and approachable tone.",
+  },
+  {
+    value: "PROFESSIONAL",
+    label: "Professional",
+    instruction: "Use a polite, professional and formal tone.",
+  },
+  {
+    value: "CASUAL",
+    label: "Casual",
+    instruction: "Use a relaxed, conversational tone with plain everyday words.",
+  },
+  {
+    value: "EMPATHETIC",
+    label: "Empathetic",
+    instruction:
+      "Acknowledge the customer's feelings first, then help. Be patient and reassuring.",
+  },
+  {
+    value: "CONCISE",
+    label: "Direct",
+    instruction: "Be direct and to the point. Skip pleasantries.",
+  },
+] as const;
+
+export const agentResponseLengthOptions = [
+  {
+    value: "SHORT",
+    label: "Short",
+    instruction: "Keep replies to 1-3 short sentences.",
+  },
+  {
+    value: "BALANCED",
+    label: "Balanced",
+    instruction: "Keep replies focused, usually under 120 words.",
+  },
+  {
+    value: "DETAILED",
+    label: "Detailed",
+    instruction:
+      "Give thorough answers with step-by-step instructions when they help.",
+  },
+] as const;
+
+export type AgentTone = (typeof agentToneOptions)[number]["value"];
+export type AgentResponseLength =
+  (typeof agentResponseLengthOptions)[number]["value"];
+
+export function normalizeAgentTone(value: unknown): AgentTone {
+  return agentToneOptions.some((option) => option.value === value)
+    ? (value as AgentTone)
+    : "FRIENDLY";
+}
+
+export function normalizeResponseLength(value: unknown): AgentResponseLength {
+  return agentResponseLengthOptions.some((option) => option.value === value)
+    ? (value as AgentResponseLength)
+    : "BALANCED";
+}
+
+export function buildBehaviourInstructions(tone: string, responseLength: string) {
+  const toneOption =
+    agentToneOptions.find((option) => option.value === tone) ?? agentToneOptions[0];
+  const lengthOption =
+    agentResponseLengthOptions.find((option) => option.value === responseLength) ??
+    agentResponseLengthOptions[1];
+
+  return `Tone: ${toneOption.instruction}
+Length: ${lengthOption.instruction}`;
+}
+
+export const MIN_AGENT_MAX_TOKENS = 64;
+export const MAX_AGENT_MAX_TOKENS = 4096;
+
+export function clampAgentNumber(
+  value: unknown,
+  { min, max, fallback }: { min: number; max: number; fallback: number },
+) {
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, parsed));
+}
 
 export const defaultAgentSystemPrompt = `You are a helpful AI assistant specialized in answering questions and customer support using retrieved documents.
 You task is to provide accurate, relevant answers based on the matched content provided.
@@ -200,13 +321,7 @@ export function usesCustomApiKey(provider: string) {
 }
 
 export function getManagedFallbackModels(model: string) {
-  if (!model.startsWith("openrouter/")) {
-    return [model];
-  }
-
-  const remainingModels = managedOpenRouterFallbackModels.filter(
-    (entry) => entry !== model,
-  );
+  const remainingModels = managedFallbackModels.filter((entry) => entry !== model);
 
   return [model, ...remainingModels];
 }
@@ -214,7 +329,7 @@ export function getManagedFallbackModels(model: string) {
 export function formatAgentRuntimeLabel(model: string) {
   return (
     agentModelCatalog.find((entry) => entry.value === model)?.label ??
-    model.replace("openrouter/", "")
+    model.replace(/^(openrouter|groq|google)\//, "")
   );
 }
 

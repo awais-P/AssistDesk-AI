@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getCurrentSession } from "@/src/lib/auth";
+import { getCurrentSession, isValidEmail } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 
 type UpdateProfilePayload = {
-  fullName?: string;
-  email?: string;
+  fullName?: unknown;
+  email?: unknown;
 };
 
 export async function PATCH(request: Request) {
@@ -14,9 +14,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const body = (await request.json()) as UpdateProfilePayload;
-  const fullName = body.fullName?.trim();
-  const email = body.email?.trim().toLowerCase();
+  const body = (await request.json().catch(() => ({}))) as UpdateProfilePayload;
+  const fullName = typeof body.fullName === "string" ? body.fullName.trim().slice(0, 80) : "";
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
 
   if (!fullName || !email) {
     return NextResponse.json(
@@ -25,33 +25,32 @@ export async function PATCH(request: Request) {
     );
   }
 
+  if (!isValidEmail(email)) {
+    return NextResponse.json(
+      { error: "Please enter a valid email address, like name@company.com." },
+      { status: 400 },
+    );
+  }
+
   const existingUser = await prisma.user.findFirst({
     where: {
-      email,
-      id: {
-        not: session.user.id,
-      },
+      OR: [{ email }, { username: email }],
+      id: { not: session.user.id },
     },
-    select: {
-      id: true,
-    },
+    select: { id: true },
   });
 
   if (existingUser) {
     return NextResponse.json(
-      { error: "This email is already in use." },
+      { error: "This email is already used by another account." },
       { status: 409 },
     );
   }
 
   const user = await prisma.user.update({
-    where: {
-      id: session.user.id,
-    },
-    data: {
-      fullName,
-      email,
-    },
+    where: { id: session.user.id },
+    data: { fullName, email },
+    select: { id: true, fullName: true, email: true, username: true, role: true },
   });
 
   return NextResponse.json({ user });

@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/src/lib/auth";
-import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 import { TicketDetailWorkspace } from "@/src/components/dashboard/ticket-detail-workspace";
 
@@ -10,12 +9,24 @@ type TicketDetailPageProps = {
   }>;
 };
 
+function resolveTimeZone(timeZone: string | null | undefined) {
+  if (!timeZone) {
+    return "UTC";
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
 export default async function TicketDetailPage({
   params,
 }: TicketDetailPageProps) {
-  const [{ id }, , session] = await Promise.all([
+  const [{ id }, session] = await Promise.all([
     params,
-    ensureDemoData(),
     getCurrentSession(),
   ]);
 
@@ -23,30 +34,79 @@ export default async function TicketDetailPage({
     redirect("/login");
   }
 
-  const [ticket, cannedResponses, users, tags] = await Promise.all([
+  const [ticket, cannedResponses, users, tags, settings] = await Promise.all([
     prisma.ticket.findFirst({
       where: {
         id,
         workspaceId: session.user.workspaceId,
       },
-      include: {
-        inbox: true,
-        assignee: true,
-        createdBy: true,
+      select: {
+        id: true,
+        ticketNumber: true,
+        subject: true,
+        previewText: true,
+        requesterName: true,
+        requesterEmail: true,
+        source: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        inbox: {
+          select: {
+            id: true,
+            name: true,
+            emailPrefix: true,
+          },
+        },
+        assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
         ticketTags: {
-          include: {
-            tag: true,
+          select: {
+            tag: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+              },
+            },
           },
         },
         messages: {
+          select: {
+            id: true,
+            sender: true,
+            content: true,
+            authorName: true,
+            deliveryStatus: true,
+            deliveryError: true,
+            createdAt: true,
+          },
           orderBy: {
             createdAt: "asc",
           },
+          take: 100,
         },
         logs: {
+          select: {
+            id: true,
+            action: true,
+            status: true,
+            model: true,
+            tokens: true,
+            durationMs: true,
+            summary: true,
+            createdAt: true,
+          },
           orderBy: {
             createdAt: "desc",
           },
+          take: 50,
         },
       },
     }),
@@ -54,9 +114,15 @@ export default async function TicketDetailPage({
       where: {
         workspaceId: session.user.workspaceId,
       },
+      select: {
+        id: true,
+        title: true,
+        body: true,
+      },
       orderBy: {
         createdAt: "desc",
       },
+      take: 50,
     }),
     prisma.user.findMany({
       where: {
@@ -83,6 +149,14 @@ export default async function TicketDetailPage({
         id: true,
         name: true,
         color: true,
+      },
+    }),
+    prisma.workspaceSetting.findUnique({
+      where: {
+        workspaceId: session.user.workspaceId,
+      },
+      select: {
+        timezone: true,
       },
     }),
   ]);
@@ -133,6 +207,9 @@ export default async function TicketDetailPage({
           id: message.id,
           sender: message.sender,
           content: message.content,
+          authorName: message.authorName,
+          deliveryStatus: message.deliveryStatus,
+          deliveryError: message.deliveryError,
           createdAt: message.createdAt.toISOString(),
         })),
         logs: ticket.logs.map((log) => ({
@@ -153,6 +230,7 @@ export default async function TicketDetailPage({
       }))}
       users={users}
       tags={tags}
+      timeZone={resolveTimeZone(settings?.timezone)}
     />
   );
 }

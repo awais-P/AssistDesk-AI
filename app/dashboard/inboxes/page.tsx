@@ -15,6 +15,14 @@ export default async function InboxesPage() {
       where: {
         workspaceId: session.user.workspaceId,
       },
+      select: {
+        id: true,
+        name: true,
+        emailPrefix: true,
+        senderEmail: true,
+        autoReplyEnabled: true,
+        ticketPrefix: true,
+      },
       orderBy: {
         createdAt: "asc",
       },
@@ -22,6 +30,11 @@ export default async function InboxesPage() {
     prisma.aIAgent.findMany({
       where: {
         workspaceId: session.user.workspaceId,
+      },
+      select: {
+        id: true,
+        name: true,
+        inboxId: true,
       },
       orderBy: {
         createdAt: "asc",

@@ -1,3 +1,4 @@
+import { requireRole } from "@/src/lib/rbac";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -18,6 +19,16 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+
+  const forbidden = requireRole(session.user, "MANAGER");
+
+
+  if (forbidden) {
+
+    return forbidden;
+
+  }
+
   const { id } = await context.params;
 
   const agent = await prisma.aIAgent.findFirst({
@@ -27,6 +38,9 @@ export async function DELETE(
     },
     select: {
       id: true,
+      chatbots: {
+        select: { name: true },
+      },
     },
   });
 
@@ -34,6 +48,17 @@ export async function DELETE(
     return NextResponse.json(
       { error: "AI agent not found in this workspace." },
       { status: 404 },
+    );
+  }
+
+  if (agent.chatbots.length > 0) {
+    const names = agent.chatbots.map((chatbot) => chatbot.name).join(", ");
+
+    return NextResponse.json(
+      {
+        error: `This agent powers ${agent.chatbots.length} chatbot(s): ${names}. Link those chatbots to another agent or delete them first, so live widgets don't break.`,
+      },
+      { status: 409 },
     );
   }
 

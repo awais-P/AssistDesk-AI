@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { TagsWorkspace } from "@/src/components/dashboard/tags-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
-import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
+import { hasRole } from "@/src/lib/rbac";
 
 export default async function TagsPage() {
-  const [, session] = await Promise.all([ensureDemoData(), getCurrentSession()]);
+  const session = await getCurrentSession();
 
   if (!session) {
     redirect("/login");
@@ -15,9 +15,20 @@ export default async function TagsPage() {
     where: {
       workspaceId: session.user.workspaceId,
     },
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      _count: {
+        select: {
+          ticketTags: true,
+        },
+      },
+    },
     orderBy: {
       createdAt: "asc",
     },
+    take: 500,
   });
 
   return (
@@ -26,7 +37,9 @@ export default async function TagsPage() {
         id: tag.id,
         name: tag.name,
         color: tag.color,
+        ticketCount: tag._count.ticketTags,
       }))}
+      canDelete={hasRole(session.user.role, "MANAGER")}
     />
   );
 }

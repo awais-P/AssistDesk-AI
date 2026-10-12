@@ -12,6 +12,16 @@ export default function LoginPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isLoading) {
+      return;
+    }
+
+    if (!email.trim() || !password) {
+      setError("Enter your email (or username) and password to continue.");
+      return;
+    }
+
     setError("");
     setIsLoading(true);
 
@@ -25,20 +35,32 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         error?: string;
         redirectTo?: string;
       };
 
       if (!response.ok) {
-        setError(data.error ?? "Login failed. Please try again.");
+        if (response.status === 401) {
+          setError(
+            "That email/username and password don't match. Check for typos and try again.",
+          );
+        } else if (response.status === 429) {
+          setError(
+            data.error ??
+              "Too many sign-in attempts. Please wait a few minutes before trying again.",
+          );
+        } else {
+          setError(data.error ?? "Login failed. Please try again in a moment.");
+        }
+
         setIsLoading(false);
         return;
       }
 
-      window.location.assign(data.redirectTo ?? "/dashboard/tickets");
+      window.location.assign(data.redirectTo ?? "/dashboard");
     } catch {
-      setError("Something went wrong during login. Please try again.");
+      setError("Couldn't reach the server. Check your connection and try again.");
       setIsLoading(false);
     }
   }
@@ -57,23 +79,10 @@ export default function LoginPage() {
               Log in to AssistDesk
             </h1>
             <p className="mt-4 max-w-md text-sm leading-7 text-slate-400">
-              Sign in with your registered account or use the demo admin user to
-              access the dashboard shell.
+              Sign in with your email or username to open your support workspace.
             </p>
 
             <div className="mt-8 space-y-4">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-sm font-medium text-white">
-                  Temporary demo login
-                </p>
-                <p className="mt-1 text-sm leading-6 text-slate-400">
-                  Username: <span className="text-white">admin</span>
-                </p>
-                <p className="text-sm leading-6 text-slate-400">
-                  Password: <span className="text-white">admin</span>
-                </p>
-              </div>
-
               <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
                 <p className="text-sm font-medium text-white">
                   AI-Powered Support Platform
@@ -96,7 +105,7 @@ export default function LoginPage() {
                 </h2>
               </div>
 
-              <form className="space-y-4" onSubmit={handleSubmit}>
+              <form className="space-y-4" onSubmit={handleSubmit} noValidate>
                 <div>
                   <label
                     htmlFor="email"
@@ -109,8 +118,10 @@ export default function LoginPage() {
                     type="text"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
-                    placeholder="admin"
-                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
+                    placeholder="you@company.com"
+                    autoComplete="username"
+                    disabled={isLoading}
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white disabled:opacity-60"
                   />
                 </div>
 
@@ -126,13 +137,18 @@ export default function LoginPage() {
                     type="password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="admin"
-                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white"
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    disabled={isLoading}
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-white disabled:opacity-60"
                   />
                 </div>
 
                 {error ? (
-                  <p className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  <p
+                    role="alert"
+                    className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+                  >
                     {error}
                   </p>
                 ) : null}
@@ -140,7 +156,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="inline-flex w-full items-center justify-center rounded-xl bg-white px-6 py-3 font-semibold text-[#050505] transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:bg-neutral-400"
+                  className="pressable inline-flex w-full items-center justify-center rounded-xl bg-white px-6 py-3 font-semibold text-[#050505] transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:bg-neutral-400"
                 >
                   {isLoading ? "Logging In..." : "Log In"}
                 </button>

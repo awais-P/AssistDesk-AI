@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { tokenizeForSearch } from "./embeddings";
 import {
   fetchKnowledgeSourceText,
   retrieveVectorMatches,
@@ -20,49 +20,7 @@ type RetrievedMatch = {
   score: number;
 };
 
-const stopWords = new Set([
-  "a",
-  "an",
-  "and",
-  "are",
-  "as",
-  "at",
-  "be",
-  "by",
-  "for",
-  "from",
-  "how",
-  "i",
-  "if",
-  "in",
-  "is",
-  "it",
-  "of",
-  "on",
-  "or",
-  "that",
-  "the",
-  "this",
-  "to",
-  "was",
-  "what",
-  "when",
-  "where",
-  "which",
-  "who",
-  "why",
-  "with",
-  "you",
-  "your",
-]);
-
-function tokenize(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2 && !stopWords.has(token));
-}
+const tokenize = tokenizeForSearch;
 
 function splitIntoPassages(value: string, maxLength = 650) {
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -182,68 +140,24 @@ async function retrieveExtractiveMatches(
       matches.push({
         sourceId: source.id,
         title: source.title,
-        excerpt: passage.length > 360 ? `${passage.slice(0, 360)}...` : passage,
+        excerpt: passage,
         score,
       });
     }
   }
 
-  return matches.sort((left, right) => right.score - left.score).slice(0, 3);
+  return matches.sort((left, right) => right.score - left.score).slice(0, 5);
 }
 
+/**
+ * Returns the sources that can be used for answering. URL content is fetched by the
+ * background indexing job, never at chat time (a customer message must not trigger
+ * outbound crawling).
+ */
 export async function hydrateKnowledgeSources(
   sources: RuntimeKnowledgeSource[],
 ) {
-  return Promise.all(
-    sources.map(async (source) => {
-      if (
-        source.type !== "URL" ||
-        !source.sourceUrl ||
-        (source.rawText && source.rawText.trim().length > 0)
-      ) {
-        return source;
-      }
-
-      try {
-        const fetchedText = await fetchKnowledgeSourceText(source.sourceUrl);
-
-        await prisma.knowledgeSource.update({
-          where: {
-            id: source.id,
-          },
-          data: {
-            rawText: fetchedText,
-            status: "SYNCED",
-            lastSyncedAt: new Date(),
-          },
-        });
-
-        return {
-          ...source,
-          rawText: fetchedText,
-          status: "SYNCED",
-        };
-      } catch (error) {
-        await prisma.knowledgeSource.update({
-          where: {
-            id: source.id,
-          },
-          data: {
-            status: "FAILED",
-            processingError:
-              error instanceof Error
-                ? error.message
-                : "Unable to hydrate this URL source.",
-          },
-        });
-
-        return {
-          ...source,
-          status: "FAILED",
-        };
-      }
-    }),
-  );
+  return sources.filter((source) => source.status !== "DELETED");
 }
 
 export async function retrieveKnowledgeMatches(
@@ -256,14 +170,12 @@ export async function retrieveKnowledgeMatches(
   });
 
   if (vectorMatches.length > 0) {
-    return vectorMatches
-      .map((match) => ({
-        sourceId: match.sourceId,
-        title: match.title,
-        excerpt: match.excerpt,
-        score: Math.min(1, match.score),
-      }))
-      .slice(0, 3);
+    return vectorMatches.map((match) => ({
+      sourceId: match.sourceId,
+      title: match.title,
+      excerpt: match.excerpt,
+      score: Math.min(1, match.score),
+    }));
   }
 
   return retrieveExtractiveMatches(question, sources);

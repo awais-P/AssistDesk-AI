@@ -55,7 +55,7 @@ export default function Home() {
                     1 Hub
                   </p>
                   <p className="mt-2 text-sm leading-6 text-slate-400">
-                    Dashboard for agent setup, sources, and future tickets.
+                    Dashboard for agents, knowledge, tickets and chats.
                   </p>
                 </div>
                 <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-5">
@@ -123,20 +123,20 @@ export default function Home() {
         <section id="features" className="grid gap-4 lg:grid-cols-3">
           <article className="rounded-[20px] border border-white/10 bg-white/[0.03] p-6">
             <p className="text-sm font-semibold text-slate-400">
-              Module 7
+              Dashboard
             </p>
             <h3 className="heading-font mt-3 text-lg font-semibold text-white md:text-xl">
               User Dashboard
             </h3>
             <p className="mt-3 text-sm leading-7 text-slate-400">
-              A single place to manage assistants, review setup progress, and
-              move between the main product areas.
+              A single place to manage assistants, see performance and alerts,
+              and handle tickets and chats with your team.
             </p>
           </article>
 
           <article className="rounded-[20px] border border-white/10 bg-white/[0.03] p-6">
             <p className="text-sm font-semibold text-slate-400">
-              Module 10
+              Knowledge
             </p>
             <h3 className="heading-font mt-3 text-lg font-semibold text-white md:text-xl">
               Knowledge Base
@@ -149,14 +149,14 @@ export default function Home() {
 
           <article className="rounded-[20px] border border-white/10 bg-white/[0.03] p-6">
             <p className="text-sm font-semibold text-slate-400">
-              Module 1 + 5
+              Omnichannel
             </p>
             <h3 className="heading-font mt-3 text-lg font-semibold text-white md:text-xl">
               Web Chat Flow
             </h3>
             <p className="mt-3 text-sm leading-7 text-slate-400">
-              Configure the assistant and connect it to a web experience with
-              basic chat sessions and saved history.
+              Answer customers on your website widget, email, WhatsApp and
+              Slack, with a smooth handoff to a human when needed.
             </p>
           </article>
         </section>
@@ -170,8 +170,8 @@ export default function Home() {
               Why AssistDesk
             </p>
             <h2 className="heading-font mt-3 max-w-xl text-[1.9rem] font-bold text-white md:text-[2.35rem] xl:text-[2.85rem]">
-              Simple enough for a first release, strong enough for the final
-              vision.
+              Simple to set up, powerful enough to grow with your support
+              team.
             </h2>
           </div>
 
@@ -199,8 +199,8 @@ export default function Home() {
                   Better customer flow
                 </h3>
                 <p className="mt-2 text-sm leading-7 text-slate-400">
-                  The landing page and widget style make the platform feel like
-                  a real product during evaluation.
+                  Customers get instant answers from your own content, and
+                  conversations escalate to your team when the AI isn&apos;t sure.
                 </p>
               </div>
               <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-5">
@@ -208,8 +208,8 @@ export default function Home() {
                   Ready to grow
                 </h3>
                 <p className="mt-2 text-sm leading-7 text-slate-400">
-                  This foundation can later expand into tickets, escalation,
-                  analytics, and omnichannel integrations.
+                  Tickets, team roles, integrations and reporting are built in,
+                  so you can start small and scale up.
                 </p>
               </div>
           </div>

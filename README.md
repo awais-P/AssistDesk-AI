@@ -1,36 +1,118 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+# AssistDesk AI
 
-First, run the development server:
+AssistDesk is a Next.js customer-support workspace using Prisma, PostgreSQL, AI agents, tickets, chat sessions, knowledge sources, integrations, and an embeddable website widget.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Complete Local Setup
+
+### Prerequisites
+
+Install Node.js 20 or newer, npm, Docker Desktop with Docker Compose, and Git. Node.js 22 LTS is recommended. Verify the tools in PowerShell:
+
+```powershell
+node --version
+npm --version
+docker --version
+docker compose version
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Install Dependencies
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Run from the repository directory:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```powershell
+npm ci
+Copy-Item .env.example .env
+```
 
-## Learn More
+Open `.env` and set these required local values:
 
-To learn more about Next.js, take a look at the following resources:
+```env
+DATABASE_URL="postgresql://assistdesk:assistdesk-dev-password@localhost:5433/assistdesk?schema=public"
+ASSISTDESK_ENCRYPTION_KEY="local-development-key-at-least-32-characters"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The complete optional variable list is in [.env.example](.env.example). Never commit `.env`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Start PostgreSQL
 
-## Deploy on Vercel
+The repository includes [docker-compose.yml](docker-compose.yml). It runs PostgreSQL 16 with persistent storage on host port `5433`; port `5432` is commonly occupied by a local PostgreSQL installation.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```powershell
+docker compose up -d
+docker compose ps
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Wait for the service to show `healthy`, then generate the Prisma client and apply the database migrations:
+
+```powershell
+npx prisma generate
+npx prisma migrate deploy
+```
+
+The database persists in the `assistdesk-postgres-data` Docker volume (Compose prefixes the volume with the project name). Stop it without deleting data using `docker compose down`. To reset the local database completely, use `docker compose down -v` followed by `docker compose up -d` and `npx prisma migrate deploy`.
+
+### Start AssistDesk
+
+```powershell
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Keep Docker PostgreSQL running while using the app. Stop the development server with `Ctrl+C`.
+
+## Optional AI and Integrations
+
+AI replies and knowledge-base features require at least one provider key in `.env`:
+
+```env
+ASSISTDESK_DEFAULT_GROQ_API_KEY="..."
+ASSISTDESK_DEFAULT_GOOGLE_API_KEY="..."
+ASSISTDESK_DEFAULT_OPENROUTER_API_KEY="..."
+```
+
+Email, Cloudinary, Pinecone, WhatsApp, and Firecrawl settings are optional and documented in [.env.example](.env.example). For a local demo workspace, set `ASSISTDESK_SEED_DEMO="true"` and a development-only `ASSISTDESK_DEMO_PASSWORD`.
+
+## Commands
+
+```powershell
+npm run dev               # Development server
+npm run build             # Production build
+npm run start             # Start a production build
+npm run lint              # ESLint
+npm test                  # Unit tests
+npm run test:watch        # Unit tests in watch mode
+npm run test:integration  # Integration tests with a throwaway database
+npx prisma generate       # Generate Prisma client
+npx prisma migrate deploy # Apply committed migrations
+```
+
+Before a production build, run:
+
+```powershell
+npm run lint
+npm test
+npm run build
+```
+
+## Integration Tests
+
+Integration tests modify their database. Use a separate throwaway PostgreSQL database and never use production credentials. Create and migrate the test database first:
+
+```powershell
+docker compose exec postgres createdb -U assistdesk assistdesk_test
+$env:TEST_DATABASE_URL = "postgresql://assistdesk:assistdesk-dev-password@localhost:5433/assistdesk_test?schema=public"
+$env:DATABASE_URL = $env:TEST_DATABASE_URL
+npx prisma migrate deploy
+npm run test:integration
+```
+
+See [scripts/e2e/README.md](scripts/e2e/README.md) for end-to-end test requirements.
+
+## Troubleshooting
+
+For Prisma `P1000` errors, confirm `.env` uses port `5433` and the Compose credentials shown above. Restart with `docker compose up -d` and retry `npx prisma migrate deploy`. If the database has no data you need, reset it with `docker compose down -v`.
+
+If port `5433` is busy, change the host side of the mapping in [docker-compose.yml](docker-compose.yml), for example to `5434:5432`, and use the same port in `DATABASE_URL`.
+

@@ -1,72 +1,67 @@
-# AssistDesk Testing Instructions
+# Testing Guide
 
-This guide explains how to run the AssistDesk test suites one by one, how to
-run individual tests, how to collect evidence, and how to link each result to
-the Software Requirements Specification (SRS).
+This guide provides a general process for testing the application from setup
+through final reporting. It covers automated tests, manual testing, SRS
+traceability, test evidence, and common troubleshooting steps.
 
-Use a development or throwaway database for all tests. Do not run destructive
-test suites against production data.
+Use a development or throwaway environment. Never run tests that create,
+modify, or delete data against production.
 
-## 1. Prerequisites
+## 1. Prepare the environment
 
-Install:
-
-- Node.js and npm
-- PostgreSQL, either locally or through Docker
-- Google Chrome for the Playwright UI tests
-
-Open PowerShell in the repository:
+Open PowerShell in the project folder:
 
 ```powershell
 cd "C:\Users\Ahmed Mujtaba\coding projects\AssistDesk-AI"
 ```
 
-Install the exact dependency versions from the lockfile:
+Install dependencies from the lockfile:
 
 ```powershell
 npm ci
 ```
 
-If there is no `package-lock.json`, use this once instead:
+If no lockfile exists, create one with:
 
 ```powershell
 npm install
 ```
 
-Generate Prisma Client and apply migrations:
+Generate the database client and apply migrations when the project uses
+Prisma:
 
 ```powershell
 npx prisma generate
 npx prisma migrate deploy
 ```
 
-## 2. Environment setup
+Keep credentials, database URLs, and API keys in `.env`. Do not commit or
+share that file.
 
-Keep private values in `.env`. Do not commit `.env`, paste it into reports, or
-share API keys and database passwords.
+## 2. Prepare test data
 
-For local demo and Playwright testing, the development environment needs the
-following settings:
+Use separate data for testing. Before starting:
 
-```env
-ASSISTDESK_SEED_DEMO=true
-ASSISTDESK_DEMO_PASSWORD=<development password of at least 8 characters>
-ASSISTDESK_ALLOW_PRIVATE_TOOLS=true
+1. Confirm that the database is running.
+2. Confirm that the required environment variables are configured.
+3. Apply database migrations.
+4. Seed the development/demo data if the tests require it.
+5. Confirm that the application can be opened and a test account can sign in.
+
+For this project, the sample data used by UI and end-to-end tests can be
+created with:
+
+```powershell
+node scripts/e2e/seed-demo.mjs
 ```
 
-The complete HTTP end-to-end suite also expects:
-
-```env
-CRON_SECRET=<development secret>
-ASSISTDESK_ALLOW_PRIVATE_WEBHOOKS=true
-```
-
-AI-dependent tests require a configured provider key, such as the project’s
-Groq, Google, or OpenRouter setting. The exact key must remain private.
+Run the command against a throwaway database while the development server is
+running. The required environment variables are documented in
+`scripts/e2e/README.md`.
 
 ## 3. Start the application
 
-Start PostgreSQL. If this project is configured for Docker PostgreSQL:
+Start any required services, such as PostgreSQL or Docker:
 
 ```powershell
 docker compose up -d
@@ -78,134 +73,81 @@ Start the development server:
 npm run dev
 ```
 
-Keep this terminal running. The application should be available at:
+Keep the server terminal open. The default local address is:
 
 ```text
 http://localhost:3000
 ```
 
-When demo seeding is enabled, the demo administrator is:
+Open the application once and verify that the login page and main dashboard
+load before running browser tests.
 
-```text
-Email: admin@assistdesk.local
-Password: the value of ASSISTDESK_DEMO_PASSWORD
-```
+## 4. Test layers
 
-Open the application once in a browser so the development demo workspace can
-be initialized.
+Run test layers separately so a failure can be identified correctly.
 
-## 4. Seed the sample store
+| Layer | Purpose | Typical command |
+|---|---|---|
+| Unit | Tests one function or module in isolation | `npm test` |
+| Integration | Tests several modules working together | `npm run test:integration` |
+| UI/E2E | Tests the application through a browser | `npm run test:ui` |
+| HTTP E2E | Tests the running application through its APIs | `node scripts/e2e/e2e-all.mjs` |
+| Static validation | Checks code quality and compilation | `npm run lint`, `npm run build` |
 
-The application’s development demo data is defined in
-`src/lib/demo-data.ts`. The larger sample store used by UI and end-to-end tests
-is populated by:
+## 5. Unit tests
 
-```powershell
-node scripts/e2e/seed-demo.mjs
-```
-
-Run this command from a second PowerShell window while the development server
-is running. The sample data includes customers, conversations, tickets, leads,
-appointments, knowledge-base content, and demo tools.
-
-The UI tests expect records such as `Ali Raza`, `Hina Shah`, `Usman Tariq`, and
-the store-policy knowledge source.
-
-## 5. Test command overview
-
-The commands are defined in `package.json`:
-
-| Purpose | Command |
-|---|---|
-| Unit tests, one run | `npm test` |
-| Unit tests, watch mode | `npm run test:watch` |
-| Integration tests | `npm run test:integration` |
-| Playwright UI tests | `npm run test:ui` |
-| Lint | `npm run lint` |
-| Production build | `npm run build` |
-
-The normal complete validation sequence is:
-
-```powershell
-npm test
-npm run test:integration
-npm run test:ui
-npm run lint
-npm run build
-```
-
-Run the commands separately so that a failure can be attributed to the correct
-test layer.
-
-## 6. Unit tests
-
-Unit tests are located in `tests/unit/`. They test isolated business logic and
-do not normally require a running server:
+Unit tests normally do not need a running server. Run all unit tests once:
 
 ```powershell
 npm test
 ```
 
-Run one unit test file:
+Run unit tests in watch mode while developing:
 
 ```powershell
-npx vitest run tests/unit/auth-and-rbac.test.ts
+npm run test:watch
 ```
 
-Run multiple focused files:
+Run one test file:
+
+```powershell
+npx vitest run tests/unit/example.test.ts
+```
+
+Run multiple files:
 
 ```powershell
 npx vitest run `
-  tests/unit/auth-and-rbac.test.ts `
-  tests/unit/widget-security.test.ts `
-  tests/unit/secrets.test.ts
+  tests/unit/example.test.ts `
+  tests/unit/another.test.ts
 ```
 
-Run tests whose names match a pattern:
+Run tests matching a name or phrase:
 
 ```powershell
-npx vitest run -t "password"
+npx vitest run -t "validation"
 ```
 
-Run a file in watch mode:
+Run a file interactively in watch mode:
 
 ```powershell
-npx vitest tests/unit/auth-and-rbac.test.ts
+npx vitest tests/unit/example.test.ts
 ```
 
-Run unit tests with coverage:
+Run with coverage if coverage is configured:
 
 ```powershell
 npx vitest run --coverage
 ```
 
-If coverage support is not installed, use the normal unit test command and
-install only the coverage dependency requested by Vitest.
+For this project, unit tests are in `tests/unit/`.
 
-### Unit test areas
+## 6. Integration tests
 
-| Area | File |
-|---|---|
-| Agent and integration configuration | `tests/unit/agent-and-integration-config.test.ts` |
-| Analytics | `tests/unit/analytics.test.ts` |
-| Authentication and RBAC | `tests/unit/auth-and-rbac.test.ts` |
-| Channel signatures | `tests/unit/channel-signatures.test.ts` |
-| Knowledge ingestion | `tests/unit/knowledge-ingestion.test.ts` |
-| Knowledge retrieval | `tests/unit/knowledge-retrieval.test.ts` |
-| Leads | `tests/unit/leads.test.ts` |
-| Safe fetch | `tests/unit/safe-fetch.test.ts` |
-| Secrets | `tests/unit/secrets.test.ts` |
-| Sessions and memory | `tests/unit/sessions-and-memory.test.ts` |
-| Tools | `tests/unit/tools.test.ts` |
-| Widget security | `tests/unit/widget-security.test.ts` |
+Integration tests use several application components and usually require a
+throwaway database with migrations applied.
 
-## 7. Integration tests
-
-Integration tests are in `tests/integration/` and use a database and real
-application services. Use a separate throwaway PostgreSQL database with
-migrations applied.
-
-Run the complete integration suite:
+Run all integration tests:
 
 ```powershell
 npm run test:integration
@@ -216,16 +158,7 @@ Run one integration file:
 ```powershell
 npx vitest run `
   --config vitest.integration.config.mts `
-  tests/integration/ticket-workflow.int.ts
-```
-
-Run several integration files:
-
-```powershell
-npx vitest run `
-  --config vitest.integration.config.mts `
-  tests/integration/action-logs.int.ts `
-  tests/integration/tools.int.ts
+  tests/integration/example.int.ts
 ```
 
 Run one integration test by name:
@@ -233,30 +166,27 @@ Run one integration test by name:
 ```powershell
 npx vitest run `
   --config vitest.integration.config.mts `
-  -t "ticket"
+  -t "creates a record"
 ```
 
-Integration test files:
+If an integration test needs a database variable, configure it in the
+development environment before running the command. Never use a production
+database.
 
-| Area | File |
-|---|---|
-| Action logs | `tests/integration/action-logs.int.ts` |
-| Agent engine | `tests/integration/agent-engine.int.ts` |
-| Real model behavior | `tests/integration/real-model.int.ts` |
-| Ticket workflow | `tests/integration/ticket-workflow.int.ts` |
-| Tool administration | `tests/integration/tool-admin.int.ts` |
-| Tools | `tests/integration/tools.int.ts` |
+For this project, integration tests are in `tests/integration/`.
 
-If the integration suite reports a missing database variable, configure the
-throwaway database connection expected by the project’s integration config
-before rerunning it. Never point this variable at production.
+## 7. Playwright browser tests
 
-## 8. Playwright UI tests
+Playwright tests verify user flows through a real browser. They normally
+require:
 
-Playwright tests are in `tests/ui/` and drive the running application in
-Chrome. They use one worker because tests share the demo workspace.
+- A running development server
+- A test account
+- Seeded test data
+- A supported browser
+- The correct test URL
 
-Run all UI tests:
+Run all Playwright tests:
 
 ```powershell
 npm run test:ui
@@ -268,52 +198,41 @@ Run with the browser visible:
 npx playwright test --headed
 ```
 
-Run in debug mode:
+Run in debugging mode:
 
 ```powershell
 npx playwright test --debug
 ```
 
-If the browser binary is missing:
+Install browsers if required:
 
 ```powershell
 npx playwright install
 ```
 
-The configuration uses Chrome. Make sure Google Chrome is installed.
-
-Set a different application URL for testing:
+Run one test file:
 
 ```powershell
-$env:E2E_BASE_URL = "http://localhost:3000"
-npm run test:ui
+npx playwright test tests/ui/example.spec.ts
 ```
 
-Run one UI file:
+Run one test by its ID or title:
 
 ```powershell
-npx playwright test tests/ui/tickets.spec.ts
-```
-
-Run one test by its test ID:
-
-```powershell
-npx playwright test -g "UI-TKT-04"
-```
-
-Other examples:
-
-```powershell
-npx playwright test -g "UI-AUTH-06"
-npx playwright test -g "UI-KB-03"
-npx playwright test -g "UI-ANL-06"
+npx playwright test -g "TEST-ID"
 ```
 
 Run tests matching a feature:
 
 ```powershell
-npx playwright test -g "chatbot"
-npx playwright test -g "knowledge"
+npx playwright test -g "login"
+```
+
+Use a different local application URL:
+
+```powershell
+$env:E2E_BASE_URL = "http://localhost:3000"
+npm run test:ui
 ```
 
 Run with a specific reporter:
@@ -324,184 +243,226 @@ npx playwright test --reporter=line
 npx playwright test --reporter=html
 ```
 
-Open the HTML report after a run:
+Open the HTML report:
 
 ```powershell
 npx playwright show-report
 ```
 
-Playwright writes JSON results to:
-
-```text
-test-results/ui-results.json
-```
-
-Screenshots and traces are retained for failed tests according to
-`playwright.config.ts`. Open a trace with:
+The project stores UI JSON results in `test-results/ui-results.json`.
+Screenshots and traces may be retained for failed tests. Open a trace with:
 
 ```powershell
 npx playwright show-trace path\to\trace.zip
 ```
 
-### Playwright SRS mapping
+## 8. HTTP end-to-end tests
 
-Each UI test title includes its test ID and SRS requirement IDs:
+HTTP end-to-end scripts test the running application without controlling the
+browser. They are useful for authentication, API behavior, workflows, data
+permissions, and cross-module checks.
 
-| SRS area | File | Test IDs |
-|---|---|---|
-| FR-1 Authentication | `tests/ui/auth.spec.ts` | `UI-AUTH-01` to `UI-AUTH-07` |
-| FR-2 to FR-4 Setup | `tests/ui/setup-wizard.spec.ts` | `UI-SETUP-01` to `UI-SETUP-02` |
-| FR-5 Tickets | `tests/ui/tickets.spec.ts` | `UI-TKT-01` to `UI-TKT-08` |
-| FR-6 Chats | `tests/ui/chats.spec.ts` | `UI-CHT-01` to `UI-CHT-03` |
-| FR-7 and FR-8 Agents | `tests/ui/agents.spec.ts` | `UI-AGT-01` to `UI-AGT-06` |
-| FR-9 Prompts | `tests/ui/prompts.spec.ts` | `UI-PRM-01` to `UI-PRM-03` |
-| FR-10 Knowledge base | `tests/ui/knowledge-base.spec.ts` | `UI-KB-01` to `UI-KB-05` |
-| FR-11 Analytics | `tests/ui/analytics.spec.ts` | `UI-ANL-01` to `UI-ANL-06` |
-| FR-12 to FR-14 Chatbots | `tests/ui/chatbots.spec.ts` | `UI-BOT-01` to `UI-BOT-05` |
-| FR-15 Inbox | `tests/ui/inbox-integrations.spec.ts` | `UI-INB-01` to `UI-INB-03` |
-| FR-16 Integrations | `tests/ui/inbox-integrations.spec.ts` | `UI-INT-01` to `UI-INT-02` |
-| FR-17 Widget | `tests/ui/widget.spec.ts` | `UI-WID-01` to `UI-WID-06` |
-| Module 2 Tools | `tests/ui/agentic-tools.spec.ts` | `UI-M2-01` to `UI-M2-05` |
-| Module 8 Leads | `tests/ui/leads.spec.ts` | `UI-LED-01` to `UI-LED-04` |
-
-The full descriptions and requirement references are also in
-`tests/ui/README.md`.
-
-## 9. HTTP end-to-end suite
-
-The scripts in `scripts/e2e/` test the running application over HTTP and cover
-multiple modules.
-
-Run all HTTP end-to-end checks:
+Run the complete suite:
 
 ```powershell
 node scripts/e2e/e2e-all.mjs
 ```
 
-Run without AI calls:
+Skip checks that require an AI provider:
 
 ```powershell
 node scripts/e2e/e2e-all.mjs --skip-ai
 ```
 
-Run Module 2:
+Run a module-specific suite when available:
 
 ```powershell
 node scripts/e2e/setup-m2.mjs
 node scripts/e2e/e2e-m2.mjs
 ```
 
-These scripts need the environment variables documented in
-`scripts/e2e/README.md`, including a throwaway database, the demo password,
-the cron secret, and a running development server.
+The scripts should print `PASS` or `FAIL` and return a non-zero exit code when
+one or more checks fail. A skipped AI check must not be reported as a pass.
 
-The result file is:
+## 9. Lint and build checks
 
-```text
-scripts/e2e/e2e-all.results.json
-```
-
-Each check prints `PASS` or `FAIL`, and the process exits with a non-zero code
-when a check fails.
-
-## 10. Lint and build validation
-
-Run ESLint:
+Run linting:
 
 ```powershell
 npm run lint
 ```
 
-Build the production application:
+Build the application:
 
 ```powershell
 npm run build
 ```
 
-Start the production build only after the build succeeds:
+Run the production build after a successful build:
 
 ```powershell
 npm run start
 ```
 
-Lint and build success do not replace functional testing; they only confirm
-code quality and production compilation.
+Lint and build results do not replace functional tests. They only confirm
+static quality and compilation.
 
-## 11. Manual SRS verification
+## 10. Test one feature at a time
 
-Use the SRS document to verify the requirement itself, not only whether a test
-is green.
+For each feature, use this sequence:
 
-For every requirement:
+1. Read the feature requirement in the SRS.
+2. Identify the related unit, integration, UI, or end-to-end test.
+3. Prepare the required test data and permissions.
+4. Run the smallest automated test that covers the feature.
+5. Perform the same flow manually in the application.
+6. Check the normal flow, invalid input, permissions, errors, and persistence.
+7. Capture evidence.
+8. Record the result before moving to the next feature.
 
-1. Find the requirement ID in the SRS.
-2. Copy its expected behavior into your test record.
-3. Find the matching automated test ID in the test title or mapping above.
-4. Run the matching test.
-5. Repeat the same flow manually in the browser.
-6. Check validation, error states, persistence, permissions, and navigation.
-7. Capture a screenshot or downloaded file as evidence.
-8. Record the actual result and mark the requirement Pass or Fail.
+Example command sequence:
 
-Use this test record format:
+```powershell
+npx vitest run tests/unit/feature.test.ts
+npx vitest run --config vitest.integration.config.mts tests/integration/feature.int.ts
+npx playwright test tests/ui/feature.spec.ts
+```
 
-| Test ID | SRS ID | Requirement | Preconditions | Steps | Expected result | Actual result | Evidence | Status |
-|---|---|---|---|---|---|---|---|---|
-| UI-TKT-04 | FR-5.x | Create a ticket | Demo data and admin login | Create and save a ticket | Ticket appears in the list |  | `UI-TKT-04.png` | Pass/Fail |
+## 11. Manual testing procedure
 
-A test should be marked **Pass** only when:
+For every SRS requirement:
 
-- The automated test passes, when an automated test exists.
-- The manual behavior matches the SRS.
-- The expected data is visible or persisted.
-- Error and validation behavior is correct.
-- There is sufficient evidence to reproduce the result.
+1. Copy the requirement ID and expected behavior from the SRS.
+2. Write down the preconditions.
+3. List the exact steps a tester must perform.
+4. Execute the steps in a clean test account or workspace.
+5. Compare the actual result with the expected result.
+6. Refresh or revisit the page to verify persistence where relevant.
+7. Test required-field validation and invalid input.
+8. Test role-based access if the requirement involves permissions.
+9. Capture screenshots, downloaded files, or logs.
+10. Mark the requirement as Pass, Fail, or Blocked.
 
-Mark an item **Blocked** instead of Pass when it cannot run because of a
-missing database, unavailable provider, missing demo data, or another
-environment problem.
+A green automated test is evidence only for the behavior that it actually
+checks. It does not prove that every part of a broader requirement works.
 
-## 12. Troubleshooting
+## 12. SRS traceability
 
-### Admin sign-in fails during Playwright setup
+Each test should have a unique test ID and reference one or more SRS
+requirements. If the test title contains the requirement ID, the result can be
+traced directly from the test report to the SRS.
 
-Check that:
+Use this matrix:
+
+| Test ID | SRS ID | Requirement | Test type | Preconditions | Steps | Expected result | Actual result | Evidence | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| TEST-001 | FR-1.1 | User can sign in | UI | Test account exists | Enter valid credentials | Dashboard opens |  | Screenshot/report | Pass/Fail |
+
+Use one row for each test case. If one test covers multiple requirements, list
+all of them or create separate traceability rows.
+
+### Status definitions
+
+- **Pass:** The automated and/or manual result matches the SRS.
+- **Fail:** The application result does not match the expected behavior.
+- **Blocked:** The test could not run because of an environment, data, or
+  dependency problem.
+- **Skipped:** The test was intentionally not run; it is not a pass.
+- **Not tested:** No test has been performed yet.
+
+## 13. Test evidence
+
+Useful evidence includes:
+
+- Screenshot of the completed flow
+- Screenshot of validation or error feedback
+- Downloaded CSV, PDF, or other generated file
+- Playwright HTML report
+- Playwright JSON result
+- Playwright trace for a failure
+- Console or server log, when relevant
+- Database record confirmation, when appropriate and safe
+
+Use clear filenames:
+
+```text
+TEST-001-login-success.png
+TEST-002-required-field-validation.png
+TEST-003-export-download.csv
+```
+
+Do not include passwords, API keys, session cookies, tokens, or private
+database connection strings in evidence.
+
+## 14. Failure investigation
+
+When a test fails:
+
+1. Save the complete failure message.
+2. Record the test ID and SRS ID.
+3. Re-run only the failing test.
+4. Check whether the failure is reproducible.
+5. Review screenshots, traces, logs, and network responses.
+6. Decide whether the cause is an application defect, test defect, missing
+   data, unavailable service, or environment problem.
+7. Record the cause and retest after a fix.
+
+A failed setup step should be reported as **Blocked**, not as a functional
+failure, unless the setup itself is part of the requirement.
+
+## 15. Common troubleshooting
+
+### Dependencies are missing
+
+```powershell
+npm ci
+```
+
+### Database or migrations are missing
+
+```powershell
+npx prisma generate
+npx prisma migrate deploy
+```
+
+### Browser tests cannot connect
+
+Confirm that:
 
 - The development server is running.
-- `ASSISTDESK_SEED_DEMO=true` is enabled.
-- The demo password is at least eight characters.
-- The test password matches the server password.
-- Database migrations have been applied.
-- The browser is using the same `E2E_BASE_URL` as the server.
+- The test URL is correct.
+- The test account exists.
+- The required seed data exists.
+- The configured port is not being used by another application.
 
-### Playwright reports missing browsers
+### Playwright browsers are missing
 
 ```powershell
 npx playwright install
 ```
 
-### Tests cannot find expected records
+### Expected demo records are missing
 
-Run the sample-store seed while the server is running:
+Run the project’s seed command against a throwaway database:
 
 ```powershell
 node scripts/e2e/seed-demo.mjs
 ```
 
-### AI checks fail or time out
+### AI-dependent tests fail
 
-Confirm that a supported development AI provider is configured. You can run
-the HTTP end-to-end suite without AI checks:
+Confirm that a development AI provider is configured. To verify all
+non-AI checks separately:
 
 ```powershell
 node scripts/e2e/e2e-all.mjs --skip-ai
 ```
 
-An AI-dependent test should not be marked Pass if it was skipped.
+Do not report skipped AI checks as passed.
 
-### Need a clean local database
+### A clean local database is required
 
-This deletes the Docker database volume and all local data:
+The following commands delete the Docker database volume and its data:
 
 ```powershell
 docker compose down -v
@@ -509,33 +470,60 @@ docker compose up -d
 npx prisma migrate deploy
 ```
 
-Only use this when a clean reset is intentional.
+Use this only when a full local reset is intentional.
 
-## 13. Final reporting checklist
+## 16. Recommended complete test order
 
-Before declaring the project verified, record:
+Run the checks in this order:
 
+```powershell
+npm test
+npm run test:integration
+npm run test:ui
+node scripts/e2e/e2e-all.mjs
+npm run lint
+npm run build
+```
+
+If AI services are unavailable, run the non-AI end-to-end checks separately
+and clearly record the skipped tests.
+
+## 17. Final test report
+
+Before declaring the system verified, record:
+
+- Date and environment
+- Database used
+- Test account or role used
 - Unit test result
 - Integration test result
-- Playwright UI test result
-- HTTP end-to-end result
+- UI/E2E result
+- HTTP E2E result
 - Lint result
-- Production build result
-- Any skipped or blocked tests
-- SRS requirement IDs covered by each test
-- Screenshots, traces, downloads, or JSON reports used as evidence
-- Environment limitations, such as unavailable AI providers
+- Build result
+- Passed, failed, blocked, and skipped test counts
+- SRS requirements covered
+- Evidence locations
+- Known limitations
 
-Recommended summary:
+Use this summary:
 
 ```text
-Unit tests: PASS / FAIL
+Environment: development / staging
+Date:
+
+Unit tests: PASS / FAIL / BLOCKED
 Integration tests: PASS / FAIL / BLOCKED
-Playwright UI tests: PASS / FAIL / BLOCKED
-HTTP end-to-end tests: PASS / FAIL / BLOCKED
+UI/E2E tests: PASS / FAIL / BLOCKED
+HTTP E2E tests: PASS / FAIL / BLOCKED
 Lint: PASS / FAIL
-Production build: PASS / FAIL
-SRS requirements passed: <number>
-SRS requirements failed: <number>
-SRS requirements blocked: <number>
+Build: PASS / FAIL
+
+SRS requirements passed:
+SRS requirements failed:
+SRS requirements blocked:
+SRS requirements skipped:
+
+Known limitations:
+Evidence location:
 ```

@@ -9,11 +9,7 @@ modify, or delete data against production.
 
 ## 1. Prepare the environment
 
-Open PowerShell in the project folder:
-
-```powershell
-cd "C:\Users\Ahmed Mujtaba\coding projects\AssistDesk-AI"
-```
+Open PowerShell in the project folder.
 
 Install dependencies from the lockfile:
 
@@ -37,6 +33,45 @@ npx prisma migrate deploy
 
 Keep credentials, database URLs, and API keys in `.env`. Do not commit or
 share that file.
+
+The application and standalone end-to-end scripts may use different variable
+names. The development server uses `DATABASE_URL`, while the scripts in
+`scripts/e2e/` require `TEST_DATABASE_URL`. Both variables must point to the
+same throwaway PostgreSQL database.
+
+The seed and HTTP end-to-end scripts also require:
+
+```text
+TEST_DATABASE_URL
+ASSISTDESK_DEMO_PASSWORD
+CRON_SECRET
+```
+
+Values written in `.env` are loaded by the application, but they are not
+automatically available to every standalone `node` command. On Windows,
+export the values in the PowerShell session before running a script:
+
+```powershell
+$env:TEST_DATABASE_URL = "<same throwaway database URL used by the app>"
+$env:ASSISTDESK_DEMO_PASSWORD = "<same development password used by the app>"
+$env:CRON_SECRET = "<same development cron secret used by the app>"
+$env:E2E_BASE_URL = "http://localhost:3000"
+$env:ASSISTDESK_ALLOW_PRIVATE_TOOLS = "true"
+$env:ASSISTDESK_ALLOW_PRIVATE_WEBHOOKS = "true"
+```
+
+For example, a PostgreSQL connection string has this general format:
+
+```text
+postgresql://username:password@localhost:5432/assistdesk_test
+```
+
+Do not use a production database. If `DATABASE_URL` is already available as a
+PowerShell environment variable, it can be copied for the script:
+
+```powershell
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+```
 
 ## 2. Prepare test data
 
@@ -256,6 +291,48 @@ Screenshots and traces may be retained for failed tests. Open a trace with:
 npx playwright show-trace path\to\trace.zip
 ```
 
+### After the sample-data seed succeeds
+
+When `node scripts/e2e/seed-demo.mjs` completes successfully, continue with
+the browser tests from the same project folder:
+
+```powershell
+npm run test:ui
+```
+
+If Playwright reports that Chrome or another browser is missing, install the
+required browser binaries:
+
+```powershell
+npx playwright install
+```
+
+Open the HTML report after the test run:
+
+```powershell
+npx playwright show-report
+```
+
+Then run the remaining validation layers:
+
+```powershell
+npm test
+npm run test:integration
+npm run lint
+npm run build
+```
+
+Record the following in the test report:
+
+- Passed tests
+- Failed tests
+- Skipped or blocked tests
+- Related SRS requirement IDs
+- Screenshots, traces, or downloaded files used as evidence
+
+Playwright JSON results are stored in `test-results\ui-results.json`, and the
+HTML report is stored in the `playwright-report\` folder.
+
 ## 8. HTTP end-to-end tests
 
 HTTP end-to-end scripts test the running application without controlling the
@@ -284,7 +361,159 @@ node scripts/e2e/e2e-m2.mjs
 The scripts should print `PASS` or `FAIL` and return a non-zero exit code when
 one or more checks fail. A skipped AI check must not be reported as a pass.
 
-## 9. Lint and build checks
+## 9. Find test names and inspect test code
+
+### List Playwright test names
+
+List all Playwright tests without running them:
+
+```powershell
+npx playwright test --list
+```
+
+List tests from one file:
+
+```powershell
+npx playwright test tests/ui/tickets.spec.ts --list
+```
+
+List tests matching a feature or test ID:
+
+```powershell
+npx playwright test -g "ticket" --list
+npx playwright test -g "UI-TKT-01" --list
+```
+
+### List Vitest test names
+
+List unit tests without running them:
+
+```powershell
+npx vitest list
+```
+
+List tests from one file:
+
+```powershell
+npx vitest list tests/unit/auth-and-rbac.test.ts
+```
+
+List integration tests:
+
+```powershell
+npx vitest list --config vitest.integration.config.mts
+```
+
+Run Vitest with detailed test names:
+
+```powershell
+npx vitest run --reporter=verbose
+```
+
+### Find test files and source code
+
+The project test folders are:
+
+- Unit tests: `tests/unit/`
+- Integration tests: `tests/integration/`
+- Playwright tests: `tests/ui/`
+
+Open a test file from Command Prompt or PowerShell:
+
+```powershell
+code tests/ui/tickets.spec.ts
+```
+
+Search test declarations from PowerShell:
+
+```powershell
+Select-String -Path "tests\**\*.ts" -Pattern 'test\(|it\(|describe\('
+```
+
+The Playwright test title normally contains the test ID, the related SRS
+requirement, and a description. For example:
+
+```ts
+test("UI-TKT-01 [FR-5.1] tickets are listed", async ({ page }) => {
+  // Test actions and assertions
+});
+```
+
+In this example:
+
+- `UI-TKT-01` is the unique test ID.
+- `FR-5.1` is the linked SRS requirement.
+- `tickets are listed` describes the behavior under test.
+
+### Run and debug one test
+
+Run one Playwright test:
+
+```powershell
+npx playwright test -g "UI-TKT-01"
+```
+
+Run it with the browser visible:
+
+```powershell
+npx playwright test -g "UI-TKT-01" --headed
+```
+
+Run it in debug mode:
+
+```powershell
+npx playwright test -g "UI-TKT-01" --debug
+```
+
+Run one unit test by name:
+
+```powershell
+npx vitest run -t "validation"
+```
+
+### Understand test assertions
+
+Test actions describe what the user or system does. Assertions describe what
+must be true for the test to pass. Look for statements such as:
+
+```ts
+await expect(page.getByText("Tickets")).toBeVisible();
+await expect(page).toHaveURL(/tickets/);
+await expect(locator).toHaveText("Expected text");
+await expect(locator).toBeEnabled();
+await expect(locator).toHaveValue("Expected value");
+```
+
+For example:
+
+```ts
+await page.getByRole("button", { name: "Create ticket" }).click();
+await page.getByLabel("Subject").fill("Test ticket");
+await page.getByRole("button", { name: "Save" }).click();
+
+await expect(page.getByText("Test ticket")).toBeVisible();
+```
+
+The first statements perform the user actions. The final statement verifies
+the expected result.
+
+### Review one test against the SRS
+
+For each test case:
+
+1. Copy the test ID and linked SRS ID.
+2. Read the complete test title.
+3. Read the setup and navigation steps.
+4. Identify each user action.
+5. Identify every `expect(...)` assertion.
+6. Compare the assertions with the SRS expected result.
+7. Run the test individually.
+8. Perform the same flow manually.
+9. Record the result and evidence in the traceability matrix.
+
+The UI test-to-SRS mapping is also documented in `tests/ui/README.md`.
+
+## 10. Lint and build checks
 
 Run linting:
 
@@ -307,7 +536,7 @@ npm run start
 Lint and build results do not replace functional tests. They only confirm
 static quality and compilation.
 
-## 10. Test one feature at a time
+## 11. Test one feature at a time
 
 For each feature, use this sequence:
 
@@ -328,7 +557,7 @@ npx vitest run --config vitest.integration.config.mts tests/integration/feature.
 npx playwright test tests/ui/feature.spec.ts
 ```
 
-## 11. Manual testing procedure
+## 12. Manual testing procedure
 
 For every SRS requirement:
 
@@ -346,7 +575,7 @@ For every SRS requirement:
 A green automated test is evidence only for the behavior that it actually
 checks. It does not prove that every part of a broader requirement works.
 
-## 12. SRS traceability
+## 13. SRS traceability
 
 Each test should have a unique test ID and reference one or more SRS
 requirements. If the test title contains the requirement ID, the result can be
@@ -370,7 +599,7 @@ all of them or create separate traceability rows.
 - **Skipped:** The test was intentionally not run; it is not a pass.
 - **Not tested:** No test has been performed yet.
 
-## 13. Test evidence
+## 14. Test evidence
 
 Useful evidence includes:
 
@@ -394,7 +623,7 @@ TEST-003-export-download.csv
 Do not include passwords, API keys, session cookies, tokens, or private
 database connection strings in evidence.
 
-## 14. Failure investigation
+## 15. Failure investigation
 
 When a test fails:
 
@@ -410,7 +639,7 @@ When a test fails:
 A failed setup step should be reported as **Blocked**, not as a functional
 failure, unless the setup itself is part of the requirement.
 
-## 15. Common troubleshooting
+## 16. Common troubleshooting
 
 ### Dependencies are missing
 
@@ -449,6 +678,24 @@ Run the project’s seed command against a throwaway database:
 node scripts/e2e/seed-demo.mjs
 ```
 
+If the command reports:
+
+```text
+Missing TEST_DATABASE_URL. See scripts/e2e/README.md.
+```
+
+set the required variables in the same PowerShell window first:
+
+```powershell
+$env:TEST_DATABASE_URL = "<throwaway PostgreSQL URL>"
+$env:ASSISTDESK_DEMO_PASSWORD = "<development demo password>"
+$env:CRON_SECRET = "<development cron secret>"
+node scripts/e2e/seed-demo.mjs
+```
+
+The development server should already be running, and `TEST_DATABASE_URL`
+should refer to the same database as `DATABASE_URL` used by that server.
+
 ### AI-dependent tests fail
 
 Confirm that a development AI provider is configured. To verify all
@@ -472,7 +719,7 @@ npx prisma migrate deploy
 
 Use this only when a full local reset is intentional.
 
-## 16. Recommended complete test order
+## 17. Recommended complete test order
 
 Run the checks in this order:
 
@@ -488,7 +735,7 @@ npm run build
 If AI services are unavailable, run the non-AI end-to-end checks separately
 and clearly record the skipped tests.
 
-## 17. Final test report
+## 18. Final test report
 
 Before declaring the system verified, record:
 

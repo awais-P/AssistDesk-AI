@@ -10,7 +10,7 @@ import {
 import { CHUNK_TARGET_CHARS, chunkDocument, chunkEmbeddingText } from "@/src/lib/knowledge-chunking";
 import { calibrateSemanticScore } from "@/src/lib/knowledge-indexing";
 
-describe("search tokenizer", () => {
+describe("UT-16 search tokenizer", () => {
   it("keeps non-English words (AI-01) and drops stop words", () => {
     expect(tokenizeForSearch("What is the refund policy?")).toEqual(["refund", "policy"]);
     expect(tokenizeForSearch("واپسی کی پالیسی کیا ہے")).toEqual(
@@ -20,7 +20,7 @@ describe("search tokenizer", () => {
   });
 });
 
-describe("lexical fallback embeddings", () => {
+describe("UT-17 lexical fallback embeddings", () => {
   it("scores related text higher than unrelated text", () => {
     const question = lexicalEmbedding("refund policy for shoes");
     const related = lexicalEmbedding("Our refund policy lets you return shoes within 30 days");
@@ -39,7 +39,7 @@ describe("lexical fallback embeddings", () => {
   });
 });
 
-describe("chunking", () => {
+describe("UT-18 chunking", () => {
   const document = [
     "Refund Policy",
     "",
@@ -79,7 +79,7 @@ describe("chunking", () => {
   });
 });
 
-describe("semantic score calibration", () => {
+describe("UT-19 semantic score calibration", () => {
   it("maps raw cosine similarity onto a 0-1 relevance scale", () => {
     expect(calibrateSemanticScore(0.1)).toBe(0);
     expect(calibrateSemanticScore(0.3)).toBeCloseTo(0.5, 5);

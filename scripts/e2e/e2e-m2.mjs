@@ -19,6 +19,8 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
+console.log("\n=== API-09 Agentic tools with a real model (M2) ===");
+
 // ---------- dashboard login ----------
 const login = await fetch(`${BASE}/api/auth/login`, {
   method: "POST",
@@ -80,10 +82,19 @@ let ahead = 1;
 const weekdayOf = (offset) => new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Karachi", weekday: "short" }).format(new Date(Date.now() + offset * 86_400_000));
 while (["Sat", "Sun"].includes(weekdayOf(ahead))) ahead += 1;
 const tomorrow = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date(Date.now() + ahead * 86_400_000));
+// Earlier runs may have booked some of these times on that day: ask for one that is still free.
+const takenTimes = new Set(
+  (await q(`select "startsAt" from "Appointment" where "workspaceId"=$1 and status='BOOKED'`, [chatbot.workspaceId])).map((row) => {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(row.startsAt);
+    const part = (type) => parts.find((item) => item.type === type).value;
+    return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
+  }),
+);
+const slot = ["09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "14:00", "14:30", "15:00", "15:30"].find((time) => !takenTimes.has(`${tomorrow} ${time}`)) ?? "16:00";
 const askBooking = await widget("/messages", {
   method: "POST",
   session: token,
-  body: { ...identity, message: `Can you book me an appointment on ${tomorrow} at ${["11:00", "11:30", "14:00", "15:00"][Math.floor(Date.now() / 1000) % 4]} about a bulk order? My name is Sara Ahmed.` },
+  body: { ...identity, message: `Can you book me an appointment on ${tomorrow} at ${slot} about a bulk order? My name is Sara Ahmed.` },
 });
 const reply2 = lastAi(askBooking.data);
 console.log("   AI:", reply2.slice(0, 260));

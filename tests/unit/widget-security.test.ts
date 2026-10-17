@@ -7,7 +7,7 @@ import {
 import { createWidgetId, isValidDomain, normalizeDomain } from "@/src/lib/setup";
 import { PREVIEW_HOST, createWidgetToken, verifyWidgetToken } from "@/src/lib/widget-token";
 
-describe("widget embed tokens", () => {
+describe("UT-05 widget embed tokens", () => {
   it("accepts a valid token for the same widget", () => {
     const token = createWidgetToken("support-abc123", "shop.example.com");
 
@@ -39,7 +39,7 @@ describe("widget embed tokens", () => {
   });
 });
 
-describe("allowed domains", () => {
+describe("UT-06 allowed domains", () => {
   it("matches exact domains and subdomains only", () => {
     expect(doesHostMatchAllowedDomain("example.com", "example.com")).toBe(true);
     expect(doesHostMatchAllowedDomain("shop.example.com", "example.com")).toBe(true);

@@ -110,7 +110,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("multi-step reasoning (FE-2) with confirmation", () => {
+describe("IT-04 multi-step reasoning (FE-2) with confirmation", () => {
   it("checks availability, asks to confirm the booking, then books on 'yes'", async () => {
     const sessionId = await newSession();
     const model = scripted("scripted/planner", (messages) => {
@@ -187,7 +187,7 @@ describe("multi-step reasoning (FE-2) with confirmation", () => {
   });
 });
 
-describe("customer consent given to the assistant's own question", () => {
+describe("IT-05 customer consent given to the assistant's own question", () => {
   const booker = (slotIndex: number) =>
     scripted("scripted/booker", (messages) => {
       const results = toolResults(messages);
@@ -228,7 +228,7 @@ describe("customer consent given to the assistant's own question", () => {
   });
 });
 
-describe("resilience", () => {
+describe("IT-06 resilience", () => {
   it("falls back to the next model when one fails", async () => {
     const sessionId = await newSession();
     const result = await runAgentReply(await input(sessionId, "hi", [failing("primary/model"), scripted("backup/model", () => new AIMessage("Hello! How can I help?"))]));
@@ -310,7 +310,7 @@ describe("resilience", () => {
   });
 });
 
-describe("intent rules (FE-4) and failure handling", () => {
+describe("IT-07 intent rules (FE-4) and failure handling", () => {
   it("an ALWAYS rule forces the first tool call", async () => {
     const sessionId = await newSession();
     const calls: Array<{ tools: string[]; forcedTool?: string | null }> = [];

@@ -167,7 +167,8 @@ export async function POST(request: Request) {
     },
   });
 
-  await processIncomingTicket(ticketId);
+  // The AI reply is written in the background so the dialog closes at once (UI-45).
+  await processIncomingTicket(ticketId, { deferAiReply: true });
 
   const processedTicket = await prisma.ticket.findUnique({
     where: {

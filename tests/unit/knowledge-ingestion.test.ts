@@ -5,7 +5,7 @@ import { detectDocumentKind, extractDocumentText } from "@/src/lib/document-extr
 import { extractHtmlLinks, extractHtmlTitle, htmlToText } from "@/src/lib/html-text";
 import { clampMaxPages, isSameSite } from "@/src/lib/web-crawler";
 
-describe("document type detection", () => {
+describe("UT-13 document type detection", () => {
   it("recognises supported knowledge files", () => {
     expect(detectDocumentKind("guide.PDF", null)).toBe("pdf");
     expect(detectDocumentKind("faq.docx", null)).toBe("docx");
@@ -61,7 +61,7 @@ describe("document type detection", () => {
   }, 30_000);
 });
 
-describe("HTML helpers", () => {
+describe("UT-14 HTML helpers", () => {
   it("extracts title, readable text and links", () => {
     const html = `<html><head><title>Help &#8211; Acme</title></head><body>
       <header>Logo</header><main><h2>Returns</h2><ul><li>30 days</li><li>Free label</li></ul>
@@ -78,7 +78,7 @@ describe("HTML helpers", () => {
   });
 });
 
-describe("crawler scope", () => {
+describe("UT-15 crawler scope", () => {
   const root = new URL("https://www.acme.com/docs");
 
   it("stays on the same site and skips binary files", () => {

@@ -26,7 +26,7 @@ const sample = (id: string, text: string, overrides: Partial<{ grounded: boolean
   usedFallback: overrides.usedFallback ?? false,
 });
 
-describe("KPI maths (FR-11.1, FR-11.2)", () => {
+describe("UT-33 KPI maths (FR-11.1, FR-11.2)", () => {
   it("computes percentiles with the nearest-rank method", () => {
     expect(percentile([100, 200, 300, 400, 1000], 95)).toBe(1000);
     expect(percentile([100, 200, 300, 400], 50)).toBe(200);
@@ -61,7 +61,7 @@ describe("KPI maths (FR-11.1, FR-11.2)", () => {
   });
 });
 
-describe("time buckets in the workspace time zone (FR-11.5)", () => {
+describe("UT-34 time buckets in the workspace time zone (FR-11.5)", () => {
   it("reads calendar parts in a time zone", () => {
     // 2026-09-30 21:30 UTC is 2026-10-01 02:30 in Karachi (UTC+5), a Thursday.
     expect(zonedParts(new Date("2026-09-30T21:30:00Z"), "Asia/Karachi")).toEqual({ dateKey: "2026-10-01", hour: 2, weekday: 3 });
@@ -104,7 +104,7 @@ describe("time buckets in the workspace time zone (FR-11.5)", () => {
   });
 });
 
-describe("frequently asked questions (FE-4)", () => {
+describe("UT-35 frequently asked questions (FE-4)", () => {
   it("ignores filler words and numbers", () => {
     expect(questionTokens("Hi, what is the price of the 50 kettles?")).toEqual(["pric", "kettl"]);
     expect(["deliver", "delivery", "delivered", "deliveries"].map(stemToken)).toEqual(["deliver", "deliver", "deliver", "deliver"]);
@@ -152,7 +152,7 @@ describe("frequently asked questions (FE-4)", () => {
   });
 });
 
-describe("analytics date range", () => {
+describe("UT-36 analytics date range", () => {
   const now = new Date("2026-09-30T12:00:00Z");
 
   it("defaults to 7 days and computes the previous period", () => {

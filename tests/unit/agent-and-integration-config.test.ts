@@ -14,7 +14,7 @@ import {
   readIntegrationConfig,
 } from "@/src/lib/integrations/config";
 
-describe("agent behaviour settings", () => {
+describe("UT-07 agent behaviour settings", () => {
   it("normalises tone and length and builds prompt instructions", () => {
     expect(normalizeAgentTone("PROFESSIONAL")).toBe("PROFESSIONAL");
     expect(normalizeAgentTone("SHOUTY")).toBe("FRIENDLY");
@@ -38,7 +38,7 @@ describe("agent behaviour settings", () => {
   });
 });
 
-describe("integration secrets", () => {
+describe("UT-08 integration secrets", () => {
   it("encrypts tokens, masks them for the client and keeps them when left blank", () => {
     const first = mergeIntegrationConfig(
       "SLACK",
@@ -59,7 +59,7 @@ describe("integration secrets", () => {
   });
 });
 
-describe("LLM reply sanity check", () => {
+describe("UT-09 LLM reply sanity check", () => {
   it("rejects moderation-model output and accepts real answers", () => {
     expect(isUnusableReply("User Safety: safe Response Safety: safe")).toBe(true);
     expect(isUnusableReply("unsafe\nS2")).toBe(true);

@@ -171,7 +171,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("registry", () => {
+describe("IT-01 registry", () => {
   it("creates the built-in tools once and loads the agent's enabled tools", async () => {
     expect(await prisma.agentTool.count({ where: { workspaceId, type: "BUILT_IN" } })).toBe(8);
 
@@ -198,7 +198,7 @@ describe("registry", () => {
   });
 });
 
-describe("built-in tools (FE-1)", () => {
+describe("IT-02 built-in tools (FE-1)", () => {
   it("get_customer_info returns the customer's record with masked details", async () => {
     const result = await runTool({ tool: await tool("get_customer_info"), rawInput: { reason: "Check what we know" }, ctx: ctx() });
     const output = result.output as { known: boolean; email: string; openTickets: Array<{ reference: string }> };
@@ -312,7 +312,7 @@ describe("built-in tools (FE-1)", () => {
   });
 });
 
-describe("HTTP tools (FE-2b custom actions)", () => {
+describe("IT-03 HTTP tools (FE-2b custom actions)", () => {
   it("calls the external API with the decrypted secret header and keeps only chosen fields", async () => {
     const result = await runTool({ tool: await tool("track_order"), rawInput: { order_number: "1042", reason: "Customer asked where the order is" }, ctx: ctx() });
     expect(result.output).toEqual({ "order.status": "SHIPPED", "order.eta": "2026-10-06" });

@@ -80,7 +80,7 @@ const receiver = http.createServer((request, response) => {
 await new Promise((resolve) => receiver.listen(4555, "127.0.0.1", resolve));
 
 // ================================================================ M7/M11 accounts, auth, RBAC
-section("Accounts, auth and roles (M7 FE-5, M11 FE-3/4, SEC)");
+section("API-01 Accounts, auth and roles (M7 FE-5, M11 FE-3/4, SEC)");
 const admin = await login(E2E.adminEmail, E2E.adminPassword, "198.51.100.1");
 check("demo admin can sign in", admin.response.status === 200 && admin.cookie, admin.response.status);
 const A = admin.cookie;
@@ -130,7 +130,7 @@ const unauth = await call("/api/tickets", { method: "POST", body: { subject: "x"
 check("APIs refuse anonymous callers", unauth.status === 401, unauth.status);
 
 // ================================================================ M1 agents, chatbots, channels
-section("Assistant creation & channels (M1)");
+section("API-02 Assistant creation & channels (M1)");
 const agentCreate = await call("/api/ai-agents", {
   method: "POST",
   cookie: A,
@@ -190,7 +190,7 @@ const tagId = tag.data.tag?.id;
 check("tags: create", (tag.status === 200 || tag.status === 201) && tagId, tag.status);
 
 // ================================================================ M10 knowledge base
-section("Knowledge base (M10)");
+section("API-03 Knowledge base (M10)");
 const ks = await call("/api/knowledge-sources", {
   method: "POST",
   cookie: A,
@@ -211,7 +211,7 @@ const ksList = await call("/api/knowledge-sources", { cookie: A });
 check("knowledge sources list", ksList.status === 200 && JSON.stringify(ksList.data).includes(ksId ?? "none"));
 
 // ================================================================ M7 tickets and email channel
-section("Tickets, inbox and email channel (M7, M1 FE-email)");
+section("API-04 Tickets, inbox and email channel (M7, M1 FE-email)");
 const ticket = await call("/api/tickets", { method: "POST", cookie: A, body: { subject: `Kettle not heating ${RUN}`, previewText: "My Kettle Pro stopped heating after two weeks.", requesterName: "Ali Raza", requesterEmail: `ali.${RUN}@example.com`, priority: "MEDIUM" } });
 const ticketId = ticket.data.ticket?.id;
 check("create a ticket", ticket.status === 200 && ticketId, ticket.status + " " + (ticket.data.error ?? ""));
@@ -256,7 +256,7 @@ const del = await call(`/api/tickets/${ticketId}`, { method: "DELETE", cookie: A
 check("delete a ticket", del.status === 200, del.status);
 
 // ================================================================ M5 sessions + M1 widget chat with RAG
-section("Website chat, sessions & context (M5, M1 widget, M10 RAG)");
+section("API-05 Website chat, sessions & context (M5, M1 widget, M10 RAG)");
 const visitorId = `verify-visitor-${RUN}`;
 const identity = { customerName: "Hina Shah", customerEmail: `hina.${RUN}@example.com`, visitorId };
 let token1 = null;
@@ -361,7 +361,7 @@ const cronYes = await call("/api/cron/sessions", { headers: { authorization: `Be
 check("session expiry cron runs", cronYes.status === 200 && "expiredSessions" in cronYes.data && "expiredConfirmations" in cronYes.data, JSON.stringify(cronYes.data));
 
 // ================================================================ M8 leads
-section("Lead generation (M8)");
+section("API-06 Lead generation (M8)");
 const leadSettings = await call("/api/leads/settings", { cookie: A });
 check("lead settings", leadSettings.status === 200, leadSettings.status);
 const hook = await call("/api/webhooks", { method: "POST", cookie: A, body: { name: `Verify CRM ${RUN}`, url: "http://127.0.0.1:4555/hook", events: ["lead.created", "lead.updated", "lead.status_changed"] } });
@@ -413,7 +413,7 @@ const deliveries = await call(`/api/webhooks/${hookId}/deliveries`, { cookie: A 
 check("delivery log", deliveries.status === 200 && (deliveries.data.deliveries ?? []).length >= 2, (deliveries.data.deliveries ?? []).length);
 
 // ================================================================ M4 analytics
-section("Monitoring & analytics (M4)");
+section("API-07 Monitoring & analytics (M4)");
 const analytics = await call("/api/analytics?range=7d", { cookie: A });
 check("analytics dashboard data (FR-11.1–11.7)", analytics.status === 200, Object.keys(analytics.data).join(","));
 const live = await call("/api/analytics/live", { cookie: A });
@@ -434,7 +434,7 @@ if (!SKIP_AI) {
 }
 
 // ================================================================ pages render
-section("Dashboard pages render (signed in)");
+section("API-08 Dashboard pages render (signed in)");
 for (const path of [
   "/dashboard", "/dashboard/tickets", "/dashboard/chats", "/dashboard/contacts", "/dashboard/leads", "/dashboard/leads/settings", "/dashboard/appointments",
   "/dashboard/analytics", "/dashboard/analytics/reports", "/dashboard/analytics/improve", "/dashboard/reports", "/dashboard/users", "/dashboard/ai-agents",
@@ -442,7 +442,12 @@ for (const path of [
   "/dashboard/chatbots", `/dashboard/chatbots/${bot?.id}`, "/dashboard/knowledge-base", "/dashboard/canned-responses", "/dashboard/tags",
   "/dashboard/settings", "/dashboard/integrations", "/dashboard/profile",
 ]) {
-  const response = await fetch(`${BASE}${path}`, { headers: { cookie: A }, redirect: "manual" });
+  const response = await fetch(`${BASE}${path}`, { headers: { cookie: A }, redirect: "manual" }).catch((error) => error);
+  if (response instanceof Error) {
+    // A crashed or unreachable server is a failed check, not a crashed script.
+    check(`page ${path}`, false, String(response.cause?.code ?? response.message));
+    continue;
+  }
   const html = await response.text();
   // Next.js ships its 404 boundary in every page's data: check the rendered markup only.
   const visible = html.replace(/<script[\s\S]*?<\/script>/gi, "");

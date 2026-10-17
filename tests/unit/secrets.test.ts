@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decryptSecret, encryptSecret, isEncryptedSecret, maskSecret } from "@/src/lib/secrets";
 
-describe("secret encryption", () => {
+describe("UT-03 secret encryption", () => {
   it("round-trips a value and never stores plaintext", () => {
     const encrypted = encryptSecret("sk-test-1234567890");
 

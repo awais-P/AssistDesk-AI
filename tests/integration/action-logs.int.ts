@@ -96,7 +96,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("action logs API", () => {
+describe("IT-11 action logs API", () => {
   it("needs a signed-in user", async () => {
     signedIn.current = null;
     expect((await get("")).status).toBe(401);

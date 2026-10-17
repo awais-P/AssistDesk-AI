@@ -73,7 +73,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("tools API", () => {
+describe("IT-08 tools API", () => {
   let toolId = "";
 
   it("requires a signed-in Manager to list tools, and seeds the built-ins", async () => {
@@ -198,7 +198,7 @@ describe("tools API", () => {
   });
 });
 
-describe("agent tool settings API", () => {
+describe("IT-09 agent tool settings API", () => {
   it("binds tools, validates intent rules and steps", async () => {
     as("AGENT");
     expect((await agentTools.GET(new Request("http://localhost"), params(agentId))).status).toBe(403);
@@ -245,7 +245,7 @@ describe("agent tool settings API", () => {
   });
 });
 
-describe("appointments API", () => {
+describe("IT-10 appointments API", () => {
   it("validates business hours (Admin only)", async () => {
     as("MANAGER");
     expect((await appointmentSettings.PUT(json({}, "PUT"))).status).toBe(403);

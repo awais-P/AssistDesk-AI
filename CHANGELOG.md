@@ -18,6 +18,64 @@ Entry template:
 
 ---
 
+## 2026-10-17 — Faster ticket creation (UI-45)
+**Module:** M7 – User Dashboard   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:**
+- `src/lib/ticket-workflow.ts`, `app/api/tickets/route.ts`
+- `tests/integration/ticket-workflow.int.ts` (new, IT-12), `tests/ui/tickets.spec.ts`
+
+**Fixed:**
+- **UI-45:** creating a ticket from the dashboard waited for the AI reply before the dialog closed, which took 20 s or more on free models. Measured on the dev server, it now returns in about 0.9 s.
+  - `processIncomingTicket(id, { deferAiReply: true })` still applies routing, priority, tags and assignment inside the request, so the response is unchanged.
+  - The AI reply runs in `after()`. Afterwards the ticket moves to In Progress only if its status is still the one the rules left (`updateMany` on the expected status), so an agent's change made meanwhile is kept.
+  - A ticket closed by the block list gets no AI reply.
+  - Email tickets still reply inside the request (unchanged).
+
+**Tests:**
+- IT-12 has three cases: the reply runs in the background, an agent's status change is kept, and the non-deferred path is unchanged.
+- Unit 139/139; integration 46/46 (+1 skipped); `tickets.spec.ts` 8/8.
+
+---
+
+## 2026-10-17 — Testing phase: Playwright browser suite, test IDs and traceability
+**Module:** all (testing)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:**
+- `playwright.config.ts`, `tests/ui/*.spec.ts`, `tests/ui/helpers.ts`, `tests/ui/global-setup.ts`, `tests/ui/README.md` (new)
+- `tests/unit/*.test.ts`, `tests/integration/*.int.ts` (test IDs only)
+- `scripts/e2e/e2e-all.mjs`, `scripts/e2e/e2e-m2.mjs`, `scripts/e2e/seed-demo.mjs` (new)
+- `package.json` (`test:ui`, `@playwright/test` 1.55 dev dependency), `.gitignore`
+
+**Added:**
+- **Playwright browser suite:** 65 tests (`npm run test:ui`) driving the real UI in the system Chrome, covering SRS FR-1 to FR-17 plus the main workflows of M2, M4, M5 and M8. Each title starts with a test ID and its requirements, e.g. `UI-WID-06 [FR-6.4, FR-6.5, M5 takeover]`. This test opens the widget as a visitor, takes the chat over from the dashboard and checks that the agent's reply arrives live.
+- **Stable test IDs** for the traceability matrix: Vitest groups `UT-01…UT-45` and `IT-01…IT-11`; end-to-end sections `API-01…API-09`.
+- **`scripts/e2e/seed-demo.mjs`:** the sample-store seed (policies, FAQ, order-tracking tool, chats, tickets, leads, appointments), now reading its settings from `config.mjs`.
+
+**Results (17 Oct, throwaway PGlite database, dev server):**
+
+| Suite | Result |
+|---|---|
+| Unit | 139/139 |
+| Integration | 43/43 (+1 skipped) |
+| Browser | 65/65 (61 first time, 4 on the automatic retry because of dev-mode recompiles and reloads) |
+| End-to-end API | 131/131 |
+| M2 with a real model | 16/16 |
+| **Total** | **394/394** |
+
+**Fixed:**
+- **OPS-15:** `e2e-all.mjs` crashed without writing results when the server went down; it now records a failed check.
+- `e2e-m2.mjs` asked for a slot that an earlier run had already booked, so the AI correctly refused it; the script now picks a free slot.
+
+**Found (open, in VULNERABILITIES):**
+- **UI-45:** manual ticket creation waits for the AI triage.
+- **OPS-14:** the dev server heap grew past 6 GB after about 80 minutes of test runs.
+
+**Notes / follow-ups:**
+- Chrome does not deliver an SSE response to a page whose context adds extra request headers, so the widget tests do not set `X-Forwarded-For`.
+- Tests must wait for React hydration before typing (`waitForHydration`).
+- Re-run the browser suite on a production build before the final evaluation.
+
+---
+
 ## 2026-10-10 — Full verification pass (all modules vs Proposal / SRS / SDS)
 **Module:** all   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Result:** Full write-up: **[VERIFICATION_REPORT.md](VERIFICATION_REPORT.md)**.

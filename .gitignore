@@ -54,3 +54,8 @@ next-env.d.ts
 
 # End-to-end script output
 /scripts/e2e/*.results.json
+
+# Playwright UI test output and saved sign-in
+/test-results/
+/playwright-report/
+/tests/ui/.auth/

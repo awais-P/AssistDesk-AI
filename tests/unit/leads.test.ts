@@ -16,7 +16,7 @@ import { signWebhookPayload, verifyWebhookSignature } from "@/src/lib/webhooks";
 
 const enabledForm = parseLeadForm({ ...DEFAULT_LEAD_FORM, enabled: true });
 
-describe("lead form config (FE-1)", () => {
+describe("UT-27 lead form config (FE-1)", () => {
   it("falls back to the default form for missing or invalid config", () => {
     expect(parseLeadForm(null).enabled).toBe(false);
     expect(parseLeadForm("nonsense").fields.map((field) => field.key)).toEqual(["name", "email", "phone"]);
@@ -64,7 +64,7 @@ describe("lead form config (FE-1)", () => {
   });
 });
 
-describe("lead form validation (SRS: email format, required fields)", () => {
+describe("UT-28 lead form validation (SRS: email format, required fields)", () => {
   it("normalises valid submissions and separates custom answers", () => {
     const form = parseLeadForm({
       enabled: true,
@@ -128,7 +128,7 @@ describe("lead form validation (SRS: email format, required fields)", () => {
   });
 });
 
-describe("when to show the form", () => {
+describe("UT-29 when to show the form", () => {
   const base = { leadState: null, customerMessageCount: 1, message: "Hello", alreadyLead: false };
 
   it("detects buying intent in English, Roman Urdu and Urdu", () => {
@@ -167,7 +167,7 @@ describe("when to show the form", () => {
   });
 });
 
-describe("contact details typed in chat (FE-2)", () => {
+describe("UT-30 contact details typed in chat (FE-2)", () => {
   it("finds emails and phone numbers", () => {
     expect(extractContactDetails("you can mail me at Ayesha.K@Example.com thanks")).toEqual({
       email: "ayesha.k@example.com",
@@ -183,7 +183,7 @@ describe("contact details typed in chat (FE-2)", () => {
   });
 });
 
-describe("lead score", () => {
+describe("UT-31 lead score", () => {
   const empty = {
     hasEmail: false,
     hasPhone: false,
@@ -221,7 +221,7 @@ describe("lead score", () => {
   });
 });
 
-describe("export and webhooks (FE-4)", () => {
+describe("UT-32 export and webhooks (FE-4)", () => {
   it("quotes CSV cells and defuses spreadsheet formulas", () => {
     expect(csvCell('Khan, "Ali"')).toBe('"Khan, ""Ali"""');
     expect(csvCell("=HYPERLINK(\"http://evil\")")).toBe("\"'=HYPERLINK(\"\"http://evil\"\")\"");

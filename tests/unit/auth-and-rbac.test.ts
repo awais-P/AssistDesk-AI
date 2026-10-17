@@ -10,7 +10,7 @@ import {
 } from "@/src/lib/auth";
 import { canAssignRole, canManageMember, hasRole } from "@/src/lib/rbac";
 
-describe("password hashing", () => {
+describe("UT-01 password hashing", () => {
   it("uses bcrypt and verifies correct passwords only", async () => {
     const hash = await hashPassword("Secret123");
 
@@ -59,7 +59,7 @@ describe("password hashing", () => {
   });
 });
 
-describe("role-based access control", () => {
+describe("UT-02 role-based access control", () => {
   const owner = { id: "o", role: "OWNER" };
   const admin = { id: "a", role: "ADMIN" };
   const otherAdmin = { id: "a2", role: "ADMIN" };

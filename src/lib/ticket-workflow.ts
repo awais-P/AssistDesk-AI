@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { createNotification } from "./notifications";
 import { ensureAgentAutomationDefaults } from "./agent-automations";
 import { estimateTokenUsage, hydrateKnowledgeSources } from "./knowledge-runtime";
@@ -452,7 +453,16 @@ export async function processTicketFollowUp(ticketId: string) {
   return { processed: true, agentId: agent.id };
 }
 
-export async function processIncomingTicket(ticketId: string) {
+type IncomingTicketOptions = {
+  /**
+   * Generate the AI reply after the response has been sent (dashboard-created tickets), so
+   * the agent does not wait for the model. Priority, tags and assignment are rule-based and
+   * still run inside the request.
+   */
+  deferAiReply?: boolean;
+};
+
+export async function processIncomingTicket(ticketId: string, options: IncomingTicketOptions = {}) {
   const workflowStart = Date.now();
 
   const ticket = await prisma.ticket.findUnique({
@@ -502,6 +512,7 @@ export async function processIncomingTicket(ticketId: string) {
   }
 
   const enabledAutomations = automations.filter((automation) => automation.isEnabled);
+  let deferredReply = false;
 
   for (const automation of enabledAutomations) {
     const startedAt = Date.now();
@@ -576,6 +587,11 @@ export async function processIncomingTicket(ticketId: string) {
     }
 
     if (automation.key === "ai-response") {
+      if (options.deferAiReply) {
+        deferredReply = true;
+        continue;
+      }
+
       await generateTicketAiReply(ticket, agent);
       ticketUpdate.status = "IN_PROGRESS";
       continue;
@@ -616,6 +632,19 @@ export async function processIncomingTicket(ticketId: string) {
     data: ticketUpdate,
   });
 
+  // A blocked sender's ticket is closed and gets no AI reply.
+  if (deferredReply && ticketUpdate.status !== "CLOSED") {
+    const statusAfterRules = ticketUpdate.status ?? ticket.status;
+    const job = () => runDeferredTicketReply(ticket.id, agent, statusAfterRules);
+
+    try {
+      after(job);
+    } catch {
+      // Outside a request scope (scripts, tests): run on the next tick instead.
+      setTimeout(() => void job(), 0);
+    }
+  }
+
   await createAutomationLog({
     workspaceId: ticket.workspaceId,
     ticketId: ticket.id,
@@ -632,4 +661,27 @@ export async function processIncomingTicket(ticketId: string) {
     processed: true,
     agentId: agent.id,
   };
+}
+
+async function runDeferredTicketReply(ticketId: string, agent: TicketAgent, expectedStatus: string) {
+  try {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { inbox: true, assignee: true, ticketTags: true },
+    });
+
+    // Deleted, or already handled by a person in the meantime.
+    if (!ticket || ticket.status !== expectedStatus) {
+      return;
+    }
+
+    await generateTicketAiReply(ticket, agent);
+    // Only move it to In Progress if nobody changed the status while the model was working.
+    await prisma.ticket.updateMany({
+      where: { id: ticketId, status: expectedStatus as "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" },
+      data: { status: "IN_PROGRESS" },
+    });
+  } catch (error) {
+    console.error("[tickets] deferred AI reply failed", error);
+  }
 }

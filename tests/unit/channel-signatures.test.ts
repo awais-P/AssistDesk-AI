@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseSlackCustomerMessage, verifySlackSignature } from "@/src/lib/integrations/slack";
 import { parseWhatsAppMessages, verifyWhatsAppSignature } from "@/src/lib/integrations/whatsapp";
 
-describe("Slack request signing", () => {
+describe("UT-10 Slack request signing", () => {
   const signingSecret = "8f742231b10e8888abcd99yyyzzz85a5";
   const rawBody = '{"type":"event_callback"}';
   const now = 1_760_000_000_000;
@@ -32,7 +32,7 @@ describe("Slack request signing", () => {
   });
 });
 
-describe("Slack event parsing", () => {
+describe("UT-11 Slack event parsing", () => {
   it("handles DMs and mentions, and ignores bots and edits", () => {
     expect(
       parseSlackCustomerMessage({
@@ -86,7 +86,7 @@ describe("Slack event parsing", () => {
   });
 });
 
-describe("WhatsApp webhooks", () => {
+describe("UT-12 WhatsApp webhooks", () => {
   const appSecret = "whatsapp-app-secret";
   const rawBody = '{"object":"whatsapp_business_account"}';
 

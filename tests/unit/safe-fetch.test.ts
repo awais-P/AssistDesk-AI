@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { UnsafeUrlError, assertPublicUrl, isPrivateAddress } from "@/src/lib/safe-fetch";
 
-describe("SSRF protection", () => {
+describe("UT-04 SSRF protection", () => {
   it("flags private, loopback, link-local and metadata addresses", () => {
     for (const address of [
       "127.0.0.1",

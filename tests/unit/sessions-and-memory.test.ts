@@ -51,7 +51,7 @@ function session(overrides: Partial<Parameters<typeof getExpiryReason>[0]> = {})
   };
 }
 
-describe("session expiration policies (FE-5)", () => {
+describe("UT-20 session expiration policies (FE-5)", () => {
   it("keeps a recently active widget session open", () => {
     expect(getExpiryReason(session(), now)).toBeNull();
   });
@@ -100,7 +100,7 @@ describe("session expiration policies (FE-5)", () => {
   });
 });
 
-describe("session outcome and credentials", () => {
+describe("UT-21 session outcome and credentials", () => {
   it("classifies how a session was resolved", () => {
     expect(computeResolution({ aiMessages: 3, agentMessages: 0, wasEscalated: false })).toBe("AI_RESOLVED");
     expect(computeResolution({ aiMessages: 3, agentMessages: 1, wasEscalated: false })).toBe("HUMAN_HANDLED");
@@ -120,7 +120,7 @@ describe("session outcome and credentials", () => {
   });
 });
 
-describe("customer identity normalisation (FE-2)", () => {
+describe("UT-22 customer identity normalisation (FE-2)", () => {
   it("normalises emails and rejects invalid ones", () => {
     expect(normalizeEmail("  Ali@Example.COM ")).toBe("ali@example.com");
     expect(normalizeEmail("not-an-email")).toBeNull();
@@ -153,7 +153,7 @@ describe("customer identity normalisation (FE-2)", () => {
   });
 });
 
-describe("memory helpers (FE-3)", () => {
+describe("UT-23 memory helpers (FE-3)", () => {
   it("masks personal details before they reach the prompt", () => {
     expect(maskEmail("ali.khan@example.com")).toBe("a***@example.com");
     expect(maskPhone("+923001234567")).toBe("*********4567");
@@ -199,7 +199,7 @@ describe("memory helpers (FE-3)", () => {
   });
 });
 
-describe("memory privacy and output hygiene", () => {
+describe("UT-24 memory privacy and output hygiene", () => {
   it("treats provider identities and the customer's own browser as verified", () => {
     expect(isVerifiedIdentity({ channel: "WHATSAPP", visitorId: null, contact: null })).toBe(true);
     expect(isVerifiedIdentity({ channel: "WEB_WIDGET", visitorId: "browser-a", contact: { visitorId: "browser-a" } })).toBe(true);
@@ -237,7 +237,7 @@ describe("memory privacy and output hygiene", () => {
   });
 });
 
-describe("email threading", () => {
+describe("UT-25 email threading", () => {
   it("finds the ticket reference in a reply subject", () => {
     expect(parseTicketReference("Re: Refund request [AD-458103]")).toEqual({ prefix: "AD", ticketNumber: 458103 });
     expect(parseTicketReference("Re: [sup-12] help")).toEqual({ prefix: "SUP", ticketNumber: 12 });
@@ -266,7 +266,7 @@ describe("email threading", () => {
   });
 });
 
-describe("rate limiting helpers (FE-6)", () => {
+describe("UT-26 rate limiting helpers (FE-6)", () => {
   it("clamps the chatbot's per-minute limit", () => {
     expect(clampRateLimitPerMinute(0)).toBe(1);
     expect(clampRateLimitPerMinute(500)).toBe(120);

@@ -113,6 +113,35 @@ Run test layers separately so a failure can be identified correctly.
 | HTTP E2E | Tests the running application through its APIs | `node scripts/e2e/e2e-all.mjs` |
 | Static validation | Checks code quality and compilation | `npm run lint`, `npm run build` |
 
+### Test coverage map
+
+The test IDs in the final report map to the repository as follows:
+
+| ID family | Test layer | Location | Main coverage |
+|---|---|---|---|
+| `UT-01`–`UT-45` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, and tool logic |
+| `IT-01`–`IT-12` | Integration | `tests/integration/` | Tool registry and built-ins, HTTP tools, agent reasoning and fallbacks, intent rules, tool administration, appointments, action logs, and ticket workflows using PostgreSQL |
+| `UI-AUTH-*` | Browser functional | `tests/ui/auth.spec.ts` | Login, sign-up, validation, access protection, and rate limits |
+| `UI-SETUP-*` | Browser functional | `tests/ui/setup-wizard.spec.ts` | Initial inbox, agent, knowledge, and chatbot setup |
+| `UI-TKT-*` | Browser functional | `tests/ui/tickets.spec.ts` | Ticket listing, search, filters, views, creation, bulk actions, and pagination |
+| `UI-CHT-*` | Browser functional | `tests/ui/chats.spec.ts` | Conversation listing, search, filters, and thread viewing |
+| `UI-AGT-*` | Browser functional | `tests/ui/agents.spec.ts` | Agent listing, search, views, creation, settings, deletion, and agent tabs |
+| `UI-PRM-*` | Browser functional | `tests/ui/prompts.spec.ts` | Prompt templates, variables, search, validation, and deletion |
+| `UI-KB-*` | Browser functional | `tests/ui/knowledge-base.spec.ts` | Knowledge sources, search, filters, ingestion, details, and deletion |
+| `UI-ANL-*` | Browser functional | `tests/ui/analytics.spec.ts` | KPI cards, latency, interactions, date/channel filters, reports, and CSV export |
+| `UI-BOT-*` | Browser functional | `tests/ui/chatbots.spec.ts` | Chatbot creation, configuration, saving, deletion, and embed actions |
+| `UI-INB-*` / `UI-INT-*` | Browser functional | `tests/ui/inbox-integrations.spec.ts` | Inbox configuration and channel integrations |
+| `UI-WID-*` | Browser functional | `tests/ui/widget.spec.ts` | Widget branding, grounded answers, email capture, controls, allowed domains, and live takeover |
+| `UI-M2-*` | Browser functional | `tests/ui/agentic-tools.spec.ts` | Tool listing, tool test-runner, action logs, chain of thought, filters, and appointments |
+| `UI-LED-*` | Browser functional | `tests/ui/leads.spec.ts` | Lead listing, filters, details, CSV export, and lead settings |
+| `API-01`–`API-08` | HTTP E2E | `scripts/e2e/e2e-all.mjs` | Authentication, assistant setup, knowledge base, tickets, widget sessions, leads, analytics, and dashboard pages |
+| `API-09` | HTTP E2E | `scripts/e2e/e2e-m2.mjs` | Module 2 agentic tools, confirmations, appointments, and action logs with a real model |
+
+The browser `UI-*` tests are the project’s functional tests. The `UT-*`,
+`IT-*`, and `API-*` suites provide lower-level, cross-module, and HTTP workflow
+coverage for the same requirements. A requirement can appear in more than one
+layer because each layer verifies a different boundary.
+
 ## 5. Unit tests
 
 Unit tests normally do not need a running server. Run all unit tests once:
@@ -422,9 +451,17 @@ node scripts/e2e/e2e-all.mjs --skip-ai
 Run a module-specific suite when available:
 
 ```powershell
+. .\scripts\tests-env.ps1
 node scripts/e2e/setup-m2.mjs
 node scripts/e2e/e2e-m2.mjs
 ```
+
+`setup-m2.mjs` is a preparation step for Module 2. It logs into the running
+application, adds the demo agent's `Track order` tool from its template, enables
+the agent tools, binds the available tools, and adds the
+`where is my order` / `track my order` intent rule. Run it after
+`seed-demo.mjs` and before Module 2 HTTP or UI tests. It changes the configured
+local test database and is not itself a test.
 
 The scripts should print `PASS` or `FAIL` and return a non-zero exit code when
 one or more checks fail. A skipped AI check must not be reported as a pass.

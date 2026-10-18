@@ -2,6 +2,9 @@
 
 System-level tests that drive a **running** AssistDesk server in Chrome, the way a user would. Each test title starts with a test case ID (for example `UI-TKT-02`) and the SRS requirements it checks (for example `[FR-5.5, FR-5.2]`), so a result can be traced back to its requirement.
 
+These browser tests are the project's functional test suite. The ID groups map
+to the feature areas below:
+
 | File | IDs | Covers |
 |---|---|---|
 | `auth.spec.ts` | UI-AUTH-01…07 | FR-1 login, sign-up, validation, sign-up limit, redirects |
@@ -17,6 +20,11 @@ System-level tests that drive a **running** AssistDesk server in Chrome, the way
 | `widget.spec.ts` | UI-WID-01…06 | FR-17 website widget, grounded answers, live takeover |
 | `agentic-tools.spec.ts` | UI-M2-01…05 | Module 2 tools, test runner, action logs, appointments |
 | `leads.spec.ts` | UI-LED-01…04 | Module 8 leads, detail, CSV, settings |
+
+Unit groups `UT-01`–`UT-45`, integration groups `IT-01`–`IT-12`, and HTTP
+end-to-end groups `API-01`–`API-09` cover the same requirements at different
+boundaries. Their full coverage map and commands are in
+[TESTING_INSTRUCTIONS.md](../../TESTING_INSTRUCTIONS.md).
 
 ## Running
 

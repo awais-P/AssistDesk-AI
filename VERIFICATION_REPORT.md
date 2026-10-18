@@ -9,7 +9,7 @@
 
 | | Result |
 |---|---|
-| Automated tests | **All green:**<br>• Typecheck: 0 errors<br>• Lint: 0 errors, 4 warnings (all from before this pass)<br>• Unit tests: **139/139**<br>• Integration tests on a real database: **43/43**, plus 1 opt-in real-model test<br>• Production build: passes<br>• A fresh database built from all 18 migrations has **no drift** against `schema.prisma`. |
+| Automated tests | **All reported checks green:**<br>• Typecheck: 0 errors<br>• Lint: 0 errors, 4 warnings (all from before this pass)<br>• Unit tests: **139/139**<br>• Integration tests on a real database: **43/43**, plus 1 opt-in real-model test<br>• Production build: passes<br>• A fresh database built from all 18 migrations has **no drift** against `schema.prisma`.<br>• Browser functional tests are present in `tests/ui/`, but the complete Playwright suite was not included in the 10 Oct automated total. |
 | Requirement coverage | 7 modules are well implemented: M1, M7, M10, M5, M8, M4, M2. Every Proposal feature (FE) of these modules exists in code. Some finer SRS requirements (FR-level details, NFR timings, named technologies) are missing or done differently; all are listed below. |
 | Honest completion | **≈ 63% overall** (the ROADMAP said ≈ 66%). Every module was re-scored at FR level, not just FE level. **The 60% target is still met.** |
 | Bugs found | **1 real bug, fixed in this pass:** the reasoning engine dropped tool calls beyond the 4th in a step without answering them, which breaks OpenAI-compatible APIs (§5.1). Plus 5 configuration options that do nothing (§5.2). |
@@ -42,6 +42,21 @@ Status legend: ✅ implemented · 🟡 partly · ❌ missing · ⚠️ implement
 | Unit tests (`npm test`) | ✅ **139/139** in 12 files | Auth and RBAC, secrets, SSRF guard, knowledge ingestion and retrieval, sessions and memory, widget security, channel signatures, leads, analytics, tools. |
 | Integration tests (`npm run test:integration`, real PostgreSQL via PGlite) | ✅ **43/43** + 1 skipped | Tool registry and built-ins (14), LangGraph engine (12, including the new §5.1 test), admin APIs with RBAC (11), action logs (6). The skipped test is the opt-in real-model test. |
 | Production build (`next build`) | ✅ passes | Run 9 Oct with Node memory capped at 3 GB; all 60+ routes compiled. |
+
+The integration result above includes the individual registry test
+`IT-01: creates the built-in tools once and loads the agent's enabled tools`
+in `tests/integration/tools.int.ts`, together with the other registry, built-in
+tool, HTTP tool, agent-engine, administration, action-log and ticket-workflow
+tests. It is therefore part of the reported **43/43** integration result; it
+was not a separate functional/browser test.
+
+The project also contains a separate Playwright functional suite under
+`tests/ui/`. These tests drive the running application through Chrome and
+cover authentication, setup, tickets, chats, agents, prompts, knowledge base,
+analytics, chatbots, integrations, the widget, agentic tools and leads. The
+suite is run with `npm run test:ui`. Because a complete Playwright result was
+not captured in the 10 Oct verification evidence, it must not be presented as
+part of the **43/43** integration or **131/131** HTTP E2E totals.
 
 ### 3.2 Earlier end-to-end runs (real dev server and a real AI model)
 

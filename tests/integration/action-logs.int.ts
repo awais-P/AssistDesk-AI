@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/src/lib/prisma";
 
 /**
@@ -97,6 +97,11 @@ afterAll(async () => {
 });
 
 describe("IT-11 action logs API", () => {
+  // Each test signs in on its own, so any test can also be run alone (e.g. with -t).
+  beforeEach(() => {
+    signedIn.current = { user: { id: "u", role: "AGENT", workspaceId } };
+  });
+
   it("needs a signed-in user", async () => {
     signedIn.current = null;
     expect((await get("")).status).toBe(401);
@@ -117,7 +122,7 @@ describe("IT-11 action logs API", () => {
     expect(body.options.tools.map((tool: { key: string }) => tool.key)).toEqual(["book_appointment", "check_availability", "track_order"]);
   });
 
-  it("filters and sorts runs (UI-4)", async () => {
+  it("filters and sorts runs - UI-4", async () => {
     expect((await get("status=FALLBACK")).body.rows.map((row: { id: string }) => row.id)).toEqual([runIds.failed]);
     expect((await get("source=PLAYGROUND")).body.total).toBe(1);
     expect((await get("tool=book_appointment")).body.rows.map((row: { id: string }) => row.id)).toEqual([runIds.confirm]);

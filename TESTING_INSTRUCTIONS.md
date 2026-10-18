@@ -66,6 +66,10 @@ For example, a PostgreSQL connection string has this general format:
 postgresql://username:password@localhost:5432/assistdesk_test
 ```
 
+The database from `docker-compose.yml` is published on port **5433**, not 5432,
+so its URL uses `localhost:5433` with the user, password and database set in
+that file.
+
 Do not use a production database. If `DATABASE_URL` is already available as a
 PowerShell environment variable, it can be copied for the script:
 
@@ -163,6 +167,39 @@ Run tests matching a name or phrase:
 npx vitest run -t "validation"
 ```
 
+### Running a test by its name
+
+`-t` (Vitest) and `-g` (Playwright) treat the text as a pattern and run every
+test whose full name contains it. Test names in this project contain no
+brackets, so any Vitest test title can be copied from the code and pasted after
+`-t` as it is, for example:
+
+```powershell
+npx vitest run -t "rejects short passwords"
+npx vitest run -t "rejects a legacy hash used as the password - SEC-01"
+```
+
+A group runs by its ID, for example `npx vitest run -t "UT-01"`.
+
+Playwright titles contain the linked requirements in square brackets, for
+example `UI-TKT-02 [FR-5.5, FR-5.2] an agent creates a ticket and finds it by
+search`. Square brackets have a special meaning in a pattern, so run Playwright
+tests by their ID instead of the full title:
+
+```powershell
+npx playwright test -g "UI-TKT-02"
+```
+
+Running by file and line also always works:
+
+```powershell
+npx vitest run tests/unit/auth-and-rbac.test.ts:56
+npx playwright test tests/ui/tickets.spec.ts:15
+```
+
+The row names in the final report's Unit Testing tables (Chapter 5) are the
+exact Vitest test names, so they can be pasted after `-t` in the same way.
+
 When passing Vitest arguments through the `npm test` script, include `--`
 before the Vitest options. Without it, npm may treat the filter as a script
 argument instead of forwarding it to Vitest:
@@ -173,14 +210,15 @@ npm run test -- -t "UT-07"
 
 The `UT-07 agent behaviour settings` tests are defined in
 `tests/unit/agent-and-integration-config.test.ts`. The command above runs the
-three tests in that group while skipping unrelated tests. You can also invoke
+nine tests in that group while skipping unrelated tests. You can also invoke
 Vitest directly:
 
 ```powershell
 npx vitest run -t "UT-07"
 ```
 
-To run the three UT-07 tests one at a time, use the complete test title:
+To run a single test, copy its complete test title from the test file (or from
+`npx vitest list`), for example three of the UT-07 tests:
 
 ```powershell
 npm run test -- -t "defaults response length to balanced" --reporter=verbose
@@ -243,11 +281,12 @@ Run one integration test by name:
 ```powershell
 npx vitest run `
   --config vitest.integration.config.mts `
-  -t "creates a record"
+  -t "filters and sorts runs - UI-4"
 ```
 
-If an integration test needs a database variable, configure it in the
-development environment before running the command. Never use a production
+Integration tests need `TEST_DATABASE_URL` set to a throwaway database with
+the migrations applied (see section 1); configure it in the same PowerShell
+window before running the command. Never use a production
 database.
 
 For this project, integration tests are in `tests/integration/`.
@@ -283,8 +322,12 @@ npx playwright test --debug
 
 Install browsers if required:
 
+The tests use the Google Chrome already installed on the computer
+(`channel: "chrome"` in `playwright.config.ts`). Install Google Chrome, or let
+Playwright install it:
+
 ```powershell
-npx playwright install
+npx playwright install chrome
 ```
 
 Run one test file:
@@ -296,7 +339,7 @@ npx playwright test tests/ui/example.spec.ts
 Run one test by its ID or title:
 
 ```powershell
-npx playwright test -g "TEST-ID"
+npx playwright test -g "UI-TKT-02"
 ```
 
 Run tests matching a feature:
@@ -343,10 +386,13 @@ npm run test:ui
 ```
 
 If Playwright reports that Chrome or another browser is missing, install the
-required browser binaries:
+
+The tests use the Google Chrome already installed on the computer
+(`channel: "chrome"` in `playwright.config.ts`). Install Google Chrome, or let
+Playwright install it:
 
 ```powershell
-npx playwright install
+npx playwright install chrome
 ```
 
 Open the HTML report after the test run:
@@ -708,8 +754,12 @@ Confirm that:
 
 ### Playwright browsers are missing
 
+The tests use the Google Chrome already installed on the computer
+(`channel: "chrome"` in `playwright.config.ts`). Install Google Chrome, or let
+Playwright install it:
+
 ```powershell
-npx playwright install
+npx playwright install chrome
 ```
 
 ### Expected demo records are missing

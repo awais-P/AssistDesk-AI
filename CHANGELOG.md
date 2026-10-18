@@ -18,6 +18,32 @@ Entry template:
 
 ---
 
+## 2026-10-18 — Every test can be run by its name, on its own
+**Module:** all (testing)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:**
+- `tests/unit/*.test.ts`, `tests/integration/*.int.ts`
+- `TESTING_INSTRUCTIONS.md`
+
+**Fixed:**
+- **Test names:** 42 test and group names contained brackets, e.g. `… (SEC-01)`. `vitest -t` reads its text as a pattern, so pasting those names ran nothing. They now use `- SEC-01` style. All 186 unit and 46 integration names now run when pasted after `-t`.
+- **Order dependencies:** 10 integration tests passed only after the tests before them.
+  - IT-11 relied on an earlier test to sign the user in; it now signs in with `beforeEach`.
+  - IT-08 and IT-09 relied on the HTTP tool and built-ins created by earlier tests; they now create them if missing (`ensureTrackOrderTool`, `ensureBuiltInTools`).
+  - Every unit and integration test was checked by running it alone by `file:line`.
+- **Lint:** removed an unused variable in `channel-signatures.test.ts`.
+
+**Updated:**
+- **TESTING_INSTRUCTIONS.md:**
+  - UT-07 has 9 tests, not 3.
+  - The placeholder names were replaced with real test names.
+  - New section on running a test by its name. Playwright titles contain `[FR-…]`, so those tests run by ID or by `file:line`.
+  - `npx playwright install chrome` is used, because the tests use the installed Chrome.
+  - The docker-compose database is on port 5433.
+
+**Results:** unit 186/186, integration 46/46 (+1 skipped), each test also passes alone.
+
+---
+
 ## 2026-10-17 — Faster ticket creation (UI-45)
 **Module:** M7 – User Dashboard   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:**

@@ -198,7 +198,7 @@ describe("IT-01 registry", () => {
   });
 });
 
-describe("IT-02 built-in tools (FE-1)", () => {
+describe("IT-02 built-in tools - FE-1", () => {
   it("get_customer_info returns the customer's record with masked details", async () => {
     const result = await runTool({ tool: await tool("get_customer_info"), rawInput: { reason: "Check what we know" }, ctx: ctx() });
     const output = result.output as { known: boolean; email: string; openTickets: Array<{ reference: string }> };
@@ -312,7 +312,7 @@ describe("IT-02 built-in tools (FE-1)", () => {
   });
 });
 
-describe("IT-03 HTTP tools (FE-2b custom actions)", () => {
+describe("IT-03 HTTP tools - FE-2b custom actions", () => {
   it("calls the external API with the decrypted secret header and keeps only chosen fields", async () => {
     const result = await runTool({ tool: await tool("track_order"), rawInput: { order_number: "1042", reason: "Customer asked where the order is" }, ctx: ctx() });
     expect(result.output).toEqual({ "order.status": "SHIPPED", "order.eta": "2026-10-06" });

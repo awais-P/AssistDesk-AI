@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/src/lib/prisma";
 import { decryptSecret } from "@/src/lib/secrets";
+import { ensureBuiltInTools } from "@/src/lib/tools/registry";
 import { parseToolHeaders } from "@/src/lib/tools/tool-schema";
 
 /**
@@ -41,6 +42,25 @@ function json(body: unknown, method = "POST") {
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
+// The tests below also run one at a time (e.g. with -t): each one creates what it
+// needs if an earlier test has not already done so.
+let toolId = "";
+
+async function ensureTrackOrderTool() {
+  if (!toolId) {
+    const existing = await prisma.agentTool.findFirst({ where: { workspaceId, key: "track_order" } });
+    toolId = existing?.id ?? "";
+  }
+
+  if (!toolId) {
+    as("ADMIN");
+    const created = await tools.POST(json({ ...trackOrder(), agentIds: [agentId] }));
+    toolId = (await created.json()).tool.id;
+  }
+
+  return toolId;
+}
+
 const trackOrder = () => ({
   name: "Track order",
   description: "Get the delivery status of an order from its number.",
@@ -74,8 +94,6 @@ afterAll(async () => {
 });
 
 describe("IT-08 tools API", () => {
-  let toolId = "";
-
   it("requires a signed-in Manager to list tools, and seeds the built-ins", async () => {
     signedIn.current = null;
     expect((await tools.GET()).status).toBe(401);
@@ -126,6 +144,7 @@ describe("IT-08 tools API", () => {
   });
 
   it("keeps the stored secret when an edit sends the masked value back", async () => {
+    await ensureTrackOrderTool();
     as("ADMIN");
     const response = await toolById.PATCH(
       json({ description: "Track where a customer's order is right now.", httpHeaders: [{ name: "Authorization", value: "••••9876", secret: true }] }, "PATCH"),
@@ -138,6 +157,7 @@ describe("IT-08 tools API", () => {
   });
 
   it("lets Managers toggle but not reconfigure HTTP tools", async () => {
+    await ensureTrackOrderTool();
     as("MANAGER");
     expect((await toolById.PATCH(json({ httpUrl: "https://evil.example.com/{order_number}" }, "PATCH"), params(toolId))).status).toBe(403);
     const toggled = await toolById.PATCH(json({ isEnabled: false }, "PATCH"), params(toolId));
@@ -145,7 +165,8 @@ describe("IT-08 tools API", () => {
     await toolById.PATCH(json({ isEnabled: true }, "PATCH"), params(toolId));
   });
 
-  it("tests an HTTP tool against the API (Admin) and records the result", async () => {
+  it("tests an HTTP tool against the API as an Admin and records the result", async () => {
+    await ensureTrackOrderTool();
     as("MANAGER");
     expect((await toolTest.POST(json({ input: { order_number: "1042" } }), params(toolId))).status).toBe(403);
 
@@ -161,7 +182,8 @@ describe("IT-08 tools API", () => {
     expect((await missing.json()).ok).toBe(false);
   });
 
-  it("tests built-in writes as a simulation (Manager)", async () => {
+  it("tests built-in writes as a simulation - Manager", async () => {
+    await ensureBuiltInTools(workspaceId);
     as("MANAGER");
     const createTicket = await prisma.agentTool.findFirstOrThrow({ where: { workspaceId, key: "create_ticket" } });
     const response = await toolTest.POST(json({ input: { subject: "Broken kettle", description: "It stopped heating." } }), params(createTicket.id));
@@ -172,6 +194,7 @@ describe("IT-08 tools API", () => {
   });
 
   it("edits built-in actions with role checks", async () => {
+    await ensureBuiltInTools(workspaceId);
     const book = await prisma.agentTool.findFirstOrThrow({ where: { workspaceId, key: "book_appointment" } });
     const lookup = await prisma.agentTool.findFirstOrThrow({ where: { workspaceId, key: "lookup_ticket_status" } });
 
@@ -200,6 +223,8 @@ describe("IT-08 tools API", () => {
 
 describe("IT-09 agent tool settings API", () => {
   it("binds tools, validates intent rules and steps", async () => {
+    await ensureBuiltInTools(workspaceId);
+    await ensureTrackOrderTool();
     as("AGENT");
     expect((await agentTools.GET(new Request("http://localhost"), params(agentId))).status).toBe(403);
 
@@ -246,7 +271,7 @@ describe("IT-09 agent tool settings API", () => {
 });
 
 describe("IT-10 appointments API", () => {
-  it("validates business hours (Admin only)", async () => {
+  it("validates business hours - Admin only", async () => {
     as("MANAGER");
     expect((await appointmentSettings.PUT(json({}, "PUT"))).status).toBe(403);
 

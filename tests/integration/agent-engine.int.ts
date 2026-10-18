@@ -110,7 +110,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("IT-04 multi-step reasoning (FE-2) with confirmation", () => {
+describe("IT-04 multi-step reasoning with confirmation - FE-2", () => {
   it("checks availability, asks to confirm the booking, then books on 'yes'", async () => {
     const sessionId = await newSession();
     const model = scripted("scripted/planner", (messages) => {
@@ -310,7 +310,7 @@ describe("IT-06 resilience", () => {
   });
 });
 
-describe("IT-07 intent rules (FE-4) and failure handling", () => {
+describe("IT-07 intent rules and failure handling - FE-4", () => {
   it("an ALWAYS rule forces the first tool call", async () => {
     const sessionId = await newSession();
     const calls: Array<{ tools: string[]; forcedTool?: string | null }> = [];

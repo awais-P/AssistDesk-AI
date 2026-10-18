@@ -36,19 +36,19 @@ describe("UT-01 password hashing", () => {
     await expect(verifyPassword("wrong", legacy)).resolves.toMatchObject({ valid: false });
   });
 
-  it("rejects a legacy hash used as the password (SEC-01)", async () => {
+  it("rejects a legacy hash used as the password - SEC-01", async () => {
     const legacy = createHash("sha256").update("oldpass1").digest("hex");
 
     await expect(verifyPassword(legacy, legacy)).resolves.toMatchObject({ valid: false });
   });
 
-  it("rejects a bcrypt hash used as the password (SEC-01)", async () => {
+  it("rejects a bcrypt hash used as the password - SEC-01", async () => {
     const bcryptHash = await hashPassword("Secret123");
 
     await expect(verifyPassword(bcryptHash, bcryptHash)).resolves.toMatchObject({ valid: false });
   }, 20_000);
 
-  it("rejects plaintext and missing password hashes (SEC-01)", async () => {
+  it("rejects plaintext and missing password hashes - SEC-01", async () => {
     await expect(verifyPassword("plain", "plain")).resolves.toMatchObject({ valid: false });
     await expect(verifyPassword("x", null)).resolves.toMatchObject({ valid: false });
   });
@@ -121,27 +121,27 @@ describe("UT-02 role-based access control", () => {
     expect(hasRole("NONSENSE", "AGENT")).toBe(false);
   });
 
-  it("prevents agents from managing members (SEC-04)", () => {
+  it("prevents agents from managing members - SEC-04", () => {
     expect(canManageMember(agent, agent)).toBe(false);
   });
 
-  it("prevents admins from managing owners (SEC-04)", () => {
+  it("prevents admins from managing owners - SEC-04", () => {
     expect(canManageMember(admin, owner)).toBe(false);
   });
 
-  it("prevents admins from managing other admins (SEC-04)", () => {
+  it("prevents admins from managing other admins - SEC-04", () => {
     expect(canManageMember(admin, otherAdmin)).toBe(false);
   });
 
-  it("prevents managers from managing agents (SEC-04)", () => {
+  it("prevents managers from managing agents - SEC-04", () => {
     expect(canManageMember(manager, agent)).toBe(false);
   });
 
-  it("allows admins to manage managers (SEC-04)", () => {
+  it("allows admins to manage managers - SEC-04", () => {
     expect(canManageMember(admin, manager)).toBe(true);
   });
 
-  it("allows owners to manage admins (SEC-04)", () => {
+  it("allows owners to manage admins - SEC-04", () => {
     expect(canManageMember(owner, admin)).toBe(true);
   });
 

@@ -55,7 +55,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("IT-12 dashboard tickets: AI reply in the background (UI-45)", () => {
+describe("IT-12 dashboard tickets: AI reply in the background - UI-45", () => {
   it("returns before the AI reply, then replies and moves the ticket to In Progress", async () => {
     const ticketId = await newTicket("Kettle stopped heating after two weeks");
     const result = await processIncomingTicket(ticketId, { deferAiReply: true });
@@ -79,7 +79,7 @@ describe("IT-12 dashboard tickets: AI reply in the background (UI-45)", () => {
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).status).toBe("RESOLVED");
   });
 
-  it("still replies inside the request when not deferred (email tickets)", async () => {
+  it("still replies inside the request when not deferred - email tickets", async () => {
     const ticketId = await newTicket("Delivery delayed to Multan");
     await processIncomingTicket(ticketId);
 

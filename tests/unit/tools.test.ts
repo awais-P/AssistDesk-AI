@@ -20,8 +20,8 @@ import {
 } from "@/src/lib/tools/tool-schema";
 import { validateHttpToolUrl } from "@/src/lib/tools/http-tool";
 
-describe("UT-37 tool definitions (FE-2b custom actions, FE-3)", () => {
-  it("never lets tool inputs choose the server (no placeholders in the host)", async () => {
+describe("UT-37 tool definitions - FE-2b custom actions, FE-3", () => {
+  it("never lets tool inputs choose the server - no placeholders in the host", async () => {
     for (const template of ["https://{shop}.example.com/orders", "https://api.example.com{path}", "https://user:{token}@api.example.com/x", "https://api.example.com:{port}/x"]) {
       const result = await validateHttpToolUrl(template, ["shop", "path", "token", "port"]);
       expect(result.ok, template).toBe(false);
@@ -135,7 +135,7 @@ describe("UT-39 confirmations for risky actions", () => {
   });
 });
 
-describe("UT-40 appointment slots (FE-1 booking)", () => {
+describe("UT-40 appointment slots - FE-1 booking", () => {
   const timeZone = "Asia/Karachi";
   const hours = parseAppointmentHours({ days: [1, 2, 3, 4, 5], start: "09:00", end: "11:00" });
 
@@ -184,7 +184,7 @@ describe("UT-40 appointment slots (FE-1 booking)", () => {
   });
 });
 
-describe("UT-41 intent → action rules (FE-4)", async () => {
+describe("UT-41 intent → action rules - FE-4", async () => {
   const { forcedToolFor, intentRuleInstructions, matchIntentRules, parseIntentRules } = await import("@/src/lib/agent-engine/intent-rules");
   const rules = parseIntentRules(
     [
@@ -240,7 +240,7 @@ describe("UT-42 answers from tool results when no model can reply", async () => 
   });
 });
 
-describe("UT-43 chain of thought for the action log (FE-5)", async () => {
+describe("UT-43 chain of thought for the action log - FE-5", async () => {
   const { buildRunTrace, parseRunTrace, traceExecutionIds } = await import("@/src/lib/agent-engine/run-trace");
   const base = { confirmation: { state: "NONE" as const }, matchedRules: [], forcedTool: null, graphTrace: [], graphError: null, fallback: null, escalation: null };
 
@@ -276,7 +276,7 @@ describe("UT-43 chain of thought for the action log (FE-5)", async () => {
   });
 });
 
-describe("UT-44 action usage report (Module 2 × Module 4)", async () => {
+describe("UT-44 action usage report - Module 2 × Module 4", async () => {
   const { summarizeToolUsage } = await import("@/src/lib/analytics-math");
 
   it("counts outcomes per action and times only finished calls", () => {

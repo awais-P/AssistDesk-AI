@@ -11,17 +11,17 @@ import { CHUNK_TARGET_CHARS, chunkDocument, chunkEmbeddingText } from "@/src/lib
 import { calibrateSemanticScore } from "@/src/lib/knowledge-indexing";
 
 describe("UT-16 search tokenizer", () => {
-  it("drops English stop words (AI-01)", () => {
+  it("drops English stop words - AI-01", () => {
     expect(tokenizeForSearch("What is the refund policy?")).toEqual(["refund", "policy"]);
   });
 
-  it("keeps non-English words (AI-01)", () => {
+  it("keeps non-English words - AI-01", () => {
     expect(tokenizeForSearch("واپسی کی پالیسی کیا ہے")).toEqual(
       expect.arrayContaining(["واپسی", "پالیسی"]),
     );
   });
 
-  it("preserves accented words (AI-01)", () => {
+  it("preserves accented words - AI-01", () => {
     expect(tokenizeForSearch("Café crème brûlée")).toEqual(["café", "crème", "brûlée"]);
   });
 });

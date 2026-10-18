@@ -51,7 +51,7 @@ function session(overrides: Partial<Parameters<typeof getExpiryReason>[0]> = {})
   };
 }
 
-describe("UT-20 session expiration policies (FE-5)", () => {
+describe("UT-20 session expiration policies - FE-5", () => {
   it("keeps a recently active widget session open", () => {
     expect(getExpiryReason(session(), now)).toBeNull();
   });
@@ -68,7 +68,7 @@ describe("UT-20 session expiration policies (FE-5)", () => {
     expect(clampSessionTimeoutMinutes("abc")).toBe(CHANNEL_IDLE_MINUTES.WEB_WIDGET);
   });
 
-  it("applies per-channel windows (WhatsApp 24 h, Slack 4 h, email 7 days)", () => {
+  it("applies per-channel windows - WhatsApp 24 h, Slack 4 h, email 7 days", () => {
     const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 60 * MINUTE);
 
     expect(getExpiryReason(session({ channel: "WHATSAPP", chatbot: null, lastActivityAt: hoursAgo(23) }), now)).toBeNull();
@@ -77,7 +77,7 @@ describe("UT-20 session expiration policies (FE-5)", () => {
     expect(getExpiryReason(session({ channel: "EMAIL", chatbot: null, lastActivityAt: hoursAgo(24 * 6) }), now)).toBeNull();
   });
 
-  it("gives a human-handled (escalated) chat at least an hour", () => {
+  it("gives a human-handled, escalated chat at least an hour", () => {
     const escalated = session({ status: "ESCALATED", lastActivityAt: new Date(now.getTime() - 45 * MINUTE) });
     expect(getIdleTimeoutMinutes(escalated)).toBe(60);
     expect(getExpiryReason(escalated, now)).toBeNull();
@@ -120,7 +120,7 @@ describe("UT-21 session outcome and credentials", () => {
   });
 });
 
-describe("UT-22 customer identity normalisation (FE-2)", () => {
+describe("UT-22 customer identity normalisation - FE-2", () => {
   it("normalises emails and rejects invalid ones", () => {
     expect(normalizeEmail("  Ali@Example.COM ")).toBe("ali@example.com");
     expect(normalizeEmail("not-an-email")).toBeNull();
@@ -153,7 +153,7 @@ describe("UT-22 customer identity normalisation (FE-2)", () => {
   });
 });
 
-describe("UT-23 memory helpers (FE-3)", () => {
+describe("UT-23 memory helpers - FE-3", () => {
   it("masks personal details before they reach the prompt", () => {
     expect(maskEmail("ali.khan@example.com")).toBe("a***@example.com");
     expect(maskPhone("+923001234567")).toBe("*********4567");
@@ -266,7 +266,7 @@ describe("UT-25 email threading", () => {
   });
 });
 
-describe("UT-26 rate limiting helpers (FE-6)", () => {
+describe("UT-26 rate limiting helpers - FE-6", () => {
   it("clamps the chatbot's per-minute limit", () => {
     expect(clampRateLimitPerMinute(0)).toBe(1);
     expect(clampRateLimitPerMinute(500)).toBe(120);

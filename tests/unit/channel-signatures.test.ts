@@ -122,8 +122,6 @@ describe("UT-12 WhatsApp webhooks", () => {
   });
 
   it("rejects a missing WhatsApp signature", () => {
-    const signature = `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
-
     expect(verifyWhatsAppSignature({ appSecret, rawBody, signature: null })).toBe(false);
   });
 

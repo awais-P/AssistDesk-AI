@@ -96,6 +96,39 @@ npm test
 npm run build
 ```
 
+## Demo and Tests (quick start)
+
+One settings file and two commands give everyone the same demo data and test results.
+
+1. Start your database (for example `docker compose up -d`). With Docker, create the demo
+   database once: `docker compose exec postgres createdb -U assistdesk assistdesk_test`.
+2. Create your settings file once and fill it in (database URL, demo password, cron secret):
+
+   ```powershell
+   Copy-Item .env.demo.example .env.demo
+   ```
+
+3. Start the demo/test server and keep that window open:
+
+   ```powershell
+   npm run demo
+   ```
+
+   It applies the migrations, starts AssistDesk on `http://localhost:3100` (building into
+   `.next-test`, so it can run next to `npm run dev`), creates the demo admin
+   (`admin@assistdesk.local`, password from `.env.demo`) and loads the sample store the first
+   time. Loading the sample store runs real AI chats, so an AI key must work in `.env`.
+
+4. In another window, run the tests. They read `.env.demo` themselves:
+
+   ```powershell
+   npm run test:ui
+   npm run test:integration
+   node scripts/e2e/e2e-all.mjs
+   ```
+
+Values set in the shell (for example by `scripts/tests-env.ps1`) take priority over `.env.demo`.
+
 ## Integration Tests
 
 Integration tests modify their database. Use a local development or throwaway

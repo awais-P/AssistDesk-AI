@@ -18,6 +18,25 @@ Entry template:
 
 ---
 
+## 2026-10-18 — One-step demo and test environment (`npm run demo`)
+**Module:** all (testing / demo)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:** `scripts/demo/start.mjs` (new), `.env.demo.example` (new), `package.json`, `playwright.config.ts`, `vitest.integration.config.mts`, `scripts/e2e/config.mjs`, `.gitignore`, `README.md`, `TESTING_INSTRUCTIONS.md`
+
+**Added:**
+- **`npm run demo`** does everything in one step:
+  - checks the demo database (`TEST_DATABASE_URL` from `.env.demo`) and applies the migrations;
+  - starts AssistDesk on port 3100, building into `.next-test`, with the demo settings;
+  - signs in once, which creates the demo admin;
+  - loads the sample store (`seed-demo.mjs`) if it is missing.
+  It works with Docker Postgres or any local or throwaway database.
+- **`.env.demo.example`:** a template for the git-ignored `.env.demo`. The browser tests, integration tests and end-to-end scripts all read `.env.demo` themselves, so no variables need typing into the terminal. Values already set in the shell still take priority.
+
+**Verified on this PC:**
+- `npm run demo` ran through to "Ready".
+- With no settings in the terminal, 12 browser tests and 3 integration tests passed using only `.env.demo`.
+
+---
+
 ## 2026-10-18 — Test environment template, separate test build folder, latency test fix
 **Module:** all (testing)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:** `scripts/tests-env.example.ps1` (new), `next.config.ts`, `.gitignore`, `tsconfig.json`, `tests/ui/analytics.spec.ts`, `tests/ui/helpers.ts`, `README.md`, `TESTING_INSTRUCTIONS.md`, `scripts/e2e/README.md`

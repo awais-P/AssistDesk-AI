@@ -1,11 +1,22 @@
+import { existsSync } from "node:fs";
 import { defineConfig } from "@playwright/test";
+
+// Demo/test settings from .env.demo (see .env.demo.example), if the file exists. Values already
+// set in the shell (e.g. by scripts/tests-env.ps1) win.
+if (existsSync(".env.demo")) {
+  process.loadEnvFile(".env.demo");
+}
+if (!process.env.E2E_BASE_URL && process.env.DEMO_PORT) {
+  process.env.E2E_BASE_URL = `http://localhost:${process.env.DEMO_PORT}`;
+}
 
 /**
  * Browser UI tests (system level). They drive a running AssistDesk server in
  * Chrome, the way a user would, and check the screen-level requirements of the
  * SRS (FR-1 … FR-17).
  *
- *   E2E_BASE_URL=http://localhost:3000 ASSISTDESK_DEMO_PASSWORD=… npm run test:ui
+ *   npm run demo        (once, in its own window: starts the demo/test server)
+ *   npm run test:ui     (settings come from .env.demo)
  *
  * Use a throwaway database: the tests create (and clean up) agents, chatbots,
  * prompts, tickets and accounts. See tests/ui/README.md.

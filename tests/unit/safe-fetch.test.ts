@@ -2,22 +2,24 @@ import { describe, expect, it } from "vitest";
 import { UnsafeUrlError, assertPublicUrl, isPrivateAddress } from "@/src/lib/safe-fetch";
 
 describe("UT-04 SSRF protection", () => {
-  it("flags private, loopback, link-local and metadata addresses", () => {
-    for (const address of [
-      "127.0.0.1",
-      "10.1.2.3",
-      "172.16.0.5",
-      "192.168.1.10",
-      "169.254.169.254",
-      "100.64.0.1",
-      "0.0.0.0",
-      "::1",
-      "fd00::1",
-      "fe80::1",
-      "::ffff:127.0.0.1",
-    ]) {
-      expect(isPrivateAddress(address), address).toBe(true);
-    }
+  it("flags loopback addresses", () => {
+    expect(isPrivateAddress("127.0.0.1")).toBe(true);
+    expect(isPrivateAddress("::1")).toBe(true);
+  });
+
+  it("flags private network addresses", () => {
+    expect(isPrivateAddress("10.1.2.3")).toBe(true);
+    expect(isPrivateAddress("172.16.0.5")).toBe(true);
+    expect(isPrivateAddress("192.168.1.10")).toBe(true);
+    expect(isPrivateAddress("fd00::1")).toBe(true);
+  });
+
+  it("flags link-local and metadata addresses", () => {
+    expect(isPrivateAddress("169.254.169.254")).toBe(true);
+    expect(isPrivateAddress("100.64.0.1")).toBe(true);
+    expect(isPrivateAddress("0.0.0.0")).toBe(true);
+    expect(isPrivateAddress("fe80::1")).toBe(true);
+    expect(isPrivateAddress("::ffff:127.0.0.1")).toBe(true);
   });
 
   it("allows public addresses", () => {

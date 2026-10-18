@@ -11,11 +11,17 @@ import { CHUNK_TARGET_CHARS, chunkDocument, chunkEmbeddingText } from "@/src/lib
 import { calibrateSemanticScore } from "@/src/lib/knowledge-indexing";
 
 describe("UT-16 search tokenizer", () => {
-  it("keeps non-English words (AI-01) and drops stop words", () => {
+  it("drops English stop words (AI-01)", () => {
     expect(tokenizeForSearch("What is the refund policy?")).toEqual(["refund", "policy"]);
+  });
+
+  it("keeps non-English words (AI-01)", () => {
     expect(tokenizeForSearch("واپسی کی پالیسی کیا ہے")).toEqual(
       expect.arrayContaining(["واپسی", "پالیسی"]),
     );
+  });
+
+  it("preserves accented words (AI-01)", () => {
     expect(tokenizeForSearch("Café crème brûlée")).toEqual(["café", "crème", "brûlée"]);
   });
 });
@@ -27,7 +33,13 @@ describe("UT-17 lexical fallback embeddings", () => {
     const unrelated = lexicalEmbedding("Support hours are nine to six on weekdays");
 
     expect(cosineSimilarity(question, related)).toBeGreaterThan(cosineSimilarity(question, unrelated));
+  });
+
+  it("recognises the lexical embedding model", () => {
     expect(isSemanticModel(LEXICAL_EMBEDDING_MODEL)).toBe(false);
+  });
+
+  it("recognises a managed semantic embedding model", () => {
     expect(isSemanticModel("openrouter:openai/text-embedding-3-small")).toBe(true);
   });
 

@@ -163,6 +163,48 @@ Run tests matching a name or phrase:
 npx vitest run -t "validation"
 ```
 
+When passing Vitest arguments through the `npm test` script, include `--`
+before the Vitest options. Without it, npm may treat the filter as a script
+argument instead of forwarding it to Vitest:
+
+```powershell
+npm run test -- -t "UT-07"
+```
+
+The `UT-07 agent behaviour settings` tests are defined in
+`tests/unit/agent-and-integration-config.test.ts`. The command above runs the
+three tests in that group while skipping unrelated tests. You can also invoke
+Vitest directly:
+
+```powershell
+npx vitest run -t "UT-07"
+```
+
+To run the three UT-07 tests one at a time, use the complete test title:
+
+```powershell
+npm run test -- -t "defaults response length to balanced" --reporter=verbose
+npm run test -- -t "uses the fallback for invalid numeric settings" --reporter=verbose
+npm run test -- -t "starts model fallback with the chosen model" --reporter=verbose
+```
+
+The configured input data is the literal value passed to each function in
+`tests/unit/agent-and-integration-config.test.ts`, such as `"SHOUTY"`, `5`,
+or `"google/gemini-2.5-flash"`. The expected result is the value supplied to
+`expect(...).toBe(...)`, `expect(...).toContain(...)`, or
+`expect(...).toMatch(...)`. Vitest reports pass/fail for these assertions, but
+it does not print passing values by default. To inspect a value, assign it to
+a variable and temporarily log it:
+
+```ts
+const tone = normalizeAgentTone("SHOUTY");
+console.log({ input: "SHOUTY", output: tone });
+expect(tone).toBe("FRIENDLY");
+```
+
+Run the filtered test with `--reporter=verbose` to see the test name and the
+logged input/output. Remove temporary logging after checking the result.
+
 Run a file interactively in watch mode:
 
 ```powershell

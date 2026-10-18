@@ -16,16 +16,25 @@ describe("UT-10 Slack request signing", () => {
     expect(verifySlackSignature({ signingSecret, timestamp, rawBody, signature, now })).toBe(true);
   });
 
-  it("rejects wrong signatures, modified bodies and replayed requests", () => {
+  it("rejects modified request bodies", () => {
     expect(
       verifySlackSignature({ signingSecret, timestamp, rawBody: `${rawBody} `, signature, now }),
     ).toBe(false);
+  });
+
+  it("rejects signatures from another secret", () => {
     expect(
       verifySlackSignature({ signingSecret: "other", timestamp, rawBody, signature, now }),
     ).toBe(false);
+  });
+
+  it("rejects replayed requests", () => {
     expect(
       verifySlackSignature({ signingSecret, timestamp, rawBody, signature, now: now + 10 * 60 * 1000 }),
     ).toBe(false);
+  });
+
+  it("rejects requests without a timestamp", () => {
     expect(
       verifySlackSignature({ signingSecret, timestamp: null, rawBody, signature, now }),
     ).toBe(false);
@@ -33,7 +42,7 @@ describe("UT-10 Slack request signing", () => {
 });
 
 describe("UT-11 Slack event parsing", () => {
-  it("handles DMs and mentions, and ignores bots and edits", () => {
+  it("parses direct messages", () => {
     expect(
       parseSlackCustomerMessage({
         type: "message",
@@ -44,7 +53,9 @@ describe("UT-11 Slack event parsing", () => {
         text: "Hi",
       }),
     ).toMatchObject({ conversationKey: "D1", threadTs: null, text: "Hi" });
+  });
 
+  it("parses mentions and removes the bot mention", () => {
     expect(
       parseSlackCustomerMessage({
         type: "app_mention",
@@ -54,7 +65,9 @@ describe("UT-11 Slack event parsing", () => {
         text: "<@UBOT> where is my order?",
       }),
     ).toMatchObject({ conversationKey: "C1:2.2", threadTs: "2.2", text: "where is my order?" });
+  });
 
+  it("ignores messages sent by bots", () => {
     expect(
       parseSlackCustomerMessage({
         type: "message",
@@ -66,6 +79,9 @@ describe("UT-11 Slack event parsing", () => {
         text: "x",
       }),
     ).toBeNull();
+  });
+
+  it("ignores edited messages", () => {
     expect(
       parseSlackCustomerMessage({
         type: "message",
@@ -77,6 +93,9 @@ describe("UT-11 Slack event parsing", () => {
         text: "x",
       }),
     ).toBeNull();
+  });
+
+  it("ignores messages from the configured bot user", () => {
     expect(
       parseSlackCustomerMessage(
         { type: "message", channel_type: "im", channel: "D1", user: "UBOT", ts: "1", text: "x" },
@@ -90,11 +109,21 @@ describe("UT-12 WhatsApp webhooks", () => {
   const appSecret = "whatsapp-app-secret";
   const rawBody = '{"object":"whatsapp_business_account"}';
 
-  it("verifies X-Hub-Signature-256", () => {
+  it("accepts a valid X-Hub-Signature-256", () => {
     const signature = `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
 
     expect(verifyWhatsAppSignature({ appSecret, rawBody, signature })).toBe(true);
+  });
+
+  it("rejects a modified WhatsApp request body", () => {
+    const signature = `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
+
     expect(verifyWhatsAppSignature({ appSecret, rawBody: `${rawBody}x`, signature })).toBe(false);
+  });
+
+  it("rejects a missing WhatsApp signature", () => {
+    const signature = `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
+
     expect(verifyWhatsAppSignature({ appSecret, rawBody, signature: null })).toBe(false);
   });
 

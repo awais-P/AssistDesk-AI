@@ -12,7 +12,7 @@ Results of the 10 Oct 2026 verification are in [VERIFICATION_REPORT.md](../../VE
 
 ## Setup
 
-1. Use a **local development or throwaway** PostgreSQL database (the scripts create workspaces, tickets, leads and so on). Load the test environment with `. .\scripts\tests-env.ps1`, then apply migrations with `npx prisma migrate deploy`.
+1. Use a **local development or throwaway** PostgreSQL database (the scripts create workspaces, tickets, leads and so on). Create `scripts/tests-env.ps1` once from the template (`Copy-Item scripts/tests-env.example.ps1 scripts/tests-env.ps1`, then fill in your values), load it with `. .\scripts\tests-env.ps1`, then apply migrations with `npx prisma migrate deploy`.
 2. Start the dev server against it with these settings (in `.env` or the shell):
 
    ```

@@ -172,7 +172,7 @@ afterAll(async () => {
 });
 
 describe("IT-01 registry", () => {
-  it("creates the built-in tools once and loads the agent's enabled tools", async () => {
+  it("IT-01.01 creates the built-in tools once and loads the agent's enabled tools", async () => {
     expect(await prisma.agentTool.count({ where: { workspaceId, type: "BUILT_IN" } })).toBe(8);
 
     const { tools, settings } = await loadAgentToolset(workspaceId, agentId);
@@ -189,7 +189,7 @@ describe("IT-01 registry", () => {
     await prisma.aIAgent.update({ where: { id: agentId }, data: { toolsEnabled: true } });
   });
 
-  it("rejects invalid input and logs it", async () => {
+  it("IT-01.02 rejects invalid input and logs it", async () => {
     const result = await runTool({ tool: await tool("lookup_ticket_status"), rawInput: {}, ctx: ctx() });
     expect(result.status).toBe("ERROR");
     expect((result.output as { error: string }).error).toContain('"reference" is required');
@@ -199,7 +199,7 @@ describe("IT-01 registry", () => {
 });
 
 describe("IT-02 built-in tools - FE-1", () => {
-  it("get_customer_info returns the customer's record with masked details", async () => {
+  it("IT-02.01 get_customer_info returns the customer's record with masked details", async () => {
     const result = await runTool({ tool: await tool("get_customer_info"), rawInput: { reason: "Check what we know" }, ctx: ctx() });
     const output = result.output as { known: boolean; email: string; openTickets: Array<{ reference: string }> };
     expect(output.known).toBe(true);
@@ -211,12 +211,12 @@ describe("IT-02 built-in tools - FE-1", () => {
     expect(row.status).toBe("SUCCESS");
   });
 
-  it("an unverified visitor gets counts, not ticket subjects", async () => {
+  it("IT-02.02 an unverified visitor gets counts, not ticket subjects", async () => {
     const result = await runTool({ tool: await tool("get_customer_info"), rawInput: {}, ctx: ctx({ verifiedIdentity: false }) });
     expect((result.output as { openTickets: unknown }).openTickets).toBe(1);
   });
 
-  it("lookup_ticket_status only reveals the customer's own tickets", async () => {
+  it("IT-02.03 lookup_ticket_status only reveals the customer's own tickets", async () => {
     const own = await runTool({ tool: await tool("lookup_ticket_status"), rawInput: { reference: `TT-${ticketOwn}` }, ctx: ctx() });
     expect(own.output).toMatchObject({ found: true, status: "IN_PROGRESS", subject: "Kettle leaking" });
 
@@ -228,7 +228,7 @@ describe("IT-02 built-in tools - FE-1", () => {
     expect(garbage.status).toBe("ERROR");
   });
 
-  it("create_ticket opens a ticket linked to the customer; dry run does not", async () => {
+  it("IT-02.04 create_ticket opens a ticket linked to the customer; dry run does not", async () => {
     const dry = await runTool({ tool: await tool("create_ticket"), rawInput: { subject: "Test", description: "x" }, ctx: ctx({ dryRun: true }) });
     expect(dry.output).toMatchObject({ simulated: true });
 
@@ -245,14 +245,14 @@ describe("IT-02 built-in tools - FE-1", () => {
     expect(await prisma.notification.count({ where: { workspaceId, type: "NEW_TICKET" } })).toBe(1);
   });
 
-  it("capture_lead saves an AI_TOOL lead with the interest", async () => {
+  it("IT-02.05 capture_lead saves an AI_TOOL lead with the interest", async () => {
     const result = await runTool({ tool: await tool("capture_lead"), rawInput: { interest: "50 kettles for a hotel", company: "Grand Hotel", email: "a***@example.com" }, ctx: ctx() });
     expect(result.output).toMatchObject({ saved: true });
     const lead = await prisma.lead.findFirstOrThrow({ where: { workspaceId, email: "ayesha@example.com" } });
     expect(lead).toMatchObject({ source: "AI_TOOL", company: "Grand Hotel", intent: "50 kettles for a hotel" });
   });
 
-  it("booking needs the customer's confirmation, then books; a taken slot is refused", async () => {
+  it("IT-02.06 booking needs the customer's confirmation, then books; a taken slot is refused", async () => {
     const availability = await runTool({ tool: await tool("check_availability"), rawInput: {}, ctx: ctx() });
     const slots = (availability.output as { slots: Array<{ startsAt: string }> }).slots;
     expect(slots.length).toBeGreaterThan(1);
@@ -283,7 +283,7 @@ describe("IT-02 built-in tools - FE-1", () => {
     expect(JSON.stringify((second as { output: unknown }).output)).toContain("taken");
   });
 
-  it("unanswered confirmations expire after the window", async () => {
+  it("IT-02.07 unanswered confirmations expire after the window", async () => {
     const stale = await prisma.toolExecution.create({
       data: { workspaceId, sessionId: sessionA, toolKey: "book_appointment", toolName: "Book appointment", input: {}, status: "PENDING_CONFIRMATION", createdAt: new Date(Date.now() - CONFIRMATION_TTL_MS - 60_000) },
     });
@@ -295,7 +295,7 @@ describe("IT-02 built-in tools - FE-1", () => {
     await prisma.toolExecution.delete({ where: { id: fresh.id } });
   });
 
-  it("'no' cancels a pending action", async () => {
+  it("IT-02.08 'no' cancels a pending action", async () => {
     const availability = await runTool({ tool: await tool("check_availability"), rawInput: {}, ctx: ctx() });
     const slot = (availability.output as { slots: Array<{ startsAt: string }> }).slots[1];
     await runTool({ tool: await tool("book_appointment"), rawInput: { starts_at: slot.startsAt }, ctx: ctx() });
@@ -303,7 +303,7 @@ describe("IT-02 built-in tools - FE-1", () => {
     expect(await resolvePendingConfirmation({ message: "yes", ctx: ctx() })).toMatchObject({ state: "NONE" });
   });
 
-  it("escalate_to_human hands the chat to the team", async () => {
+  it("IT-02.09 escalate_to_human hands the chat to the team", async () => {
     const result = await runTool({ tool: await tool("escalate_to_human"), rawInput: { summary: "Wants a refund for a damaged kettle" }, ctx: ctx({ sessionId: sessionB, contactId: null }) });
     expect(result.output).toMatchObject({ handedOver: true });
     const session = await prisma.chatSession.findUniqueOrThrow({ where: { id: sessionB } });
@@ -313,7 +313,7 @@ describe("IT-02 built-in tools - FE-1", () => {
 });
 
 describe("IT-03 HTTP tools - FE-2b custom actions", () => {
-  it("calls the external API with the decrypted secret header and keeps only chosen fields", async () => {
+  it("IT-03.01 calls the external API with the decrypted secret header and keeps only chosen fields", async () => {
     const result = await runTool({ tool: await tool("track_order"), rawInput: { order_number: "1042", reason: "Customer asked where the order is" }, ctx: ctx() });
     expect(result.output).toEqual({ "order.status": "SHIPPED", "order.eta": "2026-10-06" });
     expect(received.at(-1)).toMatchObject({ method: "GET", url: "/orders/1042", auth: "Bearer store-secret" });
@@ -322,7 +322,7 @@ describe("IT-03 HTTP tools - FE-2b custom actions", () => {
     expect(JSON.stringify(row)).not.toContain("store-secret");
   });
 
-  it("simulates writes in dry run and sends the JSON body for real", async () => {
+  it("IT-03.02 simulates writes in dry run and sends the JSON body for real", async () => {
     const before = received.length;
     const dry = await runTool({ tool: await tool("generate_invoice"), rawInput: { order_number: "1042" }, ctx: ctx({ dryRun: true }) });
     expect(dry.output).toMatchObject({ simulated: true });
@@ -332,7 +332,7 @@ describe("IT-03 HTTP tools - FE-2b custom actions", () => {
     expect(real.output).toMatchObject({ invoiceNumber: "INV-1042", received: { order: "1042", source: "assistdesk" } });
   });
 
-  it("reports API errors and timeouts as failed actions", async () => {
+  it("IT-03.03 reports API errors and timeouts as failed actions", async () => {
     const broken = await runTool({ tool: await tool("broken_api"), rawInput: {}, ctx: ctx() });
     expect(broken.status).toBe("ERROR");
     expect(JSON.stringify(broken.output)).toContain("HTTP 500");

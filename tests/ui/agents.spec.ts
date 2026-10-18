@@ -2,13 +2,13 @@ import { expect, test } from "@playwright/test";
 import { acceptNextConfirm, openDashboardPage, unique } from "./helpers";
 
 test.describe("AI agents (FR-7, FR-8)", () => {
-  test("UI-AGT-01 [FR-7.1, FR-7.5] agents page shows the agent cards", async ({ page }) => {
+  test("UI-AGT-01 agents page shows the agent cards - FR-7.1, FR-7.5", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/ai-agents", "Agents");
     await expect(page.getByText("Support Assistant").first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Open Agent" }).first()).toBeVisible();
   });
 
-  test("UI-AGT-02 [FR-7.2] search filters agents by name", async ({ page }) => {
+  test("UI-AGT-02 search filters agents by name - FR-7.2", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/ai-agents", "Agents");
     await page.getByPlaceholder("Search...").fill("zz-no-agent-zz");
     await expect(page.getByRole("link", { name: "Open Agent" })).toHaveCount(0);
@@ -16,7 +16,7 @@ test.describe("AI agents (FR-7, FR-8)", () => {
     await expect(page.getByRole("link", { name: "Open Agent" }).first()).toBeVisible();
   });
 
-  test("UI-AGT-03 [FR-7.3] grid and list views", async ({ page }) => {
+  test("UI-AGT-03 grid and list views - FR-7.3", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/ai-agents", "Agents");
     await page.getByRole("button", { name: /^list$/i }).click();
     await expect(page.getByText("Support Assistant").first()).toBeVisible();
@@ -24,7 +24,7 @@ test.describe("AI agents (FR-7, FR-8)", () => {
     await expect(page.getByText("Support Assistant").first()).toBeVisible();
   });
 
-  test("UI-AGT-04 [FR-7.4, FR-8.2–8.8, FR-7.6] create, configure and delete an agent", async ({ page }) => {
+  test("UI-AGT-04 create, configure and delete an agent - FR-7.4, FR-8.2–8.8, FR-7.6", async ({ page }) => {
     const name = unique("UI Agent");
     await openDashboardPage(page, "/dashboard/ai-agents", "Agents");
     await page.getByRole("button", { name: "+ Create Agent" }).click();
@@ -50,7 +50,7 @@ test.describe("AI agents (FR-7, FR-8)", () => {
     await expect(page.getByText(name)).toHaveCount(0);
   });
 
-  test("UI-AGT-05 [FR-8.2] an agent cannot be created without a name", async ({ page }) => {
+  test("UI-AGT-05 an agent cannot be created without a name - FR-8.2", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/ai-agents", "Agents");
     const cards = await page.getByRole("link", { name: "Open Agent" }).count();
     await page.getByRole("button", { name: "+ Create Agent" }).click();
@@ -61,7 +61,7 @@ test.describe("AI agents (FR-7, FR-8)", () => {
     await expect(page.getByRole("link", { name: "Open Agent" })).toHaveCount(cards);
   });
 
-  test("UI-AGT-06 [M2] agent tabs: Actions and Playground", async ({ page }) => {
+  test("UI-AGT-06 agent tabs: Actions and Playground - M2", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/ai-agents", "Agents");
     await page.getByRole("link", { name: "Open Agent" }).first().click();
     await page.getByRole("button", { name: "Actions", exact: true }).click();

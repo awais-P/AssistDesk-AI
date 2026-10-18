@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { openDashboardPage } from "./helpers";
 
 test.describe("Lead generation (M8)", () => {
-  test("UI-LED-01 [M8 FE-5] leads list with status tabs and filters", async ({ page }) => {
+  test("UI-LED-01 leads list with status tabs and filters - M8 FE-5", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/leads", "Leads");
     // The end-to-end API suite adds its own "Usman Tariq" leads, so the name may appear more than once.
     await expect(page.getByRole("link", { name: "Usman Tariq" }).first()).toBeVisible();
@@ -17,7 +17,7 @@ test.describe("Lead generation (M8)", () => {
     await expect(page.getByRole("link", { name: "Sara Ahmed" })).toHaveCount(0);
   });
 
-  test("UI-LED-02 [M8 FE-1, FE-2] lead detail shows score, source conversation and history", async ({ page }) => {
+  test("UI-LED-02 lead detail shows score, source conversation and history - M8 FE-1, FE-2", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/leads", "Leads");
     await page.getByRole("link", { name: "Usman Tariq" }).first().click();
     await expect(page).toHaveURL(/\/dashboard\/leads\/[a-z0-9]+/);
@@ -25,7 +25,7 @@ test.describe("Lead generation (M8)", () => {
     await expect(page.getByText(/Pearl/).first()).toBeVisible();
   });
 
-  test("UI-LED-03 [M8 FE-4] leads export as CSV", async ({ page }) => {
+  test("UI-LED-03 leads export as CSV - M8 FE-4", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/leads", "Leads");
     const response = await page.request.get("/api/leads/export");
     expect(response.ok()).toBeTruthy();
@@ -33,7 +33,7 @@ test.describe("Lead generation (M8)", () => {
     expect(await response.text()).toContain("Usman Tariq");
   });
 
-  test("UI-LED-04 [M8 FE-1] lead form and webhook settings", async ({ page }) => {
+  test("UI-LED-04 lead form and webhook settings - M8 FE-1", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/leads", "Leads");
     await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
     await expect(page).toHaveURL(/\/dashboard\/leads\/settings/);

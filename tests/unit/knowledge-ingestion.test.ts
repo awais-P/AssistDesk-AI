@@ -6,7 +6,7 @@ import { extractHtmlLinks, extractHtmlTitle, htmlToText } from "@/src/lib/html-t
 import { clampMaxPages, isSameSite } from "@/src/lib/web-crawler";
 
 describe("UT-13 document type detection", () => {
-  it("recognises supported knowledge files", () => {
+  it("UT-13.01 recognises supported knowledge files", () => {
     expect(detectDocumentKind("guide.PDF", null)).toBe("pdf");
     expect(detectDocumentKind("faq.docx", null)).toBe("docx");
     expect(detectDocumentKind("page.htm", null)).toBe("html");
@@ -16,7 +16,7 @@ describe("UT-13 document type detection", () => {
     expect(detectDocumentKind("old.doc", null)).toBeNull();
   });
 
-  it("extracts text from plain and HTML uploads", async () => {
+  it("UT-13.02 extracts text from plain and HTML uploads", async () => {
     await expect(
       extractDocumentText({
         buffer: Buffer.from("Refunds take 5 days.\r\n\r\n\r\nThanks"),
@@ -40,7 +40,7 @@ describe("UT-13 document type detection", () => {
     ).rejects.toThrow(/not supported/);
   });
 
-  it("extracts text from real PDF and Word files", async () => {
+  it("UT-13.03 extracts text from real PDF and Word files", async () => {
     const fixtures = path.join(__dirname, "..", "fixtures");
 
     await expect(
@@ -62,7 +62,7 @@ describe("UT-13 document type detection", () => {
 });
 
 describe("UT-14 HTML helpers", () => {
-  it("extracts title, readable text and links", () => {
+  it("UT-14.01 extracts title, readable text and links", () => {
     const html = `<html><head><title>Help &#8211; Acme</title></head><body>
       <header>Logo</header><main><h2>Returns</h2><ul><li>30 days</li><li>Free label</li></ul>
       <a href="/pricing#plans">Pricing</a><a href="https://other.com/x">Out</a></main></body></html>`;
@@ -81,14 +81,14 @@ describe("UT-14 HTML helpers", () => {
 describe("UT-15 crawler scope", () => {
   const root = new URL("https://www.acme.com/docs");
 
-  it("stays on the same site and skips binary files", () => {
+  it("UT-15.01 stays on the same site and skips binary files", () => {
     expect(isSameSite("https://acme.com/pricing", root)).toBe(true);
     expect(isSameSite("https://blog.acme.com/", root)).toBe(false);
     expect(isSameSite("https://acme.com/brochure.pdf", root)).toBe(false);
     expect(isSameSite("mailto:hi@acme.com", root)).toBe(false);
   });
 
-  it("clamps the page limit", () => {
+  it("UT-15.02 clamps the page limit", () => {
     expect(clampMaxPages(100, "CRAWL")).toBe(25);
     expect(clampMaxPages(1, "CRAWL")).toBe(2);
     expect(clampMaxPages("abc", "CRAWL")).toBe(10);

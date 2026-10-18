@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { waitForHydration } from "./helpers";
 
 test.describe("Chats (FR-6) and live takeover (M5)", () => {
-  test("UI-CHT-01 [FR-6.1, FR-6.4] conversations are listed and a thread opens", async ({ page }) => {
+  test("UI-CHT-01 conversations are listed and a thread opens - FR-6.1, FR-6.4", async ({ page }) => {
     await page.goto("/dashboard/chats");
     await waitForHydration(page);
     await page.getByRole("button", { name: "All", exact: true }).click();
@@ -14,7 +14,7 @@ test.describe("Chats (FR-6) and live takeover (M5)", () => {
     await expect(page.getByText(/order 1042/i).first()).toBeVisible();
   });
 
-  test("UI-CHT-02 [FR-6.3] search filters conversations by customer name", async ({ page }) => {
+  test("UI-CHT-02 search filters conversations by customer name - FR-6.3", async ({ page }) => {
     await page.goto("/dashboard/chats");
     await waitForHydration(page);
     await page.getByRole("button", { name: "All", exact: true }).click();
@@ -23,7 +23,7 @@ test.describe("Chats (FR-6) and live takeover (M5)", () => {
     await expect(page.getByRole("button", { name: /Ali Raza/ })).toHaveCount(0);
   });
 
-  test("UI-CHT-03 [M5] status tabs and channel filter", async ({ page }) => {
+  test("UI-CHT-03 status tabs and channel filter - M5", async ({ page }) => {
     await page.goto("/dashboard/chats");
     await waitForHydration(page);
     for (const tab of ["Open", "Human", "Closed", "All"]) {

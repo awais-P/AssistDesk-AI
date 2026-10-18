@@ -40,15 +40,14 @@ Status legend: ✅ implemented · 🟡 partly · ❌ missing · ⚠️ implement
 | TypeScript `tsc --noEmit` | ✅ 0 errors | — |
 | ESLint (Next rules) | ✅ 0 errors, 4 warnings | `<img>` hints and one aria warning, in files untouched since M1. |
 | Unit tests (`npm test`) | ✅ **139/139** in 12 files | Auth and RBAC, secrets, SSRF guard, knowledge ingestion and retrieval, sessions and memory, widget security, channel signatures, leads, analytics, tools. |
-| Integration tests (`npm run test:integration`, real PostgreSQL via PGlite) | ✅ **43/43** + 1 skipped | Tool registry and built-ins (14), LangGraph engine (12, including the new §5.1 test), admin APIs with RBAC (11), action logs (6). The skipped test is the opt-in real-model test. |
+| Integration tests (`npm run test:integration`, real PostgreSQL from `TEST_DATABASE_URL`; on 10 Oct a PGlite server) | ✅ **43/43** + 1 skipped | `tools.int.ts`: registry, built-in tools and HTTP tools (14); `agent-engine.int.ts`: LangGraph engine (12, including the new §5.1 test); `tool-admin.int.ts`: admin APIs with RBAC and appointments (11); `action-logs.int.ts` (6). 14 + 12 + 11 + 6 = 43. The skipped test is the opt-in real-model test (`real-model.int.ts`). The ticket-workflow tests (IT-12) did not exist yet; they were added on 17 Oct (see the update below). |
 | Production build (`next build`) | ✅ passes | Run 9 Oct with Node memory capped at 3 GB; all 60+ routes compiled. |
 
-The integration result above includes the individual registry test
-`IT-01: creates the built-in tools once and loads the agent's enabled tools`
-in `tests/integration/tools.int.ts`, together with the other registry, built-in
-tool, HTTP tool, agent-engine, administration, action-log and ticket-workflow
-tests. It is therefore part of the reported **43/43** integration result; it
-was not a separate functional/browser test.
+The integration result above includes the registry test "creates the built-in
+tools once and loads the agent's enabled tools" in
+`tests/integration/tools.int.ts`, which belongs to the `IT-01` registry group
+(on 10 Oct only the groups had IDs). It is part of the **43/43** integration
+result; it is not a functional/browser test.
 
 The project also contains a separate Playwright functional suite under
 `tests/ui/`. These tests drive the running application through Chrome and
@@ -56,7 +55,23 @@ cover authentication, setup, tickets, chats, agents, prompts, knowledge base,
 analytics, chatbots, integrations, the widget, agentic tools and leads. The
 suite is run with `npm run test:ui`. Because a complete Playwright result was
 not captured in the 10 Oct verification evidence, it must not be presented as
-part of the **43/43** integration or **131/131** HTTP E2E totals.
+part of the **43/43** integration or **131/131** HTTP E2E totals. (`131/131`
+is the HTTP end-to-end script `scripts/e2e/e2e-all.mjs`, not the browser suite.)
+
+**Update, 18 Oct 2026 (test suites as they are now).** Every test now has its
+own ID in its name, `<group>.<two-digit number>`, so one test can be run on its
+own: `npx vitest run -t "UT-01.08"`, `npm run test:integration -- -t "IT-01.01"`,
+`npx playwright test -g "UI-AUTH-04"`. The registry test above is now
+`IT-01.01 creates the built-in tools once and loads the agent's enabled tools`.
+Two digits are used on purpose: `IT-02.1` would also select `IT-02.10`, so the
+IDs are written `IT-02.01`, `IT-02.02`, ... Results of the 17 and 18 Oct runs:
+
+| Suite | Result | Contents |
+|---|---|---|
+| Unit (`npm test`) | ✅ **225/225** in 13 files | Groups UT-01 to UT-47. UT-46 and UT-47 are business-rule (decision-table) tests in `tests/unit/business-rules.test.ts`. |
+| Integration (`npm run test:integration`, PostgreSQL from `TEST_DATABASE_URL`) | ✅ **70/70** + 1 skipped | `tools.int.ts` IT-01 to IT-03 (14), `agent-engine.int.ts` IT-04 to IT-07 (12), `tool-admin.int.ts` IT-08 to IT-10 (11), `action-logs.int.ts` IT-11 (6), `ticket-workflow.int.ts` IT-12 (3), `business-rules.int.ts` IT-14 to IT-17 (24): 14 + 12 + 11 + 6 + 3 + 24 = 70. Skipped: the opt-in real-model test IT-13.01 (`real-model.int.ts`). |
+| Browser functional (`npm run test:ui`, Playwright) | ✅ **65/65** (61 first time, 4 on the automatic retry) | `tests/ui/`, UI-AUTH-01 to UI-LED-04. |
+| HTTP end-to-end (`scripts/e2e/e2e-all.mjs`) | ✅ **131/131** | API-01 to API-08; API-09 is `e2e-m2.mjs` (16/16). |
 
 ### 3.2 Earlier end-to-end runs (real dev server and a real AI model)
 

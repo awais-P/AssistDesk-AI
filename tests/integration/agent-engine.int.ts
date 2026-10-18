@@ -111,7 +111,7 @@ afterAll(async () => {
 });
 
 describe("IT-04 multi-step reasoning with confirmation - FE-2", () => {
-  it("checks availability, asks to confirm the booking, then books on 'yes'", async () => {
+  it("IT-04.01 checks availability, asks to confirm the booking, then books on 'yes'", async () => {
     const sessionId = await newSession();
     const model = scripted("scripted/planner", (messages) => {
       const results = toolResults(messages);
@@ -171,7 +171,7 @@ describe("IT-04 multi-step reasoning with confirmation - FE-2", () => {
     expect((await prisma.toolExecution.findUniqueOrThrow({ where: { id: executions[1].id } })).runId).toBe(second.runId);
   });
 
-  it("answers deterministically after a confirmation when no model is reachable", async () => {
+  it("IT-04.02 answers deterministically after a confirmation when no model is reachable", async () => {
     const sessionId = await newSession();
     const plan = scripted("scripted/planner", (messages) => {
       const results = toolResults(messages);
@@ -196,7 +196,7 @@ describe("IT-05 customer consent given to the assistant's own question", () => {
       return new AIMessage(String(results[1].content.booked ? "Booked!" : "Please confirm."));
     });
 
-  it("a clear yes to the assistant's question books once, without asking again", async () => {
+  it("IT-05.01 a clear yes to the assistant's question books once, without asking again", async () => {
     const sessionId = await newSession();
     const before = await prisma.appointment.count({ where: { workspaceId } });
     const request = await input(sessionId, "Yes please, go ahead", [booker(2)]);
@@ -213,7 +213,7 @@ describe("IT-05 customer consent given to the assistant's own question", () => {
     expect(booking.reasoning).toContain(`confirmed by the customer's reply: "Yes please, go ahead"`);
   });
 
-  it("still asks when the customer didn't answer a question, or said something else", async () => {
+  it("IT-05.02 still asks when the customer didn't answer a question, or said something else", async () => {
     for (const [question, lastAssistant] of [
       ["Yes please", "Your order has shipped."],
       ["Book me in at 11", "Anything else I can help with?"],
@@ -229,7 +229,7 @@ describe("IT-05 customer consent given to the assistant's own question", () => {
 });
 
 describe("IT-06 resilience", () => {
-  it("falls back to the next model when one fails", async () => {
+  it("IT-06.01 falls back to the next model when one fails", async () => {
     const sessionId = await newSession();
     const result = await runAgentReply(await input(sessionId, "hi", [failing("primary/model"), scripted("backup/model", () => new AIMessage("Hello! How can I help?"))]));
     expect(result.reply).toBe("Hello! How can I help?");
@@ -237,7 +237,7 @@ describe("IT-06 resilience", () => {
     expect(result.trace.some((entry) => entry.type === "model_error" && entry.model === "primary/model")).toBe(true);
   });
 
-  it("answers from the tool result when the model fails after the tool call", async () => {
+  it("IT-06.02 answers from the tool result when the model fails after the tool call", async () => {
     const sessionId = await newSession();
     const ticket = await prisma.ticket.create({ data: { workspaceId, ticketNumber: 900001, subject: "Refund", status: "IN_PROGRESS", contactId } });
     let calls = 0;
@@ -257,7 +257,7 @@ describe("IT-06 resilience", () => {
     expect(trace.at(-1)).toMatchObject({ kind: "tool_results" });
   });
 
-  it("uses the knowledge-base answer when no model can reason", async () => {
+  it("IT-06.03 uses the knowledge-base answer when no model can reason", async () => {
     const sessionId = await newSession();
     const result = await runAgentReply(await input(sessionId, "What are your opening hours?", [failing("a"), failing("b")]));
     expect(result.reply.length).toBeGreaterThan(10);
@@ -265,7 +265,7 @@ describe("IT-06 resilience", () => {
     expect((await prisma.agentRun.findUniqueOrThrow({ where: { id: result.runId } })).status).toBe(result.status);
   });
 
-  it("stops at the step limit and makes the model answer without tools", async () => {
+  it("IT-06.04 stops at the step limit and makes the model answer without tools", async () => {
     const sessionId = await newSession();
     const calls: Array<{ tools: string[] }> = [];
     const looping = scripted("scripted/looper", (_messages, options) => (options.tools.length ? call("get_customer_info", {}) : new AIMessage("Here is what I found.")), calls);
@@ -276,7 +276,7 @@ describe("IT-06 resilience", () => {
     expect(calls.at(-1)?.tools).toEqual([]);
   });
 
-  it("answers every tool call, deferring the ones over the per-step limit", async () => {
+  it("IT-06.05 answers every tool call, deferring the ones over the per-step limit", async () => {
     const sessionId = await newSession();
     let secondCallMessages: BaseMessage[] = [];
     const greedy: ToolCallingModel = {
@@ -301,7 +301,7 @@ describe("IT-06 resilience", () => {
     expect(String(secondCallMessages.filter((message) => message instanceof ToolMessage).at(-1)?.content)).toContain("Not run");
   });
 
-  it("tells the model about unknown tools instead of crashing", async () => {
+  it("IT-06.06 tells the model about unknown tools instead of crashing", async () => {
     const sessionId = await newSession();
     const result = await runAgentReply(
       await input(sessionId, "do magic", [scripted("scripted/x", (messages) => (toolResults(messages).length ? new AIMessage("I can't do that.") : call("delete_everything", {})))]),
@@ -311,7 +311,7 @@ describe("IT-06 resilience", () => {
 });
 
 describe("IT-07 intent rules and failure handling - FE-4", () => {
-  it("an ALWAYS rule forces the first tool call", async () => {
+  it("IT-07.01 an ALWAYS rule forces the first tool call", async () => {
     const sessionId = await newSession();
     const calls: Array<{ tools: string[]; forcedTool?: string | null }> = [];
     const model = scripted("scripted/rules", (messages) => (toolResults(messages).length ? new AIMessage("Your order is on its way.") : call("track_order", { order_number: "1042" })), calls);
@@ -327,7 +327,7 @@ describe("IT-07 intent rules and failure handling - FE-4", () => {
     expect(parseRunTrace(run.trace)[0]).toEqual({ type: "intent", rules: [{ toolKey: "track_order", mode: "ALWAYS", phrases: ["where is my order", "track my order"] }], forcedTool: "track_order" });
   });
 
-  it("a failed action is explained and the chat is handed to a human", async () => {
+  it("IT-07.02 a failed action is explained and the chat is handed to a human", async () => {
     const sessionId = await newSession();
     const model = scripted("scripted/fail", (messages) => {
       const results = toolResults(messages);

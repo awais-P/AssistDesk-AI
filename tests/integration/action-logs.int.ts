@@ -102,13 +102,13 @@ describe("IT-11 action logs API", () => {
     signedIn.current = { user: { id: "u", role: "AGENT", workspaceId } };
   });
 
-  it("needs a signed-in user", async () => {
+  it("IT-11.01 needs a signed-in user", async () => {
     signedIn.current = null;
     expect((await get("")).status).toBe(401);
     expect((await detail.GET(new Request("http://localhost"), { params: Promise.resolve({ id: runIds.propose }) })).status).toBe(401);
   });
 
-  it("lists runs newest first with their actions and a summary", async () => {
+  it("IT-11.02 lists runs newest first with their actions and a summary", async () => {
     signedIn.current = { user: { id: "u", role: "AGENT", workspaceId } };
     const { body } = await get("");
     expect(body.total).toBe(4);
@@ -122,7 +122,7 @@ describe("IT-11 action logs API", () => {
     expect(body.options.tools.map((tool: { key: string }) => tool.key)).toEqual(["book_appointment", "check_availability", "track_order"]);
   });
 
-  it("filters and sorts runs - UI-4", async () => {
+  it("IT-11.03 filters and sorts runs - UI-4", async () => {
     expect((await get("status=FALLBACK")).body.rows.map((row: { id: string }) => row.id)).toEqual([runIds.failed]);
     expect((await get("source=PLAYGROUND")).body.total).toBe(1);
     expect((await get("tool=book_appointment")).body.rows.map((row: { id: string }) => row.id)).toEqual([runIds.confirm]);
@@ -135,7 +135,7 @@ describe("IT-11 action logs API", () => {
     expect((await get("page=2")).body.rows).toEqual([]);
   });
 
-  it("lists individual actions with trigger, source and status filters", async () => {
+  it("IT-11.04 lists individual actions with trigger, source and status filters", async () => {
     const all = await get("view=actions");
     expect(all.body.total).toBe(4);
     expect((await get("view=actions&trigger=TEST")).body.rows[0]).toMatchObject({ source: "TEST", runId: null });
@@ -145,7 +145,7 @@ describe("IT-11 action logs API", () => {
     expect((await get(`view=actions&session=${sessionId}`)).body.total).toBe(2);
   });
 
-  it("returns a run's chain of thought, including an action confirmed in a later run", async () => {
+  it("IT-11.05 returns a run's chain of thought, including an action confirmed in a later run", async () => {
     const response = await detail.GET(new Request("http://localhost"), { params: Promise.resolve({ id: runIds.propose }) });
     const { run } = await response.json();
     expect(run.trace).toHaveLength(2);
@@ -160,7 +160,7 @@ describe("IT-11 action logs API", () => {
     expect(confirm.run.executions.map((execution: { id: string }) => execution.id)).toEqual([executionIds.book]);
   });
 
-  it("keeps other workspaces' runs private", async () => {
+  it("IT-11.06 keeps other workspaces' runs private", async () => {
     expect((await detail.GET(new Request("http://localhost"), { params: Promise.resolve({ id: runIds.foreign }) })).status).toBe(404);
   });
 });

@@ -161,8 +161,8 @@ The test IDs in the final report map to the repository as follows:
 
 | ID family | Test layer | Location | Main coverage |
 |---|---|---|---|
-| `UT-01`–`UT-45` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, and tool logic |
-| `IT-01`–`IT-12` | Integration | `tests/integration/` | Tool registry and built-ins, HTTP tools, agent reasoning and fallbacks, intent rules, tool administration, appointments, action logs, and ticket workflows using PostgreSQL |
+| `UT-01`–`UT-47` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, tool logic, and business rules BR-4 and BR-7 (`business-rules.test.ts`) |
+| `IT-01`–`IT-17` | Integration | `tests/integration/` | Tool registry and built-ins, HTTP tools, agent reasoning and fallbacks, intent rules, tool administration, appointments, action logs, ticket workflows, the opt-in real-model test (`IT-13`), and business rules BR-1, BR-2, BR-3 and BR-5 (`business-rules.int.ts`) using PostgreSQL |
 | `UI-AUTH-*` | Browser functional | `tests/ui/auth.spec.ts` | Login, sign-up, validation, access protection, and rate limits |
 | `UI-SETUP-*` | Browser functional | `tests/ui/setup-wizard.spec.ts` | Initial inbox, agent, knowledge, and chatbot setup |
 | `UI-TKT-*` | Browser functional | `tests/ui/tickets.spec.ts` | Ticket listing, search, filters, views, creation, bulk actions, and pagination |
@@ -178,6 +178,9 @@ The test IDs in the final report map to the repository as follows:
 | `UI-LED-*` | Browser functional | `tests/ui/leads.spec.ts` | Lead listing, filters, details, CSV export, and lead settings |
 | `API-01`–`API-08` | HTTP E2E | `scripts/e2e/e2e-all.mjs` | Authentication, assistant setup, knowledge base, tickets, widget sessions, leads, analytics, and dashboard pages |
 | `API-09` | HTTP E2E | `scripts/e2e/e2e-m2.mjs` | Module 2 agentic tools, confirmations, appointments, and action logs with a real model |
+
+Each test inside a group has its own ID, for example `UT-01.08` or
+`IT-02.08`; see "Running a test by its ID or name" below.
 
 The browser `UI-*` tests are the project’s functional tests. The `UT-*`,
 `IT-*`, and `API-*` suites provide lower-level, cross-module, and HTTP workflow
@@ -218,28 +221,44 @@ Run tests matching a name or phrase:
 npx vitest run -t "validation"
 ```
 
-### Running a test by its name
+### Running a test by its ID or name
 
-`-t` (Vitest) and `-g` (Playwright) treat the text as a pattern and run every
-test whose full name contains it. Test names in this project contain no
-brackets, so any Vitest test title can be copied from the code and pasted after
-`-t` as it is, for example:
+Every test has an ID at the start of its name:
 
-```powershell
-npx vitest run -t "rejects short passwords"
-npx vitest run -t "rejects a legacy hash used as the password - SEC-01"
-```
+| Kind | Group ID | Test ID | Example name in the code |
+|---|---|---|---|
+| Unit (Vitest) | `UT-01` | `UT-01.08` | `UT-01.08 rejects short passwords` |
+| Integration (Vitest) | `IT-02` | `IT-02.08` | `IT-02.08 'no' cancels a pending action` |
+| Browser (Playwright) | - | `UI-TKT-02` | `UI-TKT-02 an agent creates a ticket and finds it by search - FR-5.5, FR-5.2` |
 
-A group runs by its ID, for example `npx vitest run -t "UT-01"`.
-
-Playwright titles contain the linked requirements in square brackets, for
-example `UI-TKT-02 [FR-5.5, FR-5.2] an agent creates a ticket and finds it by
-search`. Square brackets have a special meaning in a pattern, so run Playwright
-tests by their ID instead of the full title:
+The number after the dot always has two digits, so `UT-01.01` never also
+selects `UT-01.10`. Run one test, or a whole group, with its ID:
 
 ```powershell
+npx vitest run -t "UT-01.08"
+npx vitest run -t "UT-01"
+npm run test:integration -- -t "IT-02.08"
+npm run test:integration -- -t "IT-02"
 npx playwright test -g "UI-TKT-02"
 ```
+
+`-t` (Vitest) and `-g` (Playwright) treat the text as a pattern and run every
+test whose full name contains it. No test name contains brackets or other
+pattern characters, so a full name copied from the code or from the final
+report also works, for example
+`npx vitest run -t "UT-01.08 rejects short passwords"`.
+
+The final report (Chapter 5 and Appendix C) uses the same IDs and names as the
+code. `npx vitest list` prints them all.
+
+The business-rule tests (decision tables, report section 5.3 and Appendix C)
+are in `tests/unit/business-rules.test.ts` (UT-46 BR-4 allowed widget domains,
+UT-47 BR-7 lead form) and `tests/integration/business-rules.int.ts` (IT-14 BR-1
+when the AI answers in the widget, IT-15 BR-2 account registration, IT-16 BR-3
+inbox email address, IT-17 BR-5 confidence threshold). Each test is one column
+R1, R2, ... of its decision table, for example
+`npm run test:integration -- -t "IT-14.06"` runs "R6 in Operator offline mode
+the AI waits when a team member is online".
 
 Running by file and line also always works:
 
@@ -248,8 +267,8 @@ npx vitest run tests/unit/auth-and-rbac.test.ts:56
 npx playwright test tests/ui/tickets.spec.ts:15
 ```
 
-The row names in the final report's Unit Testing tables (Chapter 5) are the
-exact Vitest test names, so they can be pasted after `-t` in the same way.
+The Test ID and Test Script columns of the final report's tables (Chapter 5)
+are the IDs and exact names from the code, so either can be pasted after `-t`.
 
 When passing Vitest arguments through the `npm test` script, include `--`
 before the Vitest options. Without it, npm may treat the filter as a script
@@ -268,13 +287,13 @@ Vitest directly:
 npx vitest run -t "UT-07"
 ```
 
-To run a single test, copy its complete test title from the test file (or from
-`npx vitest list`), for example three of the UT-07 tests:
+To run a single test, use its ID (or its complete name from the test file or
+from `npx vitest list`), for example three of the UT-07 tests:
 
 ```powershell
-npm run test -- -t "defaults response length to balanced" --reporter=verbose
-npm run test -- -t "uses the fallback for invalid numeric settings" --reporter=verbose
-npm run test -- -t "starts model fallback with the chosen model" --reporter=verbose
+npm run test -- -t "UT-07.03" --reporter=verbose
+npm run test -- -t "UT-07.06" --reporter=verbose
+npm run test -- -t "UT-07.07" --reporter=verbose
 ```
 
 The configured input data is the literal value passed to each function in
@@ -327,12 +346,11 @@ npx vitest run `
   tests/integration/example.int.ts
 ```
 
-Run one integration test by name:
+Run one integration test by its ID (or its name):
 
 ```powershell
-npx vitest run `
-  --config vitest.integration.config.mts `
-  -t "filters and sorts runs - UI-4"
+npm run test:integration -- -t "IT-11.03"
+npm run test:integration -- -t "IT-11.03 filters and sorts runs - UI-4"
 ```
 
 Integration tests need `TEST_DATABASE_URL` set to a throwaway database with
@@ -577,11 +595,11 @@ Search test declarations from PowerShell:
 Select-String -Path "tests\**\*.ts" -Pattern 'test\(|it\(|describe\('
 ```
 
-The Playwright test title normally contains the test ID, the related SRS
-requirement, and a description. For example:
+The Playwright test title contains the test ID, a description and the related
+SRS requirements. For example:
 
 ```ts
-test("UI-TKT-01 [FR-5.1] tickets are listed", async ({ page }) => {
+test("UI-TKT-01 tickets are listed - FR-5.1", async ({ page }) => {
   // Test actions and assertions
 });
 ```

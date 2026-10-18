@@ -4,7 +4,7 @@ import { testClientIp, waitForHydration } from "./helpers";
 // A brand-new account goes through the onboarding wizard.
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test("UI-SETUP-01 [FR-2.1–2.5, FR-3.1–3.6, FR-4.1–4.6] onboarding wizard creates inbox, agent, knowledge and chatbot", async ({ page }) => {
+test("UI-SETUP-01 onboarding wizard creates inbox, agent, knowledge and chatbot - FR-2.1–2.5, FR-3.1–3.6, FR-4.1–4.6", async ({ page }) => {
   const stamp = Date.now().toString(36);
   const response = await page.request.post("/api/auth/signup", {
     headers: { "x-forwarded-for": testClientIp() },
@@ -52,7 +52,7 @@ test("UI-SETUP-01 [FR-2.1–2.5, FR-3.1–3.6, FR-4.1–4.6] onboarding wizard c
   await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
 });
 
-test("UI-SETUP-02 [FR-2.4] the inbox step requires a name", async ({ page }) => {
+test("UI-SETUP-02 the inbox step requires a name - FR-2.4", async ({ page }) => {
   const response = await page.request.post("/api/auth/signup", {
     headers: { "x-forwarded-for": testClientIp() },
     data: { fullName: "Wizard Tester", email: `ui-wizard-empty-${Date.now()}@example.com`, password: "UiTest-Pass-2026" },

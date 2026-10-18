@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { openDashboardPage } from "./helpers";
 
 test.describe("Inbox configuration (FR-15)", () => {
-  test("UI-INB-01 [FR-15.1–15.4, FR-15.6, FR-15.7] inbox fields and sender options", async ({ page }) => {
+  test("UI-INB-01 inbox fields and sender options - FR-15.1–15.4, FR-15.6, FR-15.7", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/inboxes", "Inboxes");
     await page.getByRole("link", { name: "Edit" }).first().click();
     await expect(page.getByRole("heading", { level: 1, name: "Inbox Configuration" })).toBeVisible();
@@ -13,7 +13,7 @@ test.describe("Inbox configuration (FR-15)", () => {
     await expect(page.locator("#sender-mode-custom")).toBeVisible();
   });
 
-  test("UI-INB-02 [FR-15.8] a renamed inbox is saved", async ({ page }) => {
+  test("UI-INB-02 a renamed inbox is saved - FR-15.8", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/inboxes", "Inboxes");
     await page.getByRole("link", { name: "Edit" }).first().click();
     const name = page.getByLabel("Inbox Name");
@@ -27,7 +27,7 @@ test.describe("Inbox configuration (FR-15)", () => {
     await expect(page.getByRole("status").filter({ hasText: /updated successfully/i })).toBeVisible();
   });
 
-  test("UI-INB-03 [FR-15.2] the inbox name cannot be blank", async ({ page }) => {
+  test("UI-INB-03 the inbox name cannot be blank - FR-15.2", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/inboxes", "Inboxes");
     await page.getByRole("link", { name: "Edit" }).first().click();
     await page.getByLabel("Inbox Name").fill("");
@@ -37,7 +37,7 @@ test.describe("Inbox configuration (FR-15)", () => {
 });
 
 test.describe("Omnichannel integrations (FR-16)", () => {
-  test("UI-INT-01 [FR-16.1–16.5] channels are listed with connect actions", async ({ page }) => {
+  test("UI-INT-01 channels are listed with connect actions - FR-16.1–16.5", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/integrations", "Integrations");
     for (const action of ["Connect Email", "Connect Slack", "Connect WhatsApp"]) {
       await expect(page.getByRole("button", { name: action })).toBeVisible();
@@ -46,7 +46,7 @@ test.describe("Omnichannel integrations (FR-16)", () => {
     await expect(page.getByRole("switch", { name: /Enable Primary Email Integration/ })).toBeVisible();
   });
 
-  test("UI-INT-02 [FR-16.7] an integration can be switched off and on", async ({ page }) => {
+  test("UI-INT-02 an integration can be switched off and on - FR-16.7", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/integrations", "Integrations");
     const toggle = page.getByRole("switch", { name: /Enable Primary Email Integration/ });
     const initial = await toggle.getAttribute("aria-checked");

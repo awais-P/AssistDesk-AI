@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { acceptNextConfirm, openDashboardPage, unique } from "./helpers";
 
 test.describe("Chatbots (FR-12, FR-13, FR-14)", () => {
-  test("UI-BOT-01 [FR-12.1, FR-12.3, FR-12.6] chatbot cards with edit, delete and copy-embed actions", async ({ page, context }) => {
+  test("UI-BOT-01 chatbot cards with edit, delete and copy-embed actions - FR-12.1, FR-12.3, FR-12.6", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await openDashboardPage(page, "/dashboard/chatbots", "Chatbots");
     await expect(page.getByText("Website Support Bot").first()).toBeVisible();
@@ -14,7 +14,7 @@ test.describe("Chatbots (FR-12, FR-13, FR-14)", () => {
     expect(clipboard).toContain("assistdesk-widget.js");
   });
 
-  test("UI-BOT-02 [FR-12.2, FR-4.2–4.4, FR-12.5] create a chatbot, then delete it", async ({ page }) => {
+  test("UI-BOT-02 create a chatbot, then delete it - FR-12.2, FR-4.2–4.4, FR-12.5", async ({ page }) => {
     const name = unique("UI Bot");
     await openDashboardPage(page, "/dashboard/chatbots", "Chatbots");
     await page.getByRole("button", { name: "+ New Chatbot" }).click();
@@ -35,7 +35,7 @@ test.describe("Chatbots (FR-12, FR-13, FR-14)", () => {
     await expect(page.getByText(name)).toHaveCount(0);
   });
 
-  test("UI-BOT-03 [FR-13.1–13.7, FR-14.1–14.8] configuration sections are present", async ({ page }) => {
+  test("UI-BOT-03 configuration sections are present - FR-13.1–13.7, FR-14.1–14.8", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/chatbots", "Chatbots");
     await page.getByRole("link", { name: "Edit chatbot" }).first().click();
     await expect(page.getByRole("button", { name: "Save Changes" })).toBeVisible();
@@ -49,7 +49,7 @@ test.describe("Chatbots (FR-12, FR-13, FR-14)", () => {
     await expect(page.locator("#chatbot-max-ai-messages")).toBeVisible();
   });
 
-  test("UI-BOT-04 [FR-13.9, FR-14.7] saving a change persists after reload", async ({ page }) => {
+  test("UI-BOT-04 saving a change persists after reload - FR-13.9, FR-14.7", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/chatbots", "Chatbots");
     await page.getByRole("link", { name: "Edit chatbot" }).first().click();
     const prompt = page.locator("#chatbot-additional-prompt");
@@ -67,7 +67,7 @@ test.describe("Chatbots (FR-12, FR-13, FR-14)", () => {
     await expect(page.getByText(/saved/i).first()).toBeVisible();
   });
 
-  test("UI-BOT-05 [FR-13.3] the chatbot name is mandatory", async ({ page }) => {
+  test("UI-BOT-05 the chatbot name is mandatory - FR-13.3", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/chatbots", "Chatbots");
     await page.getByRole("link", { name: "Edit chatbot" }).first().click();
     await page.locator("#chatbot-name").fill("");

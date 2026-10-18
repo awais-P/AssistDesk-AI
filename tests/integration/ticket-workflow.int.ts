@@ -56,7 +56,7 @@ afterAll(async () => {
 });
 
 describe("IT-12 dashboard tickets: AI reply in the background - UI-45", () => {
-  it("returns before the AI reply, then replies and moves the ticket to In Progress", async () => {
+  it("IT-12.01 returns before the AI reply, then replies and moves the ticket to In Progress", async () => {
     const ticketId = await newTicket("Kettle stopped heating after two weeks");
     const result = await processIncomingTicket(ticketId, { deferAiReply: true });
 
@@ -69,7 +69,7 @@ describe("IT-12 dashboard tickets: AI reply in the background - UI-45", () => {
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).status).toBe("IN_PROGRESS");
   });
 
-  it("keeps a status that an agent set while the reply was being written", async () => {
+  it("IT-12.02 keeps a status that an agent set while the reply was being written", async () => {
     const ticketId = await newTicket("Question about my invoice");
     await processIncomingTicket(ticketId, { deferAiReply: true });
     await prisma.ticket.update({ where: { id: ticketId }, data: { status: "RESOLVED" } });
@@ -79,7 +79,7 @@ describe("IT-12 dashboard tickets: AI reply in the background - UI-45", () => {
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).status).toBe("RESOLVED");
   });
 
-  it("still replies inside the request when not deferred - email tickets", async () => {
+  it("IT-12.03 still replies inside the request when not deferred - email tickets", async () => {
     const ticketId = await newTicket("Delivery delayed to Multan");
     await processIncomingTicket(ticketId);
 

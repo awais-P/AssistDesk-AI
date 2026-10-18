@@ -12,29 +12,29 @@ describe("UT-10 Slack request signing", () => {
     .update(`v0:${timestamp}:${rawBody}`)
     .digest("hex")}`;
 
-  it("accepts a correctly signed, fresh request", () => {
+  it("UT-10.01 accepts a correctly signed, fresh request", () => {
     expect(verifySlackSignature({ signingSecret, timestamp, rawBody, signature, now })).toBe(true);
   });
 
-  it("rejects modified request bodies", () => {
+  it("UT-10.02 rejects modified request bodies", () => {
     expect(
       verifySlackSignature({ signingSecret, timestamp, rawBody: `${rawBody} `, signature, now }),
     ).toBe(false);
   });
 
-  it("rejects signatures from another secret", () => {
+  it("UT-10.03 rejects signatures from another secret", () => {
     expect(
       verifySlackSignature({ signingSecret: "other", timestamp, rawBody, signature, now }),
     ).toBe(false);
   });
 
-  it("rejects replayed requests", () => {
+  it("UT-10.04 rejects replayed requests", () => {
     expect(
       verifySlackSignature({ signingSecret, timestamp, rawBody, signature, now: now + 10 * 60 * 1000 }),
     ).toBe(false);
   });
 
-  it("rejects requests without a timestamp", () => {
+  it("UT-10.05 rejects requests without a timestamp", () => {
     expect(
       verifySlackSignature({ signingSecret, timestamp: null, rawBody, signature, now }),
     ).toBe(false);
@@ -42,7 +42,7 @@ describe("UT-10 Slack request signing", () => {
 });
 
 describe("UT-11 Slack event parsing", () => {
-  it("parses direct messages", () => {
+  it("UT-11.01 parses direct messages", () => {
     expect(
       parseSlackCustomerMessage({
         type: "message",
@@ -55,7 +55,7 @@ describe("UT-11 Slack event parsing", () => {
     ).toMatchObject({ conversationKey: "D1", threadTs: null, text: "Hi" });
   });
 
-  it("parses mentions and removes the bot mention", () => {
+  it("UT-11.02 parses mentions and removes the bot mention", () => {
     expect(
       parseSlackCustomerMessage({
         type: "app_mention",
@@ -67,7 +67,7 @@ describe("UT-11 Slack event parsing", () => {
     ).toMatchObject({ conversationKey: "C1:2.2", threadTs: "2.2", text: "where is my order?" });
   });
 
-  it("ignores messages sent by bots", () => {
+  it("UT-11.03 ignores messages sent by bots", () => {
     expect(
       parseSlackCustomerMessage({
         type: "message",
@@ -81,7 +81,7 @@ describe("UT-11 Slack event parsing", () => {
     ).toBeNull();
   });
 
-  it("ignores edited messages", () => {
+  it("UT-11.04 ignores edited messages", () => {
     expect(
       parseSlackCustomerMessage({
         type: "message",
@@ -95,7 +95,7 @@ describe("UT-11 Slack event parsing", () => {
     ).toBeNull();
   });
 
-  it("ignores messages from the configured bot user", () => {
+  it("UT-11.05 ignores messages from the configured bot user", () => {
     expect(
       parseSlackCustomerMessage(
         { type: "message", channel_type: "im", channel: "D1", user: "UBOT", ts: "1", text: "x" },
@@ -109,23 +109,23 @@ describe("UT-12 WhatsApp webhooks", () => {
   const appSecret = "whatsapp-app-secret";
   const rawBody = '{"object":"whatsapp_business_account"}';
 
-  it("accepts a valid X-Hub-Signature-256", () => {
+  it("UT-12.01 accepts a valid X-Hub-Signature-256", () => {
     const signature = `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
 
     expect(verifyWhatsAppSignature({ appSecret, rawBody, signature })).toBe(true);
   });
 
-  it("rejects a modified WhatsApp request body", () => {
+  it("UT-12.02 rejects a modified WhatsApp request body", () => {
     const signature = `sha256=${createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
 
     expect(verifyWhatsAppSignature({ appSecret, rawBody: `${rawBody}x`, signature })).toBe(false);
   });
 
-  it("rejects a missing WhatsApp signature", () => {
+  it("UT-12.03 rejects a missing WhatsApp signature", () => {
     expect(verifyWhatsAppSignature({ appSecret, rawBody, signature: null })).toBe(false);
   });
 
-  it("extracts text messages for the configured number only", () => {
+  it("UT-12.04 extracts text messages for the configured number only", () => {
     const payload = {
       entry: [
         {

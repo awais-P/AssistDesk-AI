@@ -2,12 +2,12 @@ import { expect, test } from "@playwright/test";
 import { acceptNextConfirm, openDashboardPage, unique } from "./helpers";
 
 test.describe("Prompts (FR-9)", () => {
-  test("UI-PRM-01 [FR-9.1, FR-9.4] prompt cards are listed", async ({ page }) => {
+  test("UI-PRM-01 prompt cards are listed - FR-9.1, FR-9.4", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/prompts", "Prompts");
     await expect(page.getByRole("heading", { name: "Polite resolution reply" })).toBeVisible();
   });
 
-  test("UI-PRM-02 [FR-9.3, FR-9.6, FR-9.2, FR-9.5] create a prompt with variables, search it and delete it", async ({ page }) => {
+  test("UI-PRM-02 create a prompt with variables, search it and delete it - FR-9.3, FR-9.6, FR-9.2, FR-9.5", async ({ page }) => {
     const name = unique("UI prompt");
     await openDashboardPage(page, "/dashboard/prompts", "Prompts");
     await page.getByRole("button", { name: "+ New Prompt" }).click();
@@ -27,7 +27,7 @@ test.describe("Prompts (FR-9)", () => {
     await expect(page.getByRole("heading", { name })).toHaveCount(0);
   });
 
-  test("UI-PRM-03 [FR-9.3] name and body are mandatory", async ({ page }) => {
+  test("UI-PRM-03 name and body are mandatory - FR-9.3", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/prompts", "Prompts");
     await page.getByRole("button", { name: "+ New Prompt" }).click();
     await page.getByRole("button", { name: "Create Prompt" }).click();

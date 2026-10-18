@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { openDashboardPage, unique, waitForHydration } from "./helpers";
 
 test.describe("Tickets (FR-5)", () => {
-  test("UI-TKT-01 [FR-5.1, FR-5.6] tickets page lists tickets from the sidebar", async ({ page }) => {
+  test("UI-TKT-01 tickets page lists tickets from the sidebar - FR-5.1, FR-5.6", async ({ page }) => {
     await page.goto("/dashboard");
     await waitForHydration(page);
     await page.getByRole("link", { name: "Tickets", exact: true }).click();
@@ -12,7 +12,7 @@ test.describe("Tickets (FR-5)", () => {
     await expect(page.getByRole("button", { name: /^Actions for ticket #/ }).first()).toBeVisible();
   });
 
-  test("UI-TKT-02 [FR-5.5, FR-5.2] an agent creates a ticket and finds it by search", async ({ page }) => {
+  test("UI-TKT-02 an agent creates a ticket and finds it by search - FR-5.5, FR-5.2", async ({ page }) => {
     const subject = unique("UI test ticket");
     await openDashboardPage(page, "/dashboard/tickets", "Tickets");
     await page.getByRole("button", { name: "Create Ticket" }).first().click();
@@ -31,13 +31,13 @@ test.describe("Tickets (FR-5)", () => {
     await expect(page.getByRole("checkbox", { name: /^Select ticket #/ })).toHaveCount(1);
   });
 
-  test("UI-TKT-03 [FR-5.2] searching for an unknown term shows no tickets", async ({ page }) => {
+  test("UI-TKT-03 searching for an unknown term shows no tickets - FR-5.2", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/tickets", "Tickets");
     await page.getByLabel("Search tickets").fill("zz-no-such-ticket-zz");
     await expect(page.getByRole("checkbox", { name: /^Select ticket #/ })).toHaveCount(0);
   });
 
-  test("UI-TKT-04 [FR-5.3] filter chips narrow the list by priority", async ({ page }) => {
+  test("UI-TKT-04 filter chips narrow the list by priority - FR-5.3", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/tickets", "Tickets");
     const before = await page.getByRole("checkbox", { name: /^Select ticket #/ }).count();
     await page.getByRole("button", { name: /^Priority/ }).click();
@@ -49,7 +49,7 @@ test.describe("Tickets (FR-5)", () => {
     expect(after).toBeLessThan(before);
   });
 
-  test("UI-TKT-05 [FR-5.4] the view switches between grid and list", async ({ page }) => {
+  test("UI-TKT-05 the view switches between grid and list - FR-5.4", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/tickets", "Tickets");
     const grid = page.getByRole("button", { name: /^grid$/i });
     const list = page.getByRole("button", { name: /^list$/i });
@@ -60,7 +60,7 @@ test.describe("Tickets (FR-5)", () => {
     await expect(list).toHaveAttribute("aria-pressed", "true");
   });
 
-  test("UI-TKT-06 [FR-5.7] selecting tickets shows the bulk-action bar", async ({ page }) => {
+  test("UI-TKT-06 selecting tickets shows the bulk-action bar - FR-5.7", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/tickets", "Tickets");
     await page.getByRole("checkbox", { name: /^Select ticket #/ }).nth(0).check();
     await page.getByRole("checkbox", { name: /^Select ticket #/ }).nth(1).check();
@@ -73,7 +73,7 @@ test.describe("Tickets (FR-5)", () => {
     await expect(bulk).toContainText(`${visible} selected`);
   });
 
-  test("UI-TKT-07 [FR-5.8] each ticket has an actions menu", async ({ page }) => {
+  test("UI-TKT-07 each ticket has an actions menu - FR-5.8", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/tickets", "Tickets");
     await page.getByRole("button", { name: /^Actions for ticket #/ }).first().click();
     for (const action of ["Copy ticket ID", "View details", "Assign to me", "Close this ticket", "Delete Ticket"]) {
@@ -81,7 +81,7 @@ test.describe("Tickets (FR-5)", () => {
     }
   });
 
-  test("UI-TKT-08 [FR-5.9] rows per page and page navigation", async ({ page }) => {
+  test("UI-TKT-08 rows per page and page navigation - FR-5.9", async ({ page }) => {
     await openDashboardPage(page, "/dashboard/tickets", "Tickets");
     // The page size is part of the URL, so the list re-renders after the change.
     await page.getByLabel("Rows per page").selectOption("20");

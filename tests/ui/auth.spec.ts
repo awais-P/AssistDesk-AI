@@ -5,7 +5,7 @@ import { ADMIN_EMAIL, adminPassword, testClientIp, waitForHydration } from "./he
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe("Authentication (FR-1)", () => {
-  test("UI-AUTH-01 [FR-1.5] login and sign-up screens link to each other", async ({ page }) => {
+  test("UI-AUTH-01 login and sign-up screens link to each other - FR-1.5", async ({ page }) => {
     await page.goto("/login");
     await waitForHydration(page);
     await expect(page.getByRole("heading", { name: "Log in to AssistDesk" })).toBeVisible();
@@ -20,7 +20,7 @@ test.describe("Authentication (FR-1)", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test("UI-AUTH-02 [FR-1.3] wrong password is refused with a clear message", async ({ page }) => {
+  test("UI-AUTH-02 wrong password is refused with a clear message - FR-1.3", async ({ page }) => {
     await page.goto("/login");
     await waitForHydration(page);
     await page.getByLabel("Username or Email").fill(ADMIN_EMAIL);
@@ -30,7 +30,7 @@ test.describe("Authentication (FR-1)", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test("UI-AUTH-03 [FR-1.2, FR-1.3] sign-up validates email, password rules and confirmation", async ({ page }) => {
+  test("UI-AUTH-03 sign-up validates email, password rules and confirmation - FR-1.2, FR-1.3", async ({ page }) => {
     await page.goto("/signup");
     await waitForHydration(page);
     await page.getByLabel("Full Name").fill("Test User");
@@ -46,7 +46,7 @@ test.describe("Authentication (FR-1)", () => {
     await expect(page).toHaveURL(/\/signup$/);
   });
 
-  test("UI-AUTH-04 [FR-1.1–1.3] a new account is created and taken to setup", async ({ page }) => {
+  test("UI-AUTH-04 a new account is created and taken to setup - FR-1.1–1.3", async ({ page }) => {
     const email = `ui-signup-${Date.now()}@example.com`;
     await page.setExtraHTTPHeaders({ "x-forwarded-for": testClientIp() });
     await page.goto("/signup");
@@ -61,7 +61,7 @@ test.describe("Authentication (FR-1)", () => {
     await expect(page.getByRole("heading", { name: "Welcome to AssistDesk AI" })).toBeVisible();
   });
 
-  test("UI-AUTH-07 [BR-1] a sixth sign-up from one network within an hour is refused", async ({ page }) => {
+  test("UI-AUTH-07 a sixth sign-up from one network within an hour is refused - BR-1", async ({ page }) => {
     const ip = testClientIp().replace("198.51.100.", "203.0.113.");
     await page.setExtraHTTPHeaders({ "x-forwarded-for": ip });
     const stamp = Date.now();
@@ -86,12 +86,12 @@ test.describe("Authentication (FR-1)", () => {
     await expect(page).toHaveURL(/\/signup$/);
   });
 
-  test("UI-AUTH-05 [SEC] signed-out visitors are sent to the login page", async ({ page }) => {
+  test("UI-AUTH-05 signed-out visitors are sent to the login page - SEC", async ({ page }) => {
     await page.goto("/dashboard/tickets");
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test("UI-AUTH-06 [FR-1.3] the admin signs in and reaches the dashboard", async ({ page }) => {
+  test("UI-AUTH-06 the admin signs in and reaches the dashboard - FR-1.3", async ({ page }) => {
     await page.goto("/login");
     await waitForHydration(page);
     await page.getByLabel("Username or Email").fill(ADMIN_EMAIL);

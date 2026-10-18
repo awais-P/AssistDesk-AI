@@ -11,23 +11,23 @@ import { CHUNK_TARGET_CHARS, chunkDocument, chunkEmbeddingText } from "@/src/lib
 import { calibrateSemanticScore } from "@/src/lib/knowledge-indexing";
 
 describe("UT-16 search tokenizer", () => {
-  it("drops English stop words - AI-01", () => {
+  it("UT-16.01 drops English stop words - AI-01", () => {
     expect(tokenizeForSearch("What is the refund policy?")).toEqual(["refund", "policy"]);
   });
 
-  it("keeps non-English words - AI-01", () => {
+  it("UT-16.02 keeps non-English words - AI-01", () => {
     expect(tokenizeForSearch("واپسی کی پالیسی کیا ہے")).toEqual(
       expect.arrayContaining(["واپسی", "پالیسی"]),
     );
   });
 
-  it("preserves accented words - AI-01", () => {
+  it("UT-16.03 preserves accented words - AI-01", () => {
     expect(tokenizeForSearch("Café crème brûlée")).toEqual(["café", "crème", "brûlée"]);
   });
 });
 
 describe("UT-17 lexical fallback embeddings", () => {
-  it("scores related text higher than unrelated text", () => {
+  it("UT-17.01 scores related text higher than unrelated text", () => {
     const question = lexicalEmbedding("refund policy for shoes");
     const related = lexicalEmbedding("Our refund policy lets you return shoes within 30 days");
     const unrelated = lexicalEmbedding("Support hours are nine to six on weekdays");
@@ -35,15 +35,15 @@ describe("UT-17 lexical fallback embeddings", () => {
     expect(cosineSimilarity(question, related)).toBeGreaterThan(cosineSimilarity(question, unrelated));
   });
 
-  it("recognises the lexical embedding model", () => {
+  it("UT-17.02 recognises the lexical embedding model", () => {
     expect(isSemanticModel(LEXICAL_EMBEDDING_MODEL)).toBe(false);
   });
 
-  it("recognises a managed semantic embedding model", () => {
+  it("UT-17.03 recognises a managed semantic embedding model", () => {
     expect(isSemanticModel("openrouter:openai/text-embedding-3-small")).toBe(true);
   });
 
-  it("uses a semantic model whenever a managed key is configured", () => {
+  it("UT-17.04 uses a semantic model whenever a managed key is configured", () => {
     const previous = process.env.ASSISTDESK_DEFAULT_OPENROUTER_API_KEY;
     process.env.ASSISTDESK_DEFAULT_OPENROUTER_API_KEY = "test";
     expect(getConfiguredEmbeddingModel()).toBe("openrouter:openai/text-embedding-3-small");
@@ -62,7 +62,7 @@ describe("UT-18 chunking", () => {
     "Standard delivery inside Pakistan takes 3 to 5 days. Orders over 5000 PKR ship free. ".repeat(8),
   ].join("\n");
 
-  it("splits long documents into bounded, overlapping chunks with headings", () => {
+  it("UT-18.01 splits long documents into bounded, overlapping chunks with headings", () => {
     const chunks = chunkDocument(document);
 
     expect(chunks.length).toBeGreaterThan(1);
@@ -72,7 +72,7 @@ describe("UT-18 chunking", () => {
     expect(chunkEmbeddingText(chunks[0], "Store FAQ")).toMatch(/^Store FAQ\nRefund Policy\n/);
   });
 
-  it("starts a new chunk at every heading and labels it correctly", () => {
+  it("UT-18.02 starts a new chunk at every heading and labels it correctly", () => {
     const chunks = chunkDocument(
       "Refund Policy\n\nReturn unworn shoes within 30 days.\n\nShipping\n\nDelivery takes 3 to 5 days.",
     );
@@ -83,7 +83,7 @@ describe("UT-18 chunking", () => {
     ]);
   });
 
-  it("keeps short documents as one chunk and ignores empty input", () => {
+  it("UT-18.03 keeps short documents as one chunk and ignores empty input", () => {
     expect(chunkDocument("Support hours are 9am to 6pm.")).toEqual([
       { content: "Support hours are 9am to 6pm.", heading: null },
     ]);
@@ -92,7 +92,7 @@ describe("UT-18 chunking", () => {
 });
 
 describe("UT-19 semantic score calibration", () => {
-  it("maps raw cosine similarity onto a 0-1 relevance scale", () => {
+  it("UT-19.01 maps raw cosine similarity onto a 0-1 relevance scale", () => {
     expect(calibrateSemanticScore(0.1)).toBe(0);
     expect(calibrateSemanticScore(0.3)).toBeCloseTo(0.5, 5);
     expect(calibrateSemanticScore(0.45)).toBeCloseTo(1, 5);

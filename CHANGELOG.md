@@ -18,6 +18,71 @@ Entry template:
 
 ---
 
+## 2026-10-18 — An ID for every test; business-rule tests from the SRS
+**Module:** all (testing)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:** every file in `tests/unit/`, `tests/integration/` and `tests/ui/`; `tests/unit/business-rules.test.ts` (new), `tests/integration/business-rules.int.ts` (new), `TESTING_INSTRUCTIONS.md`, `tests/ui/README.md`, `VERIFICATION_REPORT.md`
+
+**Added:**
+- **Per-test IDs.**
+  - Every Vitest test name now starts with its own ID, `<group>.<two-digit number>`, for example `UT-01.08 rejects short passwords` or `IT-02.08 'no' cancels a pending action`.
+  - One test runs with `npx vitest run -t "UT-01.08"` or `npm run test:integration -- -t "IT-02.08"`.
+  - Two digits are used so that `IT-02.1` cannot also select `IT-02.10`.
+  - Before this, only groups had IDs, so `-t "IT-02"` was the smallest unit that could be run.
+- **Business-rule (decision-table) tests** built from the Business Rule column of the SRS. Each test is one column R1, R2, … of its decision table:
+
+  | Group | Rule | Requirements | Tests |
+  |---|---|---|---|
+  | IT-14 | BR-1, when the AI answers in the widget | FR-14.2, 14.4–14.6, 14.8 | 9 |
+  | IT-15 | BR-2, account registration | FR-1.1–1.3 | 6 |
+  | IT-16 | BR-3, inbox email address | FR-2.1–2.3 | 6 |
+  | UT-46 | BR-4, allowed widget domains | FR-4.3, FR-13.4 | 5 |
+  | IT-17 | BR-5, confidence threshold | FR-8.5 | 3 |
+  | UT-47 | BR-7, when the lead form is shown | Module 8 FE-1 | 8 |
+
+  - The integration groups call the real route handlers and functions against the test database. Only the session lookup is mocked.
+
+**Fixed (UI tests):**
+- **UI-WID-06 failed both attempts when the UI suite was run twice within an hour.** There were two causes, both in the tests:
+  - **Shared client address.** The server allows 10 new widget conversations per client address per hour, and every widget test came from localhost. The retry's message was refused with 429, but the test did not notice, because the widget shows a message before the server accepts it.
+  - **Reply sent too early.** The test sent the team reply while the visitor's first message was still waiting for a slow AI answer. Until that answer returns, the widget has no session, so it is not listening for live replies.
+  - **Dev-mode reload.** In a full run, the development server sometimes reloads the widget page after compiling a route. The reload carried no Referer, so the widget correctly refused to load ("This website is not allowed…").
+- **The fix**, in `tests/ui/helpers.ts`:
+  - `newVisitorContext()` gives each visitor its own `X-Forwarded-For`, on the message requests only, so the SSE stream stays untouched.
+  - It also sends the embedding site as Referer on every load of the widget page, so a reload keeps working. The widget then restores its conversation from local storage.
+  - `sendVisitorMessage()` now waits until the server accepts the message (HTTP 200) and shows the server's error if it does not.
+  - Used by UI-WID-02, UI-WID-03, UI-WID-06 and UI-ANL-02.
+
+**Updated:**
+- **Split unit tests.** Tests that checked several cases in one test were split into one test per case, with the same assertions:
+  - UT-04 unsafe URLs
+  - UT-06 domain matching and normalising
+  - UT-20 per-channel session windows
+  - UT-29 buying intent
+  - UT-31 lead score and temperature
+  - UT-39 yes and no
+- **Playwright test names.** The requirement references moved from `[FR-…]` at the start to ` - FR-…` at the end, for example `UI-WID-05 a website that is not allowed cannot load the widget - FR-4.3, FR-13.4`.
+  - Square brackets are pattern syntax for `-g`, so a full name copied from the report did not select its own test. Now it does.
+- **Final report Chapter 5 and Appendix C** (kept outside the repo):
+  - Every Test ID and test name is now taken from the code.
+  - A check confirms that each of the 217 IDs selects exactly one test and that all 114 printed names match the code.
+- **`VERIFICATION_REPORT.md`:**
+  - **10 Oct row:** 43/43 was correct for that date: 14 + 12 + 11 + 6. The 3 ticket-workflow tests were added on 17 Oct.
+  - **Wording:** `IT-01` is described as a group. The database is described as `TEST_DATABASE_URL`, with PGlite named as the 10 Oct server.
+  - **New:** an 18 Oct table with the current totals.
+- **Totals:** unit 225/225; integration 70/70 + 1 opt-in skipped.
+
+**Notes / follow-ups:**
+- **UI-TKT-02 can fail on its first attempt on the PGlite test database.** The error is `DriverAdapterError: portal "" does not exist`: the Tickets page runs several queries at once, and the PGlite socket server mixes them up. Real PostgreSQL (Docker, or a local server) does not do this. For the demo, use real PostgreSQL.
+- The business-rule tests found five differences from the SRS, recorded in the report's Appendix C:
+
+  | Requirement | Difference |
+  |---|---|
+  | FR-1.1 | Digits and symbols in the full name are not refused. |
+  | FR-2.2 | Dots are kept in an inbox prefix. |
+  | FR-2.3 | Continue is refused by the server rather than disabled. |
+  | FR-15.4 | Ticket prefix length and uniqueness are not checked. |
+  | FR-8.5 | Below the threshold the AI says it does not know instead of staying silent. |
+
 ## 2026-10-18 — One-step demo and test environment (`npm run demo`)
 **Module:** all (testing / demo)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:** `scripts/demo/start.mjs` (new), `.env.demo.example` (new), `package.json`, `playwright.config.ts`, `vitest.integration.config.mts`, `scripts/e2e/config.mjs`, `.gitignore`, `README.md`, `TESTING_INSTRUCTIONS.md`

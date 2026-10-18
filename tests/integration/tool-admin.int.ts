@@ -94,7 +94,7 @@ afterAll(async () => {
 });
 
 describe("IT-08 tools API", () => {
-  it("requires a signed-in Manager to list tools, and seeds the built-ins", async () => {
+  it("IT-08.01 requires a signed-in Manager to list tools, and seeds the built-ins", async () => {
     signedIn.current = null;
     expect((await tools.GET()).status).toBe(401);
 
@@ -110,7 +110,7 @@ describe("IT-08 tools API", () => {
     expect(body.templates.map((template: { id: string }) => template.id)).toEqual(["order_tracking", "invoice", "crm_lookup"]);
   });
 
-  it("only lets Admins create HTTP tools, and validates them", async () => {
+  it("IT-08.02 only lets Admins create HTTP tools, and validates them", async () => {
     as("MANAGER");
     expect((await tools.POST(json(trackOrder()))).status).toBe(403);
 
@@ -143,7 +143,7 @@ describe("IT-08 tools API", () => {
     expect((await tools.POST(json(trackOrder()))).status).toBe(409);
   });
 
-  it("keeps the stored secret when an edit sends the masked value back", async () => {
+  it("IT-08.03 keeps the stored secret when an edit sends the masked value back", async () => {
     await ensureTrackOrderTool();
     as("ADMIN");
     const response = await toolById.PATCH(
@@ -156,7 +156,7 @@ describe("IT-08 tools API", () => {
     expect(stored.description).toBe("Track where a customer's order is right now.");
   });
 
-  it("lets Managers toggle but not reconfigure HTTP tools", async () => {
+  it("IT-08.04 lets Managers toggle but not reconfigure HTTP tools", async () => {
     await ensureTrackOrderTool();
     as("MANAGER");
     expect((await toolById.PATCH(json({ httpUrl: "https://evil.example.com/{order_number}" }, "PATCH"), params(toolId))).status).toBe(403);
@@ -165,7 +165,7 @@ describe("IT-08 tools API", () => {
     await toolById.PATCH(json({ isEnabled: true }, "PATCH"), params(toolId));
   });
 
-  it("tests an HTTP tool against the API as an Admin and records the result", async () => {
+  it("IT-08.05 tests an HTTP tool against the API as an Admin and records the result", async () => {
     await ensureTrackOrderTool();
     as("MANAGER");
     expect((await toolTest.POST(json({ input: { order_number: "1042" } }), params(toolId))).status).toBe(403);
@@ -182,7 +182,7 @@ describe("IT-08 tools API", () => {
     expect((await missing.json()).ok).toBe(false);
   });
 
-  it("tests built-in writes as a simulation - Manager", async () => {
+  it("IT-08.06 tests built-in writes as a simulation - Manager", async () => {
     await ensureBuiltInTools(workspaceId);
     as("MANAGER");
     const createTicket = await prisma.agentTool.findFirstOrThrow({ where: { workspaceId, key: "create_ticket" } });
@@ -193,7 +193,7 @@ describe("IT-08 tools API", () => {
     expect(await prisma.ticket.count({ where: { workspaceId } })).toBe(0);
   });
 
-  it("edits built-in actions with role checks", async () => {
+  it("IT-08.07 edits built-in actions with role checks", async () => {
     await ensureBuiltInTools(workspaceId);
     const book = await prisma.agentTool.findFirstOrThrow({ where: { workspaceId, key: "book_appointment" } });
     const lookup = await prisma.agentTool.findFirstOrThrow({ where: { workspaceId, key: "lookup_ticket_status" } });
@@ -212,7 +212,7 @@ describe("IT-08 tools API", () => {
     expect((await toolById.DELETE(new Request("http://localhost"), params(book.id))).status).toBe(400);
   });
 
-  it("never touches another workspace's tools", async () => {
+  it("IT-08.08 never touches another workspace's tools", async () => {
     const foreign = await prisma.agentTool.create({ data: { workspaceId: otherWorkspaceId, key: "foreign_tool", name: "Foreign", description: "Belongs to another workspace.", type: "HTTP", parameters: [], httpMethod: "GET", httpUrl: "https://example.com" } });
     as("ADMIN");
     expect((await toolById.PATCH(json({ isEnabled: false }, "PATCH"), params(foreign.id))).status).toBe(404);
@@ -222,7 +222,7 @@ describe("IT-08 tools API", () => {
 });
 
 describe("IT-09 agent tool settings API", () => {
-  it("binds tools, validates intent rules and steps", async () => {
+  it("IT-09.01 binds tools, validates intent rules and steps", async () => {
     await ensureBuiltInTools(workspaceId);
     await ensureTrackOrderTool();
     as("AGENT");
@@ -271,7 +271,7 @@ describe("IT-09 agent tool settings API", () => {
 });
 
 describe("IT-10 appointments API", () => {
-  it("validates business hours - Admin only", async () => {
+  it("IT-10.01 validates business hours - Admin only", async () => {
     as("MANAGER");
     expect((await appointmentSettings.PUT(json({}, "PUT"))).status).toBe(403);
 
@@ -282,7 +282,7 @@ describe("IT-10 appointments API", () => {
     expect((await saved.json()).settings).toMatchObject({ slotMinutes: 60, daysAhead: 30, hours: { days: [1, 2, 3, 4, 5, 6, 7], start: "00:00", end: "23:00" } });
   });
 
-  it("books, lists, completes and cancels appointments", async () => {
+  it("IT-10.02 books, lists, completes and cancels appointments", async () => {
     as("AGENT");
     const slots = await (await appointmentSlots.GET(new Request("http://localhost/api/appointments/slots"))).json();
     expect(slots.slots.length).toBeGreaterThan(0);

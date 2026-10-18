@@ -1,6 +1,6 @@
 # Browser UI tests (Playwright)
 
-System-level tests that drive a **running** AssistDesk server in Chrome, the way a user would. Each test title starts with a test case ID (for example `UI-TKT-02`) and the SRS requirements it checks (for example `[FR-5.5, FR-5.2]`), so a result can be traced back to its requirement.
+System-level tests that drive a **running** AssistDesk server in Chrome, the way a user would. Each test title starts with a test case ID (for example `UI-TKT-02`) and ends with the SRS requirements it checks (for example `- FR-5.5, FR-5.2`), so a result can be traced back to its requirement. Run one test with its ID: `npx playwright test -g "UI-TKT-02"`.
 
 These browser tests are the project's functional test suite. The ID groups map
 to the feature areas below:
@@ -21,7 +21,7 @@ to the feature areas below:
 | `agentic-tools.spec.ts` | UI-M2-01…05 | Module 2 tools, test runner, action logs, appointments |
 | `leads.spec.ts` | UI-LED-01…04 | Module 8 leads, detail, CSV, settings |
 
-Unit groups `UT-01`–`UT-45`, integration groups `IT-01`–`IT-12`, and HTTP
+Unit groups `UT-01`–`UT-47`, integration groups `IT-01`–`IT-17`, and HTTP
 end-to-end groups `API-01`–`API-09` cover the same requirements at different
 boundaries. Their full coverage map and commands are in
 [TESTING_INSTRUCTIONS.md](../../TESTING_INSTRUCTIONS.md).

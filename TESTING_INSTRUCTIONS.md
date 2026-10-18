@@ -36,7 +36,16 @@ share that file.
 
 Values written in `.env` are loaded by the application, but standalone test
 commands need their variables loaded into the PowerShell session. On Windows,
-load the local test values before running integration, UI, or end-to-end tests:
+load the local test values before running integration, UI, or end-to-end tests.
+
+The first time, create your own copy of the loader from the committed
+template and fill in your local values:
+
+```powershell
+Copy-Item scripts/tests-env.example.ps1 scripts/tests-env.ps1
+```
+
+Then load it:
 
 ```powershell
 . .\scripts\tests-env.ps1

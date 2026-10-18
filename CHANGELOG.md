@@ -18,6 +18,19 @@ Entry template:
 
 ---
 
+## 2026-10-18 — Test environment template, separate test build folder, latency test fix
+**Module:** all (testing)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:** `scripts/tests-env.example.ps1` (new), `next.config.ts`, `.gitignore`, `tsconfig.json`, `tests/ui/analytics.spec.ts`, `tests/ui/helpers.ts`, `README.md`, `TESTING_INSTRUCTIONS.md`, `scripts/e2e/README.md`
+
+**Added:**
+- **`scripts/tests-env.example.ps1`:** a committed template for the git-ignored `scripts/tests-env.ps1` loader. The docs say to copy it once and fill in local values.
+
+**Fixed:**
+- **Two dev servers on one project:** they shared `.next`, overwrote each other's files and broke pages; the symptoms were random 404s, "Loading tools…" and forced reloads. `next.config.ts` now takes `distDir` from `NEXT_DIST_DIR`, so a test server can build into its own folder, e.g. `.next-test`, which is git-ignored.
+- **UI-ANL-02:** the latency chart covers only the last 24 hours, so the test failed when the sample data was older. It now creates one AI reply first when the chart is empty (`ensureRecentAiReply`).
+
+---
+
 ## 2026-10-18 — Every test can be run by its name, on its own
 **Module:** all (testing)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:**

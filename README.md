@@ -100,7 +100,16 @@ npm run build
 
 Integration tests modify their database. Use a local development or throwaway
 database, never production. In PowerShell, load the local test environment into
-the current session with:
+the current session.
+
+The first time, create your own copy of the loader from the committed
+template and fill in your local values:
+
+```powershell
+Copy-Item scripts/tests-env.example.ps1 scripts/tests-env.ps1
+```
+
+Then load it:
 
 ```powershell
 . .\scripts\tests-env.ps1

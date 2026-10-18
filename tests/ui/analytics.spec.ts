@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openDashboardPage } from "./helpers";
+import { ensureRecentAiReply, openDashboardPage } from "./helpers";
 
 test.describe("Monitoring and analytics (FR-11, M4)", () => {
   test("UI-ANL-01 [FR-11.1–11.4] KPI cards are shown", async ({ page }) => {
@@ -9,9 +9,16 @@ test.describe("Monitoring and analytics (FR-11, M4)", () => {
     }
   });
 
-  test("UI-ANL-02 [FR-11.5] latency chart with an accessible table view", async ({ page }) => {
+  test("UI-ANL-02 [FR-11.5] latency chart with an accessible table view", async ({ page, browser }) => {
+    test.setTimeout(240_000);
     await openDashboardPage(page, "/dashboard/analytics", "Analytics");
     await expect(page.getByRole("heading", { name: "System latency" })).toBeVisible();
+    // The chart covers only the last 24 hours. If the assistant has not answered since then,
+    // the page correctly shows an empty state, so create one reply first.
+    if (await page.getByText("No AI replies in the last 24 hours").isVisible()) {
+      await ensureRecentAiReply(browser);
+      await openDashboardPage(page, "/dashboard/analytics", "Analytics");
+    }
     await page.getByRole("button", { name: "Show system latency as a table" }).click();
     await expect(page.getByRole("columnheader", { name: "p95" }).first()).toBeVisible();
   });

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Browser, type Page } from "@playwright/test";
 
 export const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? "admin@assistdesk.local";
 export const WIDGET_ID = process.env.E2E_WIDGET_ID ?? "assistdesk-widget-demo";
@@ -53,4 +53,20 @@ export async function openDashboardPage(page: Page, path: string, heading: strin
   await page.goto(path);
   await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
   await waitForHydration(page, "main h1");
+}
+
+/**
+ * Makes sure the assistant has answered at least once recently, for screens that only show
+ * the last 24 hours (e.g. the latency chart). Asks the demo widget one question as a visitor.
+ */
+export async function ensureRecentAiReply(browser: Browser) {
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const widget = await context.newPage();
+  await widget.goto(`/widget/${WIDGET_ID}`, { referer: EMBEDDING_PAGE });
+  await waitForHydration(widget);
+  await widget.getByRole("textbox", { name: "Type your message" }).fill("What is your returns policy?");
+  await widget.getByRole("button", { name: "Send message" }).click();
+  // Only replies from the assistant carry the "Was this answer helpful?" buttons.
+  await expect(widget.getByRole("group", { name: "Was this answer helpful?" }).first()).toBeVisible({ timeout: 120_000 });
+  await context.close();
 }

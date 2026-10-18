@@ -98,12 +98,19 @@ npm run build
 
 ## Integration Tests
 
-Integration tests modify their database. Use a separate throwaway PostgreSQL database and never use production credentials. Create and migrate the test database first:
+Integration tests modify their database. Use a local development or throwaway
+database, never production. In PowerShell, load the local test environment into
+the current session with:
 
 ```powershell
-docker compose exec postgres createdb -U assistdesk assistdesk_test
-$env:TEST_DATABASE_URL = "postgresql://assistdesk:assistdesk-dev-password@localhost:5433/assistdesk_test?schema=public"
-$env:DATABASE_URL = $env:TEST_DATABASE_URL
+. .\scripts\tests-env.ps1
+```
+
+The leading dot and space are required. Dot-source the loader again whenever
+you open a new PowerShell window. The file is ignored by Git and must never
+contain production credentials.
+
+```powershell
 npx prisma migrate deploy
 npm run test:integration
 ```
@@ -115,4 +122,3 @@ See [scripts/e2e/README.md](scripts/e2e/README.md) for end-to-end test requireme
 For Prisma `P1000` errors, confirm `.env` uses port `5433` and the Compose credentials shown above. Restart with `docker compose up -d` and retry `npx prisma migrate deploy`. If the database has no data you need, reset it with `docker compose down -v`.
 
 If port `5433` is busy, change the host side of the mapping in [docker-compose.yml](docker-compose.yml), for example to `5434:5432`, and use the same port in `DATABASE_URL`.
-

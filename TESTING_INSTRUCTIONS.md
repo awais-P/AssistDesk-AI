@@ -34,31 +34,18 @@ npx prisma migrate deploy
 Keep credentials, database URLs, and API keys in `.env`. Do not commit or
 share that file.
 
-The application and standalone end-to-end scripts may use different variable
-names. The development server uses `DATABASE_URL`, while the scripts in
-`scripts/e2e/` require `TEST_DATABASE_URL`. Both variables must point to the
-same throwaway PostgreSQL database.
-
-The seed and HTTP end-to-end scripts also require:
-
-```text
-TEST_DATABASE_URL
-ASSISTDESK_DEMO_PASSWORD
-CRON_SECRET
-```
-
-Values written in `.env` are loaded by the application, but they are not
-automatically available to every standalone `node` command. On Windows,
-export the values in the PowerShell session before running a script:
+Values written in `.env` are loaded by the application, but standalone test
+commands need their variables loaded into the PowerShell session. On Windows,
+load the local test values before running integration, UI, or end-to-end tests:
 
 ```powershell
-$env:TEST_DATABASE_URL = "<same throwaway database URL used by the app>"
-$env:ASSISTDESK_DEMO_PASSWORD = "<same development password used by the app>"
-$env:CRON_SECRET = "<same development cron secret used by the app>"
-$env:E2E_BASE_URL = "http://localhost:3000"
-$env:ASSISTDESK_ALLOW_PRIVATE_TOOLS = "true"
-$env:ASSISTDESK_ALLOW_PRIVATE_WEBHOOKS = "true"
+. .\scripts\tests-env.ps1
 ```
+
+The leading dot and space are required. The ignored local file sets the
+database URLs, demo credentials, cron secret, local E2E URL, and private
+local-test flags in one step. Run it again after opening a new PowerShell
+window. Never point it at production.
 
 For example, a PostgreSQL connection string has this general format:
 
@@ -70,20 +57,13 @@ The database from `docker-compose.yml` is published on port **5433**, not 5432,
 so its URL uses `localhost:5433` with the user, password and database set in
 that file.
 
-Do not use a production database. If `DATABASE_URL` is already available as a
-PowerShell environment variable, it can be copied for the script:
-
-```powershell
-$env:TEST_DATABASE_URL = $env:DATABASE_URL
-```
-
 ## 2. Prepare test data
 
 Use separate data for testing. Before starting:
 
 1. Confirm that the database is running.
-2. Confirm that the required environment variables are configured.
-3. Apply database migrations.
+2. Load the environment with `. .\scripts\tests-env.ps1`.
+3. Apply database migrations if the schema changed.
 4. Seed the development/demo data if the tests require it.
 5. Confirm that the application can be opened and a test account can sign in.
 
@@ -776,12 +756,10 @@ If the command reports:
 Missing TEST_DATABASE_URL. See scripts/e2e/README.md.
 ```
 
-set the required variables in the same PowerShell window first:
+load the local test environment in the same PowerShell window first:
 
 ```powershell
-$env:TEST_DATABASE_URL = "<throwaway PostgreSQL URL>"
-$env:ASSISTDESK_DEMO_PASSWORD = "<development demo password>"
-$env:CRON_SECRET = "<development cron secret>"
+. .\scripts\tests-env.ps1
 node scripts/e2e/seed-demo.mjs
 ```
 

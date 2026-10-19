@@ -72,6 +72,13 @@ provider.
 
 Replies your team writes on the ticket (Reply, not Internal note) are emailed the same way.
 
+To send the email to your own account instead of the demo workspace, connect Email under
+Integrations (Support Address = the inbox address, Inbox = your inbox) and add `--to`:
+
+```powershell
+npm run email:receive -- --to support@assistdesk.ai --from you@gmail.com --subject "Where is my order 1042?"
+```
+
 ## 1. Prepare the environment
 
 Open PowerShell in the project folder.

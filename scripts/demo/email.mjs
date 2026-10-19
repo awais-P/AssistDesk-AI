@@ -6,8 +6,11 @@
 //
 //   npm run email:receive -- --from you@gmail.com --subject "Where is my order 1042?" [--text "..."] [--name "Ali Raza"]
 //   npm run email:receive -- --from you@gmail.com --reply 123 --text "Thanks, and the receipt?"
+//   npm run email:receive -- --to support@assistdesk.ai --from you@gmail.com --subject "..."
 //       Delivers an email to AssistDesk the way an email provider would: a POST to the inbound
-//       email webhook with the demo workspace's secret (read from the database, nothing to copy).
+//       email webhook with the workspace's secret (read from the database, nothing to copy).
+//       --to picks the workspace by its inbox address (Integrations → Email must be connected);
+//       without it the demo workspace (admin@assistdesk.local) receives the email.
 //       It creates a ticket (or, with --reply, adds to ticket 123), then waits for the AI reply
 //       and shows whether it was emailed back.
 //
@@ -89,15 +92,32 @@ async function receive() {
   await db.connect();
   try {
     const q = async (sql, params) => (await db.query(sql, params)).rows;
-    const [integration] = await q(
-      `select i."webhookSecret", i."workspaceId" from "Integration" i
-       where i.type = 'EMAIL' and i."isActive" and i.status = 'CONNECTED'
-         and i."workspaceId" = (select "workspaceId" from "Chatbot" where "widgetId" = $1)
-       limit 1`,
-      [DEMO_WIDGET],
-    );
+    // --to <inbox address>: the workspace whose inbox has that address (prefix@domain) or
+    // whose Email integration uses it as support address. Without it: the demo workspace.
+    const to = options.to?.trim().toLowerCase();
+    const [integration] = to
+      ? await q(
+          `select i."webhookSecret", i."workspaceId" from "Integration" i
+           left join "Inbox" b on b.id = i."inboxId"
+           where i.type = 'EMAIL' and i."isActive" and i.status = 'CONNECTED'
+             and (lower(i."supportAddress") = $1 or lower(b."emailPrefix") = split_part($1, '@', 1))
+           order by (lower(i."supportAddress") = $1) desc, i."updatedAt" desc
+           limit 1`,
+          [to],
+        )
+      : await q(
+          `select i."webhookSecret", i."workspaceId" from "Integration" i
+           where i.type = 'EMAIL' and i."isActive" and i.status = 'CONNECTED'
+             and i."workspaceId" = (select "workspaceId" from "Chatbot" where "widgetId" = $1)
+           limit 1`,
+          [DEMO_WIDGET],
+        );
     if (!integration?.webhookSecret) {
-      fail("The demo workspace has no connected Email integration. Start the demo once with npm run demo.");
+      fail(
+        to
+          ? `No connected Email integration receives mail for ${to}. In that workspace open Integrations → Email, connect it to the inbox, and save.`
+          : "The demo workspace has no connected Email integration. Start the demo once with npm run demo.",
+      );
     }
 
     let subject = options.subject;

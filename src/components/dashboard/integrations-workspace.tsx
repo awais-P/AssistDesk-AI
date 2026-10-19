@@ -536,6 +536,15 @@ export function IntegrationsWorkspace({
       return "Give this connection a name so you can recognise it later.";
     }
 
+    if (form.type === "EMAIL" && form.provider === "Gmail") {
+      // The Gmail address is the support address; the server checks the login on save.
+      if (!form.mailboxUser.trim()) {
+        return "Enter the Gmail address customers email.";
+      }
+
+      return form.mailboxPassword.trim() || form.id ? "" : "Enter the App Password for this Gmail address.";
+    }
+
     if (form.type === "EMAIL") {
       return form.supportAddress.trim()
         ? ""
@@ -592,7 +601,7 @@ export function IntegrationsWorkspace({
       return {
         ...base,
         provider: form.provider,
-        supportAddress: form.supportAddress,
+        supportAddress: form.provider === "Gmail" ? form.mailboxUser.trim() : form.supportAddress,
         forwardingAddress: form.forwardingAddress || null,
         inboxId: form.inboxId || null,
         config: {

@@ -1,5 +1,7 @@
 import { createNotification } from "./notifications";
 import nodemailer from "nodemailer";
+import { mailboxSettings } from "./email-mailbox-settings";
+import { readIntegrationConfig } from "./integrations/config";
 import { prisma } from "./prisma";
 import { decryptSecret } from "./secrets";
 
@@ -128,7 +130,7 @@ export async function sendTicketReplyEmail({
         include: {
           integrations: {
             where: { type: "EMAIL", isActive: true, supportAddress: { not: null } },
-            select: { supportAddress: true },
+            select: { supportAddress: true, provider: true, config: true },
             take: 1,
           },
         },
@@ -142,6 +144,12 @@ export async function sendTicketReplyEmail({
     result = { status: "NO_RECIPIENT", error: "This ticket has no requester email." };
   } else {
     const inbox = ticket.inbox;
+    const connection = inbox?.integrations[0];
+    // A Gmail mailbox connection sends from that same mailbox, so the customer's reply
+    // lands where AssistDesk reads it.
+    const mailbox = connection
+      ? mailboxSettings(connection.provider, readIntegrationConfig("EMAIL", connection.config))
+      : null;
     const smtp: SmtpSettings | null = inbox?.smtpHost
       ? {
           host: inbox.smtpHost,
@@ -150,7 +158,9 @@ export async function sendTicketReplyEmail({
           user: inbox.smtpUser,
           password: decryptSecret(inbox.smtpPassword),
         }
-      : getDefaultSmtp();
+      : mailbox
+        ? { host: mailbox.smtpHost, port: mailbox.smtpPort, secure: true, user: mailbox.user, password: mailbox.password }
+        : getDefaultSmtp();
 
     if (!smtp) {
       result = {
@@ -164,9 +174,11 @@ export async function sendTicketReplyEmail({
       // platform account can only send from its verified address, so replies go to the inbox.
       const fromAddress = inbox?.smtpHost
         ? inbox.senderEmail || inbox.smtpUser || inboxAddress
-        : process.env.ASSISTDESK_SMTP_FROM?.trim() || inboxAddress;
+        : mailbox
+          ? mailbox.user
+          : process.env.ASSISTDESK_SMTP_FROM?.trim() || inboxAddress;
       // Customer replies should reach the address that feeds the email integration.
-      const connectedSupportAddress = inbox?.integrations[0]?.supportAddress ?? null;
+      const connectedSupportAddress = connection?.supportAddress ?? null;
       const replyToAddress =
         connectedSupportAddress ||
         (inbox?.smtpHost ? fromAddress : inbox?.senderEmail || inboxAddress);

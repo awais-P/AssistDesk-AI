@@ -18,6 +18,23 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Email by Gmail mailbox: real emails become tickets automatically
+**Module:** M1 – Omnichannel (email) / M7 – Tickets   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:** `src/lib/email-mailbox.ts` (new), `src/lib/email-mailbox-settings.ts` (new), `instrumentation.ts` (new), `app/api/integrations/route.ts`, `src/lib/integrations/config.ts`, `src/lib/mailer.ts`, `src/components/dashboard/integrations-workspace.tsx`, `scripts/demo/start.mjs`, `package.json` (imapflow, mailparser), `tests/unit/email-mailbox.test.ts` (new), `tests/integration/email-mailbox.int.ts` (new)
+
+**Added:**
+- **Gmail mailbox connections.** Integrations → Email → Provider "Gmail" takes a Gmail address and an App Password.
+  - Saving logs in to test the connection. The password is stored encrypted, and the same mailbox cannot be connected twice.
+- **Automatic mailbox checks.** The dev server checks every connected mailbox every 30 seconds (`ASSISTDESK_EMAIL_POLL_SECONDS`). Started from `instrumentation.ts`; off for `npm run demo`, or anywhere with `ASSISTDESK_EMAIL_POLLING=false`.
+  - New emails become tickets and run the AI workflow.
+  - A customer's reply with the `[PREFIX-N]` reference joins its ticket.
+  - Only mail that arrives after connecting is read, using a UID cursor, so nothing is read twice.
+  - Bounces, no-reply senders, auto-replies, newsletters and the mailbox's own messages are skipped.
+  - A wrong App Password marks the connection as an error and notifies the team.
+- **Replies from the same Gmail.** Ticket replies, including the AI's, go out through that Gmail over SMTP when the inbox has no SMTP of its own.
+- **Tests.** Unit tests UT-49.01–49.10. Integration tests IT-18.01–18.06 use an in-memory IMAP server and the real database.
+- **Results.** Unit 243/243; integration 76/76 + 1 opt-in skipped; lint and tsc clean.
+
 ## 2026-10-19 — Greetings answered as greetings; fallback answers keep their section
 **Module:** M10 – Knowledge Base   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:** `src/lib/knowledge-runtime.ts`, `src/lib/knowledge-chunking.ts`, `src/lib/llm-runtime.ts`, `tests/unit/knowledge-retrieval.test.ts`

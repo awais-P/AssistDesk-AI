@@ -71,6 +71,8 @@ type FormState = {
   accessToken: string;
   phoneNumberId: string;
   appSecret: string;
+  mailboxUser: string;
+  mailboxPassword: string;
 };
 
 type Notice = { tone: "success" | "error"; text: string } | null;
@@ -104,6 +106,8 @@ const emptyForm: FormState = {
   accessToken: "",
   phoneNumberId: "",
   appSecret: "",
+  mailboxUser: "",
+  mailboxPassword: "",
 };
 
 const inputClassName =
@@ -496,6 +500,7 @@ export function IntegrationsWorkspace({
         autoCreateTickets: integration.config.autoCreateTickets !== false,
         syncReplies: integration.config.syncReplies !== false,
         phoneNumberId: configText(integration.config, "phoneNumberId"),
+        mailboxUser: configText(integration.config, "mailboxUser"),
       });
     } else {
       setForm({
@@ -593,6 +598,10 @@ export function IntegrationsWorkspace({
         config: {
           autoCreateTickets: form.autoCreateTickets,
           syncReplies: form.syncReplies,
+          // Gmail: AssistDesk reads this mailbox itself. A blank password keeps the saved one.
+          ...(form.provider === "Gmail"
+            ? { mailboxUser: form.mailboxUser.trim(), mailboxPassword: form.mailboxPassword.trim() }
+            : {}),
         },
       };
     }
@@ -1236,6 +1245,54 @@ export function IntegrationsWorkspace({
                     </select>
                   </div>
 
+                  {form.provider === "Gmail" ? (
+                    <>
+                      <div>
+                        <label
+                          htmlFor="integration-mailbox-user"
+                          className="mb-2 block text-sm font-medium text-slate-300"
+                        >
+                          Gmail Address
+                        </label>
+                        <input
+                          id="integration-mailbox-user"
+                          type="email"
+                          value={form.mailboxUser}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, mailboxUser: event.target.value }))
+                          }
+                          placeholder="yourcompany.support@gmail.com"
+                          className={inputClassName}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="integration-mailbox-password"
+                          className="mb-2 block text-sm font-medium text-slate-300"
+                        >
+                          App Password
+                        </label>
+                        <input
+                          id="integration-mailbox-password"
+                          type="password"
+                          autoComplete="new-password"
+                          value={form.mailboxPassword}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, mailboxPassword: event.target.value }))
+                          }
+                          placeholder={form.id ? "Saved. Leave blank to keep it" : "16-character app password"}
+                          className={inputClassName}
+                        />
+                        <p className="mt-2 text-xs text-slate-500">
+                          Use a mailbox just for support. Create the password under Google Account → Security →
+                          App passwords (2-Step Verification must be on). AssistDesk checks this mailbox every
+                          30 seconds, turns new emails into tickets and replies from this address.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
                   <div>
                     <label
                       htmlFor="integration-support-address"
@@ -1283,6 +1340,8 @@ export function IntegrationsWorkspace({
                       ticket creation.
                     </p>
                   </div>
+                    </>
+                  )}
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>

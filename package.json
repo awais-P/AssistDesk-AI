@@ -26,6 +26,8 @@
     "@stripe/stripe-js": "^9.4.0",
     "@tanstack/react-query": "^5.100.9",
     "bcryptjs": "^3.0.3",
+    "imapflow": "^2.5.5",
+    "mailparser": "^3.9.46",
     "mammoth": "^1.13.0",
     "next": "^15.0.0",
     "nodemailer": "^10.0.11",
@@ -40,6 +42,7 @@
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4",
+    "@types/mailparser": "^3.9.0",
     "@types/node": "^24.19.0",
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",

@@ -9,7 +9,8 @@ import {
 } from "@/src/lib/embeddings";
 import { CHUNK_TARGET_CHARS, chunkDocument, chunkEmbeddingText } from "@/src/lib/knowledge-chunking";
 import { calibrateSemanticScore } from "@/src/lib/knowledge-indexing";
-import { buildExtractiveAnswer } from "@/src/lib/knowledge-runtime";
+import { buildExtractiveAnswer, generateGroundedAgentReply, isGreetingOnly } from "@/src/lib/knowledge-runtime";
+import { buildRetrievalQuery } from "@/src/lib/llm-runtime";
 
 describe("UT-16 search tokenizer", () => {
   it("UT-16.01 drops English stop words - AI-01", () => {
@@ -149,5 +150,65 @@ describe("UT-48 knowledge-base answer when no AI model replies - FE-1", () => {
 
   it("UT-48.04 returns nothing when no line matches the question", () => {
     expect(buildExtractiveAnswer("opening hours", [{ excerpt: services }])).toBe("");
+  });
+
+  it("UT-48.07 answers from the matching section of a whole chunked document", () => {
+    const document = [
+      "Deltavare is a software company that builds websites, apps and digital products for growing businesses.",
+      "The team can support projects from the initial idea and planning stage through design, development, testing, deployment, optimization, and maintenance.",
+      "",
+      "Main Services",
+      "UI/UX and Frontend Development",
+      "Digital Marketing and SEO",
+      "Cybersecurity",
+      "",
+      "UI/UX and Frontend Development",
+      "Deltavare designs and builds modern, responsive interfaces that are fast and easy to use.",
+      "Services include:",
+      ...["Figma wireframes and UI prototypes", "Responsive website architecture", "Conversion-focused page layouts", "Design systems",
+        "Angular development", "React development", "TypeScript development", "SCSS styling", "Frontend performance improvements"].map((item) => `- ${item}`),
+      "",
+      "Digital Marketing and SEO",
+      "Deltavare helps businesses improve their online visibility and attract more customers.",
+      "Services include:",
+      ...["Search engine optimization", "Social media marketing", "Content strategy", "Google Ads campaigns"].map((item) => `- ${item}`),
+      "",
+      "Cybersecurity",
+      "Services include:",
+      ...["Vulnerability assessments", "Security audits", "Penetration testing", "Server hardening"].map((item) => `- ${item}`),
+      "",
+      "Chatbot Response Guidelines",
+      "The Deltavare chatbot should explain Deltavare's services clearly and professionally.",
+    ].join("\n");
+    const chunks = chunkDocument(document).map((chunk) => ({ excerpt: chunk.content }));
+
+    expect(buildExtractiveAnswer("i need ui services", chunks)).toBe(
+      [
+        "UI/UX and Frontend Development. Services include:",
+        "- Figma wireframes and UI prototypes",
+        "- Responsive website architecture",
+        "- Conversion-focused page layouts",
+        "- Design systems",
+        "- Angular development",
+        "- React development",
+        "- TypeScript development",
+        "- SCSS styling",
+        "- …and more",
+      ].join("\n"),
+    );
+  });
+
+  it("UT-48.05 recognises a message that is only a greeting", () => {
+    for (const greeting of ["hello", "Hi there!", "hey", "Good morning", "Assalam o Alaikum", "salam"]) {
+      expect(isGreetingOnly(greeting), greeting).toBe(true);
+    }
+    expect(isGreetingOnly("hi, what UI services do you offer?")).toBe(false);
+  });
+
+  it("UT-48.06 answers hello with a greeting even after a services question", async () => {
+    const history = [{ role: "user" as const, content: "i need UI services, What is available" }];
+    expect(buildRetrievalQuery("hello", history)).toBe("hello");
+    const reply = await generateGroundedAgentReply({ question: "hello", confidenceThreshold: 0.5, sources: [] });
+    expect(reply.reply).toBe("Hello! How can I help you today?");
   });
 });

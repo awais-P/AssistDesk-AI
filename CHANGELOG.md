@@ -18,6 +18,29 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Greetings answered as greetings; fallback answers keep their section
+**Module:** M10 – Knowledge Base   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:** `src/lib/knowledge-runtime.ts`, `src/lib/knowledge-chunking.ts`, `src/lib/llm-runtime.ts`, `tests/unit/knowledge-retrieval.test.ts`
+
+**Fixed:**
+- **"hello" after a question was answered with knowledge-base passages.** Short messages are searched together with the previous question, and the greeting check looked at that combined text.
+  - A message that is only a greeting is now answered "Hello! How can I help you today?".
+  - A greeting is never combined with the previous question.
+- **The fallback answer quoted the wrong lines.** It took an ordinary sentence and attached the headings after it as list items.
+  - Only a heading, a line ending in ":" or "Services include" now introduces a list.
+  - A bare heading is never quoted.
+  - On equal matches, the fuller list wins.
+  - A generic "Services include:" is prefixed with its section heading.
+- **Chunking lost the structure of a document:**
+  - Sections in one chunk are now kept apart by a blank line.
+  - A list longer than 1,000 characters keeps one item per line instead of being joined into one sentence.
+
+**Added:**
+- UT-48.05 to UT-48.07. UT-48.07 runs a whole document through the real chunker and asks "i need ui services".
+
+**Notes / follow-ups:**
+- Re-sync existing knowledge sources so their chunks get the new layout.
+
 ## 2026-10-19 — Clearer answers when no AI model replies; "UI" is searchable
 **Module:** M10 – Knowledge Base   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:** `src/lib/knowledge-runtime.ts`, `src/lib/embeddings.ts`, `tests/unit/knowledge-retrieval.test.ts`

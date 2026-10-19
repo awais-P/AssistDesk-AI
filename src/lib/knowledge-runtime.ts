@@ -69,14 +69,29 @@ function shorten(text: string) {
   return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[,;:]$/, "")}…`;
 }
 
+/** "Services include:", "We offer" — introduces a list without naming its topic. */
+const GENERIC_LIST_INTRO = /^[\w\s]{0,30}\b(?:include|includes|including|offer|offers)\s*:?$/i;
+
+/** A short line without a full stop: a heading or a list item ("React development"). */
+function isShortLine(line: string) {
+  return line.length <= 70 && !/[.!?]$/.test(line);
+}
+
+/** A line that can introduce a list: a heading, "…:" or "Services include". */
+function introducesList(line: string) {
+  return isShortLine(line) || /(?::|\b(?:include|includes|including|offer|offers))$/i.test(line);
+}
+
 /**
- * Splits a passage into answer units, keeping line breaks: bullet points and short
- * lines stay attached to the line that introduces them, so a list is quoted as a list
- * instead of one run-on sentence. Instructions written for the bot are left out.
+ * Splits a passage into answer units, keeping line breaks: list items stay attached to
+ * the heading or line that introduces them, so a list is quoted as a list instead of one
+ * run-on sentence. Short lines after an ordinary sentence are headings, not its items.
+ * Instructions written for the bot are left out.
  */
 function splitIntoUnits(value: string) {
   const units: AnswerUnit[] = [];
   let current: AnswerUnit | null = null;
+  let heading: string | null = null;
 
   for (const rawLine of value.replace(/\r/g, "").split("\n")) {
     const line = rawLine.replace(BULLET, "").replace(/\s+/g, " ").trim();
@@ -86,17 +101,24 @@ function splitIntoUnits(value: string) {
       continue;
     }
 
-    const isListItem = BULLET.test(rawLine) || (line.length <= 70 && !/[.!?]$/.test(line));
+    const isItem = BULLET.test(rawLine) || isShortLine(line);
 
-    if (current && isListItem) {
+    if (current && isItem && (BULLET.test(rawLine) || introducesList(current.lead) || current.items.length > 0)) {
       current.items.push(line);
       continue;
     }
 
     for (const sentence of line.split(/(?<=[.!?])\s+/)) {
       if (sentence && !BOT_INSTRUCTION.test(sentence)) {
-        current = { lead: sentence, items: [] };
+        // "Services include:" says nothing on its own: name the section it belongs to.
+        const lead =
+          heading && GENERIC_LIST_INTRO.test(sentence) ? `${heading.replace(/[.:]$/, "")}. ${sentence}` : sentence;
+        current = { lead, items: [] };
         units.push(current);
+
+        if (isShortLine(sentence) && !GENERIC_LIST_INTRO.test(sentence)) {
+          heading = sentence;
+        }
       }
     }
   }
@@ -160,6 +182,16 @@ function detectGreeting(question: string) {
 }
 
 /**
+ * A message that is only a greeting ("hello", "Hi there!", "Assalam o Alaikum"), with no
+ * question in it. It is answered with a greeting, never with knowledge-base passages.
+ */
+export function isGreetingOnly(message: string) {
+  return /^(?:hi+|hello+|hey+|hiya|oi|yo|good\s+(?:morning|afternoon|evening)|(?:as+alam+u?\s*o?\s*alaikum|as+alam+|salam+|aoa))(?:\s+(?:there|team|everyone|all|sir|ji))?[\s!.,:)]*$/i.test(
+    message.trim(),
+  );
+}
+
+/**
  * The answer used when no AI model replies: the units of the retrieved passages that
  * best match the question. A matching list is quoted on its own; otherwise up to three
  * matching sentences.
@@ -167,9 +199,12 @@ function detectGreeting(question: string) {
 export function buildExtractiveAnswer(question: string, matches: Array<{ excerpt: string }>) {
   const ranked = matches
     .flatMap((match) => splitIntoUnits(match.excerpt))
+    // A bare heading with nothing under it tells the customer nothing.
+    .filter((unit) => unit.items.length > 0 || !isShortLine(unit.lead))
     .map((unit) => ({ unit, score: scorePassage(question, [unit.lead, ...unit.items].join(" ")) }))
     .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score)
+    // Equal matches: the fuller list answers better.
+    .sort((left, right) => right.score - left.score || right.unit.items.length - left.unit.items.length)
     .filter(
       (candidate, index, array) =>
         array.findIndex((entry) => entry.unit.lead.toLowerCase() === candidate.unit.lead.toLowerCase()) === index,
@@ -262,6 +297,16 @@ export async function generateGroundedAgentReply({
   confidenceThreshold: number;
   sources: RuntimeKnowledgeSource[];
 }) {
+  if (isGreetingOnly(question)) {
+    return {
+      reply: "Hello! How can I help you today?",
+      confidence: 1,
+      matches: [] as RetrievedMatch[],
+      tokens: estimateTokenUsage(question),
+      usedSourceIds: [],
+    };
+  }
+
   const matches = await retrieveKnowledgeMatches(question, sources);
   const topMatch = matches[0];
   const confidence = topMatch?.score ?? 0;

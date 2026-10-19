@@ -18,6 +18,25 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Clearer answers when no AI model replies; "UI" is searchable
+**Module:** M10 – Knowledge Base   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:** `src/lib/knowledge-runtime.ts`, `src/lib/embeddings.ts`, `tests/unit/knowledge-retrieval.test.ts`
+
+**Fixed:**
+- **The knowledge-base fallback was vague and messy.** This is the reply used when every AI model call fails. It joined a bulleted list into one run-on sentence, mixed unrelated sections, and quoted the document's own "Chatbot Response Guidelines" to the customer.
+  - It now keeps line breaks and quotes the best-matching list as a list, under its heading.
+  - It never quotes text written for the bot ("the chatbot should…", "Response Guidelines").
+  - It shortens long sentences at a word boundary.
+  - The wording is clearer: "Here's what I found:", or below the threshold "I'm not completely sure, but this is the closest information I have:… Would you like me to connect you with our team?".
+- **Admin-facing replies no longer reach customers.** The greeting reply and the "no information" reply were written for admins ("Add a text source…") and are now customer-facing.
+- **The search tokenizer dropped every word shorter than three letters.** So "UI services" searched only for "services". Two-letter words such as UI, AI and QA are now kept; common two-letter English words were added to the stop words.
+
+**Added:** UT-16.04 and UT-48.01–48.04.
+
+**Notes / follow-ups:**
+- These replies only appear when the AI model call fails. The agent's Playground shows the reason ("fallbackReason"), and the server log shows a line beginning with `[llm]`.
+- Keyword-only (lexical) sources are not indexed with two-letter words until they are re-synced. Sources indexed with semantic embeddings are not affected.
+
 ## 2026-10-19 — Email demo on localhost (SMTP replies, simulated inbound email)
 **Module:** M7 – Dashboard (tickets) / M1 – Omnichannel   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:** `scripts/demo/email.mjs` (new), `package.json`, `.env.demo.example`, `TESTING_INSTRUCTIONS.md`

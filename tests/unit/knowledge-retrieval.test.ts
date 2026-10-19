@@ -9,6 +9,7 @@ import {
 } from "@/src/lib/embeddings";
 import { CHUNK_TARGET_CHARS, chunkDocument, chunkEmbeddingText } from "@/src/lib/knowledge-chunking";
 import { calibrateSemanticScore } from "@/src/lib/knowledge-indexing";
+import { buildExtractiveAnswer } from "@/src/lib/knowledge-runtime";
 
 describe("UT-16 search tokenizer", () => {
   it("UT-16.01 drops English stop words - AI-01", () => {
@@ -23,6 +24,10 @@ describe("UT-16 search tokenizer", () => {
 
   it("UT-16.03 preserves accented words - AI-01", () => {
     expect(tokenizeForSearch("Café crème brûlée")).toEqual(["café", "crème", "brûlée"]);
+  });
+
+  it("UT-16.04 keeps two-letter acronyms such as UI - AI-01", () => {
+    expect(tokenizeForSearch("I need UI services, what is available?")).toEqual(["need", "ui", "services", "available"]);
   });
 });
 
@@ -97,5 +102,52 @@ describe("UT-19 semantic score calibration", () => {
     expect(calibrateSemanticScore(0.3)).toBeCloseTo(0.5, 5);
     expect(calibrateSemanticScore(0.45)).toBeCloseTo(1, 5);
     expect(calibrateSemanticScore(0.9)).toBe(1);
+  });
+});
+
+describe("UT-48 knowledge-base answer when no AI model replies - FE-1", () => {
+  const services = [
+    "UI/UX Design and Frontend Development",
+    "Services include",
+    "Figma wireframes and UI prototypes",
+    "Responsive website architecture",
+    "Angular development",
+    "React development",
+    "",
+    "Cyber Security",
+    "Services include",
+    "Vulnerability assessments",
+    "Penetration testing",
+    "",
+    "Chatbot Response Guidelines",
+    "The Deltavare chatbot should explain the services clearly and professionally.",
+  ].join("\n");
+
+  it("UT-48.01 quotes the matching list as a list", () => {
+    expect(buildExtractiveAnswer("i need UI services, What is available", [{ excerpt: services }])).toBe(
+      [
+        "UI/UX Design and Frontend Development. Services include:",
+        "- Figma wireframes and UI prototypes",
+        "- Responsive website architecture",
+        "- Angular development",
+        "- React development",
+      ].join("\n"),
+    );
+  });
+
+  it("UT-48.02 never quotes instructions written for the chatbot", () => {
+    const answer = buildExtractiveAnswer("How should the chatbot explain the services?", [{ excerpt: services }]);
+    expect(answer).not.toMatch(/chatbot should|Response Guidelines/i);
+  });
+
+  it("UT-48.03 shortens a long sentence at a word boundary", () => {
+    const long = `Our warranty covers ${"the heating element and the switch and ".repeat(10)}more.`;
+    const answer = buildExtractiveAnswer("warranty", [{ excerpt: long }]);
+    expect(answer.length).toBeLessThanOrEqual(225);
+    expect(answer).toMatch(/\S…$/);
+  });
+
+  it("UT-48.04 returns nothing when no line matches the question", () => {
+    expect(buildExtractiveAnswer("opening hours", [{ excerpt: services }])).toBe("");
   });
 });

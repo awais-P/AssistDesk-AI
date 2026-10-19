@@ -18,6 +18,23 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Email demo on localhost (SMTP replies, simulated inbound email)
+**Module:** M7 – Dashboard (tickets) / M1 – Omnichannel   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
+**Files:** `scripts/demo/email.mjs` (new), `package.json`, `.env.demo.example`, `TESTING_INSTRUCTIONS.md`
+
+**Added:**
+- `npm run email:test` sends one test email through the `ASSISTDESK_SMTP_*` account (the sender of ticket replies), with a hint about Gmail App Passwords when it fails.
+- `npm run email:receive -- --from <customer> --subject "..."` delivers an email to the demo workspace the way an email provider would:
+  - It posts to the inbound webhook with the workspace's secret, read from the database.
+  - It then reports the ticket and whether the AI reply was emailed: sent, not configured, failed, kept as a low-confidence draft, or a fallback answer.
+- `--reply <ticket number>` threads a customer reply into an existing ticket.
+- `.env.demo.example` has a commented Gmail SMTP block.
+
+**Notes / follow-ups:**
+- No application code changed: SMTP sending (inbox or platform account) and the inbound webhook already existed.
+- A real mailbox still cannot deliver to localhost. A public deployment, or a tunnel, plus an email provider's inbound route would be needed for that.
+- While SMTP is set, the UI tests also send their example.com replies through it.
+
 ## 2026-10-18 — An ID for every test; business-rule tests from the SRS
 **Module:** all (testing)   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:** every file in `tests/unit/`, `tests/integration/` and `tests/ui/`; `tests/unit/business-rules.test.ts` (new), `tests/integration/business-rules.int.ts` (new), `TESTING_INSTRUCTIONS.md`, `tests/ui/README.md`, `VERIFICATION_REPORT.md`

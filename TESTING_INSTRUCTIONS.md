@@ -40,6 +40,38 @@ One settings file and two commands give everyone the same demo data and test res
 
 Values set in the shell (for example by `scripts/tests-env.ps1`) take priority over `.env.demo`.
 
+## Email demo on localhost
+
+AssistDesk emails ticket replies (including the AI's) through SMTP, and receives email through
+its inbound webhook. A real mailbox cannot deliver to `localhost`, so a script plays the email
+provider.
+
+1. Fill in and uncomment the `ASSISTDESK_SMTP_*` lines in `.env.demo` (Gmail: use an App
+   Password), restart `npm run demo`, and check the settings:
+
+   ```powershell
+   npm run email:test
+   ```
+
+2. Send a customer email to the demo workspace. Use your own address as the customer, so the
+   AI's reply arrives in your inbox:
+
+   ```powershell
+   npm run email:receive -- --from you@gmail.com --name "Ali Raza" --subject "Where is my order 1042?" --text "Hi, when will my kettle arrive?"
+   ```
+
+   It prints the new ticket and whether the AI reply was emailed. Only confident AI answers are
+   emailed; a low-confidence draft stays on the ticket for your team.
+
+3. Reply as the customer; the email is added to the same ticket (use the ticket number printed
+   in step 2):
+
+   ```powershell
+   npm run email:receive -- --from you@gmail.com --reply 123 --text "Thanks! Can you send the receipt?"
+   ```
+
+Replies your team writes on the ticket (Reply, not Internal note) are emailed the same way.
+
 ## 1. Prepare the environment
 
 Open PowerShell in the project folder.

@@ -46,8 +46,9 @@ const serverEnv = {
   NEXT_PUBLIC_APP_URL: base,
   NEXT_DIST_DIR: ".next-test",
   ASSISTDESK_SEED_DEMO: "true",
-  // Reading real mailboxes (Gmail) is for the dev server; the demo/test server never does.
-  ASSISTDESK_EMAIL_POLLING: "false",
+  // Reading real mailboxes (Gmail) is off for the demo/test server unless .env.demo sets
+  // ASSISTDESK_EMAIL_POLLING=true (for a live email demo).
+  ASSISTDESK_EMAIL_POLLING: process.env.ASSISTDESK_EMAIL_POLLING === "true" ? "true" : "false",
 };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

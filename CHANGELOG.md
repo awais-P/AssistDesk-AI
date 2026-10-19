@@ -18,6 +18,10 @@ Entry template:
 
 ---
 
+## 2026-10-19 — Gmail mailbox checks can be switched on for the demo server
+**Files:** `scripts/demo/start.mjs`, `.env.demo.example`
+**Updated:** `npm run demo` still does not read mailboxes by default. Setting `ASSISTDESK_EMAIL_POLLING=true` in `.env.demo` turns real Gmail email → tickets on for a live email demo; the browser tests are unaffected, because the test data has no Gmail connection.
+
 ## 2026-10-19 — Email by Gmail mailbox: real emails become tickets automatically
 **Module:** M1 – Omnichannel (email) / M7 – Tickets   **Roadmap phase:** P6   **Author:** Claude (with Muhammad Awais)
 **Files:** `src/lib/email-mailbox.ts` (new), `src/lib/email-mailbox-settings.ts` (new), `instrumentation.ts` (new), `app/api/integrations/route.ts`, `src/lib/integrations/config.ts`, `src/lib/mailer.ts`, `src/components/dashboard/integrations-workspace.tsx`, `scripts/demo/start.mjs`, `package.json` (imapflow, mailparser), `tests/unit/email-mailbox.test.ts` (new), `tests/integration/email-mailbox.int.ts` (new)

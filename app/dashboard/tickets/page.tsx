@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@/app/generated/prisma/client";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/src/components/dashboard/tickets-client";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import TicketsLoading from "./loading";
 
 type TicketsPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -56,14 +58,15 @@ function initialsOf(name: string | null | undefined) {
     .join("");
 }
 
-export default async function TicketsPage({ searchParams }: TicketsPageProps) {
-  const [session, params] = await Promise.all([getCurrentSession(), searchParams]);
-
-  if (!session) {
-    redirect("/login");
-  }
-
-  const workspaceId = session.user.workspaceId;
+async function AsyncTicketsContent({
+  workspaceId,
+  params,
+  currentUser,
+}: {
+  workspaceId: string;
+  params: Record<string, string | string[] | undefined>;
+  currentUser: { id: string; fullName: string };
+}) {
   const requestedPageSize = Number(firstParam(params.pageSize));
   const pageSize = pageSizes.has(requestedPageSize) ? requestedPageSize : 20;
   const requestedSort = firstParam(params.sort);
@@ -137,7 +140,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     prisma.tag.findMany({
       where: { workspaceId },
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, color: true },
     }),
     prisma.workspaceSetting.findUnique({
       where: { workspaceId },
@@ -145,50 +148,19 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     }),
   ]);
 
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const requestedPage = Math.floor(Number(firstParam(params.page)));
-  const page = Math.min(
-    Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1,
-    pageCount,
-  );
+  const page = Math.max(1, Number(firstParam(params.page)) || 1);
+  const skip = (page - 1) * pageSize;
 
   const tickets = await prisma.ticket.findMany({
     where,
-    select: {
-      id: true,
-      ticketNumber: true,
-      subject: true,
-      previewText: true,
-      requesterName: true,
-      requesterEmail: true,
-      source: true,
-      status: true,
-      priority: true,
-      createdAt: true,
-      inbox: {
-        select: {
-          name: true,
-        },
-      },
-      assignee: {
-        select: {
-          id: true,
-          fullName: true,
-        },
-      },
-      ticketTags: {
-        select: {
-          tag: {
-            select: {
-              name: true,
-            },
-          },
-        },
-      },
-    },
     orderBy: orderBy[sort],
-    skip: (page - 1) * pageSize,
+    skip,
     take: pageSize,
+    include: {
+      inbox: { select: { name: true } },
+      assignee: { select: { id: true, fullName: true } },
+      ticketTags: { include: { tag: { select: { name: true } } } },
+    },
   });
 
   return (
@@ -219,10 +191,28 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
       inboxes={inboxes}
       tags={tags}
       timeZone={resolveTimeZone(settings?.timezone)}
-      currentUser={{
-        id: session.user.id,
-        fullName: session.user.fullName,
-      }}
+      currentUser={currentUser}
     />
+  );
+}
+
+export default async function TicketsPage({ searchParams }: TicketsPageProps) {
+  const [session, params] = await Promise.all([getCurrentSession(), searchParams]);
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  return (
+    <Suspense fallback={<TicketsLoading />}>
+      <AsyncTicketsContent
+        workspaceId={session.user.workspaceId}
+        params={params}
+        currentUser={{
+          id: session.user.id,
+          fullName: session.user.fullName,
+        }}
+      />
+    </Suspense>
   );
 }

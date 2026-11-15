@@ -2,7 +2,7 @@
 
 **Team:** Muhammad Awais (SP23-BSE-031) · Ahmad Mujtaba Shahid (SP23-BSE-003) · Supervisor: Amir Shabir Parre
 **Written:** 2026-09-28 · **Deadline:** **Thursday 15 Oct 2026** (17 days)
-**Companion files:** [VULNERABILITIES.md](VULNERABILITIES.md) (issue register) · [CHANGELOG.md](CHANGELOG.md) (work log, updated after each big chunk)
+**Companion files:** [NON_FUNCTIONAL_REQUIREMENTS.md](NON_FUNCTIONAL_REQUIREMENTS.md) (NFR specifications) · [VULNERABILITIES.md](VULNERABILITIES.md) (issue register) · [CHANGELOG.md](CHANGELOG.md) (work log, updated after each big chunk)
 
 ---
 

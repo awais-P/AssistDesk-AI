@@ -960,8 +960,32 @@ export function ChatbotWidgetClient({
 
   if (isLoadingConfig) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-sm text-slate-500">
-        Loading chat…
+      <div className="flex h-screen w-full flex-col bg-white" role="status" aria-live="polite">
+        <span className="sr-only">Loading chat...</span>
+        {/* Header skeleton */}
+        <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+          <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+            <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+          </div>
+        </div>
+        {/* Chat message bubbles skeleton */}
+        <div className="flex-1 space-y-4 p-4">
+          <div className="flex items-start gap-2.5">
+            <div className="h-7 w-7 animate-pulse rounded-full bg-slate-200" />
+            <div className="space-y-1.5 max-w-[75%]">
+              <div className="h-14 w-52 animate-pulse rounded-2xl rounded-tl-sm bg-slate-100 p-3" />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <div className="h-9 w-36 animate-pulse rounded-2xl rounded-tr-sm bg-slate-200/80" />
+          </div>
+        </div>
+        {/* Footer input skeleton */}
+        <div className="border-t border-slate-100 p-3">
+          <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+        </div>
       </div>
     );
   }

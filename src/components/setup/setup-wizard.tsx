@@ -611,18 +611,25 @@ export function SetupWizard({ user, initialState }: SetupWizardProps) {
                     Connected Inbox
                   </p>
                   <p className="mt-2 text-sm text-white">
-                    {inboxName} @{emailPrefix}.assistdesk.ai
+                    {inboxName} ({emailPrefix}@assistdesk.ai)
                   </p>
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-300">
-                    System Prompt
-                  </label>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-slate-300">
+                      System Prompt
+                    </label>
+                    <span className="text-xs text-slate-400">
+                      Defines behavior, tone & knowledge boundaries
+                    </span>
+                  </div>
                   <textarea
+                    rows={12}
                     value={systemPrompt}
                     onChange={(event) => setSystemPrompt(event.target.value)}
-                    className="min-h-[120px] w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-white"
+                    className="min-h-[260px] md:min-h-[340px] w-full resize-y rounded-xl border border-white/10 bg-[#111111] p-4 text-sm leading-relaxed text-white outline-none transition focus:border-white focus:ring-1 focus:ring-white/20"
+                    placeholder="Enter system prompt instructions for your AI agent..."
                   />
                 </div>
               </div>

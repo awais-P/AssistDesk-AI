@@ -10,10 +10,6 @@ export default async function SetupPage() {
     redirect("/login");
   }
 
-  if (!session.user.isEmailVerified && !session.user.emailVerified) {
-    redirect(`/verify-email?pending=true&email=${encodeURIComponent(session.user.email)}`);
-  }
-
   const setupState = await getWorkspaceSetupState(session.user.workspaceId);
 
   if (!setupState) {

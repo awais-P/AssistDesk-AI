@@ -313,6 +313,8 @@ Security-related and lower-priority findings from this pass (logging of refused 
 
 ## 7. Non-functional requirements and constraints
 
+*Full specification and verification methods are detailed in [NON_FUNCTIONAL_REQUIREMENTS.md](NON_FUNCTIONAL_REQUIREMENTS.md).*
+
 | Ref | Requirement | Status | Note |
 |---|---|---|---|
 | REL-1 / REL-2 | 99.9% uptime; daily backups kept 14 days | ❓ | Depends on hosting; no deployment config in the repo. |
@@ -321,6 +323,15 @@ Security-related and lower-priority findings from this pass (logging of refused 
 | PER-1 | Voice under 500 ms | ❌ | No voice pipeline. |
 | PER-2 | p95 under 2 s | 🟡 | Not measured; free models take 7–12 s. A Groq key brings this down a lot. |
 | PER-3 / PER-4 | Context sync ≤ 1 s; indexing starts ≤ 10 s | 🟡 | Designed for it; not measured. |
+| LOD-1 | Core Web Vitals (FCP ≤ 1.2s, LCP ≤ 2.5s) | ✅ | Fast SSR shell on Next.js 15 App Router; `next/font` preloading. |
+| LOD-2 | Widget script ≤ 25 KB gzipped, non-blocking | ✅ | `public/assistdesk-widget.js` is ~5.4 KB raw (~1.8 KB gzip), async/defer execution. |
+| LOD-3 / LOD-4 | TTFB ≤ 500 ms; CLS ≤ 0.1 & INP ≤ 200 ms | ✅ | Skeleton loaders on dynamic panels; reserved image/avatar dimensions. |
+| LOD-5 / LOD-6 | Immutable cache headers & code splitting | ✅ | Next.js hashed chunks with long TTL; heavy libraries imported dynamically. |
+| SEO-1 | Metadata, OpenGraph & Twitter Cards | ✅ | Configured with title templates, descriptions, and social preview tags. |
+| SEO-2 | Search engine directives (`robots.txt`) | ✅ | `app/robots.ts` configured (allows public landing, blocks private `/dashboard` and `/api`). |
+| SEO-3 | Dynamic XML sitemap (`sitemap.xml`) | ✅ | `app/sitemap.ts` configured with canonical URLs and change frequencies. |
+| SEO-4 / SEO-5 | JSON-LD schema & semantic HTML | ✅ | SoftwareApplication schema markup on landing page; semantic landmark tags. |
+| SEO-6 | Canonical URLs & redirect consistency | ✅ | Canonical links configured on root metadata; HTTP to HTTPS enforcement. |
 | SEC-1 | TLS and HTTP→HTTPS | 🟡 | Left to the host; secure cookies in production; no HSTS or CSP. |
 | SEC-2 | RBAC | ✅ | Unauthorized attempts not logged. |
 | SEC-3 | Card data via Stripe | n/a | No payments yet. |

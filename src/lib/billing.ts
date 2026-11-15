@@ -181,6 +181,10 @@ export const AI_LIMIT_NOTICE = "Our assistant can't reply right now. A member of
 // ------------------------------------------------------------------- trial
 
 export async function startTrial(workspaceId: string, now = new Date()) {
+  // With payments off (production without Stripe keys) a trial could never be followed by
+  // a paid plan, so the workspace stays unlimited like workspaces from before billing.
+  if (billingMode() === "off") return null;
+
   return prisma.subscription.upsert({
     where: { workspaceId },
     create: { workspaceId, plan: TRIAL_PLAN, status: "TRIALING", provider: "TEST", trialEndsAt: new Date(now.getTime() + TRIAL_DAYS * 86_400_000) },

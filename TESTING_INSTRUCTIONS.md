@@ -201,6 +201,7 @@ The test IDs in the final report map to the repository as follows:
 | ID family | Test layer | Location | Main coverage |
 |---|---|---|---|
 | `UT-01`–`UT-49` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, tool logic, Gmail mailbox parsing, and business rules BR-4 and BR-7 (`business-rules.test.ts`) |
+| `UT-64` | Unit | `tests/unit/deployment.test.ts` | Production: health check, no unpayable trial when payments are off |
 | `UT-61`–`UT-63` | Unit | `tests/unit/ticket-rules.test.ts`, `middleware.test.ts` | Priority-1 fixes: block-list rules and inactivity delays, safe error messages, cross-site check and security headers |
 | `UT-58` | Unit | `tests/unit/billing.test.ts` | Module 3: plans and prices, trials and the effective plan, upgrade/downgrade detection, downgrade blockers, limit messages |
 | `UT-54`, `UT-57`, `UT-59`, `UT-60` | Unit | `tests/unit/audit-and-permissions.test.ts` | Module 11: permission matrix and custom roles, audit redaction and filters, API key generation and validation, OpenAPI coverage, Shopify domain and order-ownership rules, HubSpot mapping |

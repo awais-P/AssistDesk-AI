@@ -18,6 +18,16 @@ Entry template:
 
 ---
 
+## 2026-11-16 — Ready for production on Railway
+**Module:** operations   **Author:** Claude (with Muhammad Awais)
+**Files:** new `DEPLOYMENT.md`, `app/api/health/route.ts`, `tests/unit/deployment.test.ts` (UT-64); changed `package.json` (`build` runs `prisma generate` first; Node 24), `src/lib/billing.ts`
+
+**Added:** a step-by-step Railway guide (project, PostgreSQL, variables, pre-deploy migrations, health check, volume for uploads, checks after deploying) and `/api/health` for the platform's health check.
+
+**Fixed:** with payments switched off (production without Stripe keys) new workspaces no longer get a 14-day trial that would end on the Free plan with no way to upgrade; they stay unlimited until billing is configured.
+
+---
+
 ## 2026-11-16 — Priority-1 fixes before the demo
 **Module:** M1, M5, M7, M8, M10, M11 and operations   **Author:** Claude (with Muhammad Awais)
 **Files:**

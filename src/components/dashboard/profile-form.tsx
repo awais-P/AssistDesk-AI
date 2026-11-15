@@ -115,7 +115,7 @@ function ChangePasswordCard({
         </p>
       ) : null}
 
-      <form className="mt-5 space-y-4" onSubmit={handleSubmit} noValidate>
+      <form className="mt-5 space-y-4" onSubmit={handleSubmit} noValidate autoComplete="off">
         <div>
           <label
             htmlFor="current-password"
@@ -126,8 +126,11 @@ function ChangePasswordCard({
           <input
             ref={currentPasswordRef}
             id="current-password"
+            name="current-password"
             type="password"
-            autoComplete="current-password"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore="true"
             value={currentPassword}
             onChange={(event) => setCurrentPassword(event.target.value)}
             className={`${inputClass} border-white/10`}

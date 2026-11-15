@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   // own folder. Two `next dev` servers sharing .next overwrite each other's files and break pages.
   distDir: process.env.NEXT_DIST_DIR || ".next",
   devIndicators: false,
+  serverExternalPackages: ["unpdf", "mammoth"],
 };
 
 export default nextConfig;

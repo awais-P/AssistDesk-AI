@@ -129,10 +129,10 @@ describe("UT-56 forgot password & reset password workflow", () => {
       } as any);
 
       let updatedData: any = null;
-      vi.spyOn(prisma.user, "update").mockImplementation(async (args: any) => {
+      vi.spyOn(prisma.user, "update").mockImplementation(((args: any) => {
         updatedData = args.data;
-        return { id: "usr_valid_target" } as any;
-      });
+        return Promise.resolve({ id: "usr_valid_target" });
+      }) as any);
 
       const deleteSessionsSpy = vi.spyOn(prisma.session, "deleteMany").mockResolvedValue({ count: 2 } as any);
 

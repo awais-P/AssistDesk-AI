@@ -161,6 +161,8 @@ model User {
   emailVerified      DateTime?
   emailVerificationToken String? @unique
   emailVerificationExpiresAt DateTime?
+  passwordResetToken         String?   @unique
+  passwordResetExpiresAt     DateTime?
   lastSeenAt         DateTime?
   mustChangePassword Boolean   @default(false)
   createdAt          DateTime  @default(now())

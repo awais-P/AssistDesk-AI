@@ -153,6 +153,62 @@ export async function sendVerificationEmail({
   }
 }
 
+/**
+ * Sends a password reset email to a user with a secure reset link.
+ */
+export async function sendPasswordResetEmail({
+  email,
+  fullName,
+  resetToken,
+}: {
+  email: string;
+  fullName: string;
+  resetToken: string;
+}): Promise<{ status: EmailDeliveryStatus; error: string | null; resetUrl: string }> {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+  const smtp = getDefaultSmtp();
+
+  if (!smtp) {
+    return {
+      status: "NOT_CONFIGURED",
+      error: "No platform SMTP sender is configured (ASSISTDESK_SMTP_HOST).",
+      resetUrl,
+    };
+  }
+
+  try {
+    await createTransport(smtp).sendMail({
+      from: {
+        name: "AssistDesk",
+        address: process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`,
+      },
+      to: email.trim(),
+      subject: "Reset your AssistDesk password",
+      text: `Hi ${fullName},\n\nWe received a request to reset your AssistDesk password. Click the link below to choose a new password:\n\n${resetUrl}\n\nThis password reset link will expire in 1 hour.\n\nIf you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1e293b;">
+          <h2 style="color: #0f172a; margin-bottom: 16px;">Reset your AssistDesk password</h2>
+          <p>Hi ${fullName},</p>
+          <p>We received a request to reset the password for your AssistDesk account. Click the button below to set a new password:</p>
+          <p style="margin: 28px 0;">
+            <a href="${resetUrl}" style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Reset Password</a>
+          </p>
+          <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Or copy and paste this URL into your browser:<br/><a href="${resetUrl}" style="color: #0284c7; word-break: break-all;">${resetUrl}</a></p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0;" />
+          <p style="color: #94a3b8; font-size: 12px;">This password reset link will expire in 1 hour. If you did not make this request, your account is safe and you can safely ignore this email.</p>
+        </div>
+      `,
+    });
+
+    return { status: "SENT", error: null, resetUrl };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Send failed.";
+    console.error(`[mailer] Failed to send password reset email to ${email}: ${message}`);
+    return { status: "FAILED", error: message.slice(0, 300), resetUrl };
+  }
+}
+
 /** Verifies SMTP credentials before an admin saves them (FR-15.6). */
 export async function verifySmtpSettings(settings: SmtpSettings) {
   await createTransport(settings).verify();

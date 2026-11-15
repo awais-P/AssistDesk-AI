@@ -25,6 +25,12 @@ const iconPaths: Record<string, ReactNode> = {
     </>
   ),
   chats: <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12Z" />,
+  escalations: (
+    <>
+      <path d="M12 3.5 21 19.5H3Z" />
+      <path d="M12 10v4M12 16.8v.2" />
+    </>
+  ),
   contacts: (
     <>
       <rect x="4" y="3.5" width="16" height="17" rx="2" />

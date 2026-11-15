@@ -20,8 +20,9 @@ to the feature areas below:
 | `widget.spec.ts` | UI-WID-01…06 | FR-17 website widget, grounded answers, live takeover |
 | `agentic-tools.spec.ts` | UI-M2-01…05 | Module 2 tools, test runner, action logs, appointments |
 | `leads.spec.ts` | UI-LED-01…04 | Module 8 leads, detail, CSV, settings |
+| `escalations.spec.ts` | UI-ESC-01…04 | Module 9 escalation queue, accept and hand back, settings, CSV |
 
-Unit groups `UT-01`–`UT-47`, integration groups `IT-01`–`IT-17`, and HTTP
+Unit groups `UT-01`–`UT-53`, integration groups `IT-01`–`IT-21`, and HTTP
 end-to-end groups `API-01`–`API-09` cover the same requirements at different
 boundaries. Their full coverage map and commands are in
 [TESTING_INSTRUCTIONS.md](../../TESTING_INSTRUCTIONS.md).

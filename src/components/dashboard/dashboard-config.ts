@@ -39,6 +39,15 @@ export const dashboardItems: DashboardItem[] = [
     group: "Main",
   },
   {
+    href: "/dashboard/escalations",
+    title: "Escalations",
+    section: "escalations",
+    description:
+      "Conversations handed to your team because the customer asked for a person, was upset or raised a sensitive topic, with an AI brief and a response deadline.",
+    moduleLabel: "Module 9 - Support Escalation",
+    group: "Main",
+  },
+  {
     href: "/dashboard/contacts",
     title: "Contacts",
     section: "contacts",

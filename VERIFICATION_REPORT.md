@@ -143,7 +143,7 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 | M4 Monitoring & analytics | 90% | **≈ 84%** | All 5 FEs and FR-11.1–11.7 run on real data. Some SRS definitions are implemented differently (§4.6). |
 | M2 Agentic tools | 90% | **≈ 88%** | All FEs, LangGraph, confirmation, action logs. Order tracking and invoices are HTTP templates against a demo store, not built-ins. No refund or payment tool. |
 | M6 LLM management (bonus) | 35% | ≈ 37% | Multi-provider support, fallback chain, retired-model memory, feedback loop. No streaming or voice. |
-| M9 Escalation (bonus) | 15% | **≈ 32%** (understated) | Human takeover, plus the AI `escalate_to_human` action and auto hand-over on failure. Escalation reasons appear in analytics. |
+| M9 Escalation | 15% → 88% *(15 Nov)* | ≈ 32% (10 Oct) → **≈ 85%** (15 Nov, §4.8) | 10 Oct: human takeover, plus the AI `escalate_to_human` action and auto hand-over on failure. 15 Nov: the full module (triggers, brief, queue, SLA, log); see §4.8. |
 | M11 Integrations & RBAC (bonus) | 45% | ≈ 45% | RBAC with 4 roles, channels, signed webhooks. No audit log, no API keys. |
 | M3 Subscription & payment | 0% | 0% | Stripe is installed but unused. |
 | **Overall (equal weights)** | **≈ 66%** | **≈ 63%** | Above the 60% target. |
@@ -245,6 +245,23 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 | SEC-2 | RBAC on tool APIs | ✅ | Unauthorized attempts return 403 but are **not logged**. |
 | SRS examples | Refunds and payment-gateway calls | ❌ | No payment integration. |
 | UI-4 | Logs paginated, filterable, sortable | ✅ | — |
+
+---
+
+### 4.8 M9: Support escalation (≈ 85%, added 15 Nov 2026)
+
+Verified after the module was built (see [M9_SUPPORT_ESCALATION.md](M9_SUPPORT_ESCALATION.md)). Tests on 15 Nov: unit 273/273 (30 new), integration 102/102 + 1 opt-in skipped (26 new, IT-19–IT-21), browser UI-ESC-01…04 4/4 with UI-CHT-01…03 and UI-WID-06 re-run green, typecheck 0 errors, lint 0 errors.
+
+| Ref | Requirement | Status | Evidence / gap |
+|---|---|---|---|
+| FE-1 | Automatically escalate complex or sensitive conversations | ✅ | Trigger check before every AI reply on website, WhatsApp, Slack and email tickets; the AI's own hand-over and failed actions. IT-19.01, IT-19.03, IT-20.01, UI-ESC-01. |
+| FE-2 | Hand-off summary of previous chats and the live (voice) transcript | ⚠️ | AI brief from the live transcript plus cross-channel history (IT-20.04/05). No voice channel, so no call transcript. |
+| FE-3 | Configurable sentiment triggers | ✅ | Settings page: switches, threshold, phrases, SLA; Admin only (IT-21.06, UI-ESC-03). Sentiment is lexicon-based, not an ML model. |
+| FE-5 | Context for agents during hand-off | ✅ | Queue cards and the Chats banner with reason, priority, brief and deadline; the M5 context panel. |
+| FE-6 | Logs of escalated conversations for review | ✅ | Escalation records with owner, times, outcome and note; views, 30-day figures, CSV (IT-21.07, UI-ESC-04); timeline events. |
+| — | Queue, ownership, SLA | ✅ | Accept / take over / assign with role checks (IT-21.02–04); SLA breach flagged once with an alert (IT-19.12). |
+
+Bug found while testing: an email whose body repeats its subject had its words counted twice, so an ordinary "Delivery delayed" email was escalated. Fixed before commit (caught by IT-12.03).
 
 ---
 

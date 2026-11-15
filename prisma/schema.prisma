@@ -145,6 +145,7 @@ model Workspace {
   agentRuns         AgentRun[]
   toolExecutions    ToolExecution[]
   appointments      Appointment[]
+  escalations       Escalation[]
 }
 
 model User {
@@ -165,6 +166,8 @@ model User {
   createdTickets     Ticket[]  @relation("CreatedTickets")
   sessions           Session[]
   ownedLeads         Lead[]    @relation("LeadOwner")
+  assignedEscalations Escalation[] @relation("EscalationAssignee")
+  resolvedEscalations Escalation[] @relation("EscalationResolver")
 
   @@index([workspaceId])
 }
@@ -384,6 +387,7 @@ model Ticket {
   agentRuns      AgentRun[]
   toolExecutions ToolExecution[]
   logs           AutomationLog[]
+  escalations    Escalation[]
 
   @@unique([workspaceId, ticketNumber])
   @@index([workspaceId])
@@ -480,6 +484,17 @@ model WorkspaceSetting {
   appointmentSlotMinutes Int       @default(30)
   appointmentHours       Json?
   appointmentDaysAhead   Int       @default(14)
+  /// Module 9: automatic escalation to a human. Master switch, sentiment trigger
+  /// (score -1..1; escalate at or below the threshold), "I want a person" requests,
+  /// built-in sensitive topics plus the workspace's own trigger phrases, and the
+  /// time a team member has to accept an escalation (SLA).
+  escalationEnabled            Boolean  @default(true)
+  escalationSentimentEnabled   Boolean  @default(true)
+  escalationSentimentThreshold Float    @default(-0.5)
+  escalationOnHumanRequest     Boolean  @default(true)
+  escalationSensitiveTopics    Boolean  @default(true)
+  escalationKeywords           String[] @default([])
+  escalationSlaMinutes         Int      @default(15)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
   workspace              Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -527,6 +542,7 @@ model ChatSession {
   agentRuns              AgentRun[]
   toolExecutions         ToolExecution[]
   appointments           Appointment[]
+  escalations            Escalation[]
 
   @@index([workspaceId])
   @@index([chatbotId])
@@ -543,6 +559,8 @@ model ChatMessage {
   attachments Json?
   authorName  String?
   externalId  String?          @unique
+  /// Module 9 FE-3: sentiment of a customer message, -1 (very negative) to 1 (positive).
+  sentiment   Float?
   createdAt   DateTime         @default(now())
   session     ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   feedback    MessageFeedback?
@@ -656,6 +674,9 @@ model Contact {
   memory          String?
   memoryUpdatedAt DateTime?
   lastChannel     ChannelType?
+  /// Module 9: set when an agent resolves an escalation with "keep this customer with
+  /// the team"; their new conversations go straight to a human until it is cleared.
+  aiPaused        Boolean        @default(false)
   firstSeenAt     DateTime       @default(now())
   lastSeenAt      DateTime       @default(now())
   createdAt       DateTime       @default(now())
@@ -666,6 +687,7 @@ model Contact {
   events          SessionEvent[]
   leads           Lead[]
   appointments    Appointment[]
+  escalations     Escalation[]
 
   @@unique([workspaceId, email])
   @@unique([workspaceId, phone])
@@ -1040,4 +1062,55 @@ model Appointment {
 
   @@index([workspaceId, startsAt])
   @@index([contactId])
+}
+
+enum EscalationStatus {
+  PENDING
+  ACCEPTED
+  RESOLVED
+}
+
+/// Module 9 Support Escalation: one record per hand-over of a conversation (or an
+/// email ticket) from the AI to the team. It is the escalation queue (PENDING), the
+/// work in progress (ACCEPTED, with an assignee) and the escalation log (RESOLVED,
+/// FE-6). `trigger` says what caused it: SENTIMENT, HUMAN_REQUEST, KEYWORD,
+/// CUSTOMER_FLAGGED, AI_TOOL, TOOL_FAILURE or MANUAL.
+model Escalation {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  sessionId          String?
+  ticketId           String?
+  contactId          String?
+  channel            ChannelType
+  trigger            String
+  reason             String
+  sentimentScore     Float?
+  priority           TicketPriority   @default(MEDIUM)
+  status             EscalationStatus @default(PENDING)
+  /// AI-written hand-over summary for the team (FE-2/FE-5).
+  summary            String?
+  summaryGeneratedAt DateTime?
+  assigneeId         String?
+  acceptedAt         DateTime?
+  resolvedAt         DateTime?
+  resolvedById       String?
+  /// HANDED_BACK (AI resumes), CLOSED (conversation ended) or RESOLVED (ticket).
+  resolution         String?
+  resolutionNote     String?
+  slaDueAt           DateTime?
+  slaBreachedAt      DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  session            ChatSession?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  ticket             Ticket?          @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  contact            Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  assignee           User?            @relation("EscalationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  resolvedBy         User?            @relation("EscalationResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([sessionId])
+  @@index([ticketId])
+  @@index([contactId])
+  @@index([assigneeId])
 }

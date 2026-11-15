@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { checkTicketEscalation, findOpenEscalation } from "./escalation";
 import { createNotification } from "./notifications";
 import { ensureAgentAutomationDefaults } from "./agent-automations";
 import { estimateTokenUsage, hydrateKnowledgeSources } from "./knowledge-runtime";
@@ -419,6 +420,25 @@ export async function processTicketFollowUp(ticketId: string) {
 
   const humanReplies = await prisma.ticketMessage.count({ where: { ticketId, sender: "AGENT" } });
 
+  // Module 9: an upset or sensitive follow-up goes to the team instead of the AI, and
+  // while an escalation is open the AI stays out of the ticket.
+  if (humanReplies === 0) {
+    const latest = await prisma.ticketMessage.findFirst({ where: { ticketId, sender: "USER" }, orderBy: { createdAt: "desc" }, select: { content: true } });
+    const trigger = latest ? await checkTicketEscalation({ workspaceId: ticket.workspaceId, ticketId, text: latest.content }) : null;
+
+    if (trigger?.escalated || (await findOpenEscalation(ticket.workspaceId, { ticketId }))) {
+      await createAutomationLog({
+        workspaceId: ticket.workspaceId,
+        ticketId,
+        action: "AI_RESPONSE",
+        status: "SKIPPED",
+        summary: "This ticket is escalated to the team, so the AI did not answer the follow-up.",
+      });
+
+      return { processed: false, reason: "Escalated to the team." };
+    }
+  }
+
   if (humanReplies > 0) {
     await createAutomationLog({
       workspaceId: ticket.workspaceId,
@@ -479,6 +499,15 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
   if (!ticket) {
     return { processed: false, reason: "Ticket not found." };
   }
+
+  // Module 9 FE-1 on email: an upset or sensitive email is escalated to the team, its
+  // priority raised and the AI auto-reply skipped.
+  const firstMessage = await prisma.ticketMessage.findFirst({ where: { ticketId: ticket.id, sender: "USER" }, orderBy: { createdAt: "asc" }, select: { content: true } });
+  const emailBody = (firstMessage?.content ?? ticket.previewText ?? "").trim();
+  // The subject counts once: many emails repeat it in the body.
+  const escalationText = emailBody.toLowerCase().includes(ticket.subject.trim().toLowerCase()) ? emailBody : `${ticket.subject}. ${emailBody}`;
+  const escalationCheck = await checkTicketEscalation({ workspaceId: ticket.workspaceId, ticketId: ticket.id, text: escalationText });
+  const escalated = escalationCheck.escalated ? escalationCheck.escalation : null;
 
   const agent = await findTicketAgent(ticket);
 
@@ -587,6 +616,20 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
     }
 
     if (automation.key === "ai-response") {
+      if (escalated) {
+        await createAutomationLog({
+          workspaceId: ticket.workspaceId,
+          ticketId: ticket.id,
+          agentId: agent.id,
+          action: "AI_RESPONSE",
+          status: "SKIPPED",
+          model: agent.model,
+          summary: `Escalated to the team instead of an AI reply: ${escalated.reason}`.slice(0, 500),
+          durationMs: Date.now() - startedAt,
+        });
+        continue;
+      }
+
       if (options.deferAiReply) {
         deferredReply = true;
         continue;
@@ -622,6 +665,14 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
         durationMs: Date.now() - startedAt,
       });
       continue;
+    }
+  }
+
+  // The escalation already raised the priority; the classifier must not lower it.
+  if (escalated && ticketUpdate.priority) {
+    const rank = { LOW: 0, MEDIUM: 1, HIGH: 2, URGENT: 3 } as const;
+    if (rank[ticketUpdate.priority] < rank[escalated.priority]) {
+      ticketUpdate.priority = escalated.priority;
     }
   }
 

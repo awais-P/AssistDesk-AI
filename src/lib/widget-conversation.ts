@@ -1,6 +1,7 @@
 import type { Prisma } from "@/app/generated/prisma/client";
 import { type WidgetChatbot, decideWidgetReply, isFallbackReplyDue } from "./chatbot-widget";
 import { generateSessionReply, loadAgentForReplies } from "./conversation-runtime";
+import { checkInboundEscalation } from "./escalation";
 import { createNotification } from "./notifications";
 import { prisma } from "./prisma";
 import { appendSessionMessage, recordSessionEvent } from "./session-lifecycle";
@@ -143,8 +144,21 @@ export async function respondToVisitor(chatbot: WidgetChatbot, sessionId: string
       customerEmail: true,
     },
   });
-  const decision = await decideWidgetReply({ chatbot, sessionId, sessionStatus: session.status });
   const messages: ReplyMessage[] = [];
+
+  // Module 9 FE-1/FE-3: an upset customer, a request for a person or a sensitive topic
+  // goes to the team before the AI answers; the customer is told a person will reply.
+  const trigger = await checkInboundEscalation({ workspaceId: chatbot.workspaceId, sessionId, text: customerText });
+
+  if (trigger.escalated) {
+    if (trigger.noticeMessage) {
+      messages.push(trigger.noticeMessage);
+    }
+
+    return { messages, waitingForHuman: true };
+  }
+
+  const decision = await decideWidgetReply({ chatbot, sessionId, sessionStatus: session.status });
 
   if (decision.action === "AI_NOW") {
     const aiMessage = await replyWithAgent(chatbot, sessionId);

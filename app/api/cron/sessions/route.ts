@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkEscalationSla } from "@/src/lib/escalation";
 import { prisma } from "@/src/lib/prisma";
 import { safeEqual } from "@/src/lib/secrets";
 import { expireIdleSessions } from "@/src/lib/session-lifecycle";
@@ -46,10 +47,14 @@ async function run(request: Request) {
   // Module 2: actions still waiting for a "yes" after the confirmation window.
   const expiredConfirmations = await expireStaleConfirmations();
 
+  // Module 9: escalations nobody accepted within the response time.
+  const escalationSla = await checkEscalationSla();
+
   return NextResponse.json({
     success: true,
     expiredSessions: closed,
     expiredConfirmations,
+    escalationSlaBreaches: escalationSla.breached,
     removedRateLimitBuckets: buckets.count,
     durationMs: Date.now() - startedAt,
   });

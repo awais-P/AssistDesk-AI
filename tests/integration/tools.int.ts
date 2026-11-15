@@ -309,6 +309,8 @@ describe("IT-02 built-in tools - FE-1", () => {
     const session = await prisma.chatSession.findUniqueOrThrow({ where: { id: sessionB } });
     expect(session.status).toBe("ESCALATED");
     expect(await prisma.sessionEvent.count({ where: { sessionId: sessionB, type: "HUMAN_TAKEOVER" } })).toBe(1);
+    // Module 9: the hand-over is queued for the team with the AI's reason.
+    expect(await prisma.escalation.findFirst({ where: { sessionId: sessionB } })).toMatchObject({ trigger: "AI_TOOL", status: "PENDING", reason: "Wants a refund for a damaged kettle" });
   });
 });
 

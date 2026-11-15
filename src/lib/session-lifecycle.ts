@@ -291,6 +291,12 @@ export async function closeSession(
     data: { status: "CLOSED", endedAt, closedReason: reason, resolution },
   });
 
+  // Module 9: an escalation still open when the conversation ends is resolved with it.
+  await prisma.escalation.updateMany({
+    where: { sessionId, status: { in: ["PENDING", "ACCEPTED"] } },
+    data: { status: "RESOLVED", resolution: "CLOSED", resolvedAt: endedAt, resolutionNote: `Conversation ended: ${reason.replaceAll("_", " ").toLowerCase()}.` },
+  });
+
   const notice = closeNotices[reason]?.(getIdleTimeoutMinutes(session));
 
   if (notice) {

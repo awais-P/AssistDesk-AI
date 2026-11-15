@@ -200,8 +200,10 @@ The test IDs in the final report map to the repository as follows:
 
 | ID family | Test layer | Location | Main coverage |
 |---|---|---|---|
-| `UT-01`–`UT-47` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, tool logic, and business rules BR-4 and BR-7 (`business-rules.test.ts`) |
-| `IT-01`–`IT-17` | Integration | `tests/integration/` | Tool registry and built-ins, HTTP tools, agent reasoning and fallbacks, intent rules, tool administration, appointments, action logs, ticket workflows, the opt-in real-model test (`IT-13`), and business rules BR-1, BR-2, BR-3 and BR-5 (`business-rules.int.ts`) using PostgreSQL |
+| `UT-01`–`UT-49` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, tool logic, Gmail mailbox parsing, and business rules BR-4 and BR-7 (`business-rules.test.ts`) |
+| `UT-50`–`UT-53` | Unit | `tests/unit/escalation.test.ts` | Module 9: sentiment (English, Roman Urdu, Urdu), requests for a person, sensitive topics and trigger phrases, the escalation decision and SLA, queue stats, CSV export, settings validation, the fallback hand-over brief |
+| `IT-01`–`IT-18` | Integration | `tests/integration/` | Tool registry and built-ins, HTTP tools, agent reasoning and fallbacks, intent rules, tool administration, appointments, action logs, ticket workflows, Gmail mailbox to tickets (`IT-18`), the opt-in real-model test (`IT-13`), and business rules BR-1, BR-2, BR-3 and BR-5 (`business-rules.int.ts`) using PostgreSQL |
+| `IT-19`–`IT-21` | Integration | `tests/integration/escalation.int.ts`, `escalation-api.int.ts` | Module 9: escalation lifecycle (queue, accept, assign, resolve), one open escalation per conversation, customer kept with the team, SLA breach, email ticket escalation, hand-over brief, escalation APIs and role checks |
 | `UI-AUTH-*` | Browser functional | `tests/ui/auth.spec.ts` | Login, sign-up, validation, access protection, and rate limits |
 | `UI-SETUP-*` | Browser functional | `tests/ui/setup-wizard.spec.ts` | Initial inbox, agent, knowledge, and chatbot setup |
 | `UI-TKT-*` | Browser functional | `tests/ui/tickets.spec.ts` | Ticket listing, search, filters, views, creation, bulk actions, and pagination |
@@ -215,6 +217,7 @@ The test IDs in the final report map to the repository as follows:
 | `UI-WID-*` | Browser functional | `tests/ui/widget.spec.ts` | Widget branding, grounded answers, email capture, controls, allowed domains, and live takeover |
 | `UI-M2-*` | Browser functional | `tests/ui/agentic-tools.spec.ts` | Tool listing, tool test-runner, action logs, chain of thought, filters, and appointments |
 | `UI-LED-*` | Browser functional | `tests/ui/leads.spec.ts` | Lead listing, filters, details, CSV export, and lead settings |
+| `UI-ESC-*` | Browser functional | `tests/ui/escalations.spec.ts` | Module 9: a visitor asking for a person is escalated to the queue, accept and hand back, escalation settings, CSV export |
 | `API-01`–`API-08` | HTTP E2E | `scripts/e2e/e2e-all.mjs` | Authentication, assistant setup, knowledge base, tickets, widget sessions, leads, analytics, and dashboard pages |
 | `API-09` | HTTP E2E | `scripts/e2e/e2e-m2.mjs` | Module 2 agentic tools, confirmations, appointments, and action logs with a real model |
 

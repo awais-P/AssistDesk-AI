@@ -18,6 +18,33 @@ Entry template:
 
 ---
 
+## 2026-11-15 — Module 9 Support Escalation: triggers, hand-over brief, queue, SLA
+**Module:** M9 – Support Escalation   **Author:** Claude (with Muhammad Awais)
+**Files:**
+- New: `src/lib/escalation-triggers.ts`, `src/lib/escalation.ts`, `src/lib/escalation-summary.ts`, `src/lib/escalation-queries.ts`, `app/api/escalations/route.ts`, `app/api/escalations/[id]/route.ts`, `app/api/escalations/settings/route.ts`, `app/dashboard/escalations/page.tsx`, `app/dashboard/escalations/settings/page.tsx`, `src/components/dashboard/escalations-workspace.tsx`, `src/components/dashboard/escalation-settings-workspace.tsx`, `prisma/migrations/20261115090000_module9_escalation/`, `M9_SUPPORT_ESCALATION.md`
+- Changed: `prisma/schema.prisma`, `src/lib/widget-conversation.ts`, `src/lib/integrations/channel-inbound.ts`, `src/lib/ticket-workflow.ts`, `src/lib/tools/builtin-tools.ts`, `src/lib/session-lifecycle.ts`, `app/api/chat-sessions/[id]/route.ts`, `…/messages/route.ts`, `…/context/route.ts`, `app/api/cron/sessions/route.ts`, `instrumentation.ts`, `src/components/dashboard/chats-workspace.tsx`, `dashboard-config.ts`, `dashboard-sidebar.tsx`
+- Tests: `tests/unit/escalation.test.ts` (UT-50–UT-53), `tests/integration/escalation.int.ts` (IT-19, IT-20), `tests/integration/escalation-api.int.ts` (IT-21), `tests/ui/escalations.spec.ts` (UI-ESC-01…04), `tests/integration/tools.int.ts` (IT-02.09)
+
+**Added:**
+- **Automatic escalation (FE-1).** Before the AI answers on the website, WhatsApp, Slack or an email ticket, the customer's message is checked for a request for a person, a sensitive topic (safety → urgent, legal, payment dispute, fraud, cancellation), the workspace's own trigger phrases, and negative sentiment (one angry message or three in a row), in English, Roman Urdu and Urdu. The customer is told a person will reply instead of getting an AI answer.
+- **Sentiment triggers (FE-3).** A deterministic scorer with negation, intensifiers and shouting; every customer message's score is stored. **Escalations → Settings** (Admin): trigger switches, threshold, phrases, response time.
+- **Hand-over brief (FE-2, FE-5).** Written in the background by the agent's model from the transcript and the customer's history on every channel; built from the messages when no model answers. Shown in the queue and in a new **Chats banner**.
+- **Escalations page (FE-6).** Queue / Mine / In progress / Resolved / All, stat tiles (waiting, in progress, overdue, time to accept, within SLA), reasons breakdown, accept, take over (Manager), assign (Manager), resolve (hand back to the AI / close / keep with the team), rewrite brief, CSV export. Sidebar entry after Chats.
+- **SLA.** Deadline per escalation; checked every minute in the server and from `/api/cron/sessions`; a breach is flagged once with an error alert.
+- **Keep a customer with the team.** `Contact.aiPaused`: their next conversations go straight to a person until handed back.
+- Data: `Escalation` model, `EscalationStatus` enum, escalation settings on `WorkspaceSetting`, `Contact.aiPaused`, `ChatMessage.sentiment`.
+
+**Updated:**
+- The AI's `escalate_to_human` action, auto hand-over on a failed action, **Take over / Hand back / Close** in Chats, and a team member's reply now all create or resolve an escalation record, so every hand-over is in one queue. `HUMAN_TAKEOVER` events are still written, so M4 analytics and M5 resolution are unchanged.
+- Closing or expiring a conversation resolves its open escalation.
+- Escalated email tickets get a raised priority and an internal note, and the AI does not reply to them or their follow-ups.
+
+**Fixed (found while testing):** an email whose body repeats the subject was scored twice and escalated on mild wording.
+
+**Notes / follow-ups:** run `npx prisma migrate deploy` once on the dev database. Remaining: voice-call transcript in the brief (M6), routing to teams/skills, email/Slack alerts for escalations.
+
+---
+
 ## 2026-10-19 — Gmail mailbox checks can be switched on for the demo server
 **Files:** `scripts/demo/start.mjs`, `.env.demo.example`
 **Updated:** `npm run demo` still does not read mailboxes by default. Setting `ASSISTDESK_EMAIL_POLLING=true` in `.env.demo` turns real Gmail email → tickets on for a live email demo; the browser tests are unaffected, because the test data has no Gmail connection.

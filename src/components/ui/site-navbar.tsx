@@ -1,15 +1,14 @@
 import Link from "next/link";
+import { BrandIcon } from "./brand-logo";
 
 export function SiteNavbar() {
   return (
     <header className="border-b border-white/10 bg-black">
       <nav className="section-wrap flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between">
         <Link href="/" className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white text-lg font-bold text-black">
-            A
-          </span>
+          <BrandIcon size={42} className="rounded-xl border border-white/10" />
           <div>
-            <p className="heading-font text-xl font-bold text-white">
+            <p className="heading-font text-xl font-bold tracking-tight text-white">
               AssistDesk
             </p>
             <p className="text-xs text-slate-400">

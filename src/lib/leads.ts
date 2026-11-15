@@ -33,7 +33,7 @@ import { enqueueWebhookEvent } from "./webhooks";
  * workspace's webhooks.
  */
 
-export type LeadSource = "FORM" | "AUTO" | "MANUAL" | "AI_TOOL";
+export type LeadSource = "FORM" | "AUTO" | "MANUAL" | "AI_TOOL" | "API";
 
 const leadInclude = {
   chatbot: { select: { id: true, name: true } },
@@ -340,6 +340,9 @@ export async function captureLead(input: CaptureLeadInput) {
       data: webhookLeadData(payload),
     });
   });
+
+  // Module 11 FE-1: push the lead to the connected CRM (HubSpot) in the background.
+  void import("./connectors").then(({ scheduleLeadCrmSync }) => scheduleLeadCrmSync(lead.id, workspaceId)).catch(() => undefined);
 
   return { lead: serialized, created: !existing };
 }
@@ -734,6 +737,9 @@ export async function updateLead(workspaceId: string, leadId: string, patch: Lea
       },
     });
   }
+
+  // Module 11 FE-1: keep the CRM copy up to date.
+  void import("./connectors").then(({ scheduleLeadCrmSync }) => scheduleLeadCrmSync(leadId, workspaceId)).catch(() => undefined);
 
   return serialized;
 }

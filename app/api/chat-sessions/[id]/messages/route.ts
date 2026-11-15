@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { deliverAgentMessageToChannel } from "@/src/lib/integrations/channel-outbound";
+import { EscalationError, acceptEscalation, findOpenEscalation, openEscalation } from "@/src/lib/escalation";
 import { prisma } from "@/src/lib/prisma";
-import { publishConversationEvent } from "@/src/lib/realtime";
-import { appendSessionMessage, recordSessionEvent } from "@/src/lib/session-lifecycle";
+import { appendSessionMessage } from "@/src/lib/session-lifecycle";
 
 type ChatSessionMessagesRouteContext = {
   params: Promise<{
@@ -57,23 +57,27 @@ export async function POST(request: Request, context: ChatSessionMessagesRouteCo
     );
   }
 
-  if (chatSession.status === "ACTIVE") {
-    await prisma.chatSession.update({
-      where: { id: chatSession.id },
-      data: { status: "ESCALATED" },
-      select: { id: true },
-    });
+  // Replying takes the conversation over (Module 9: an escalation accepted by this
+  // team member) - or accepts the waiting escalation if the AI already handed it over.
+  const actor = { id: session.user.id, fullName: session.user.fullName };
+  const open = chatSession.status === "ESCALATED" ? await findOpenEscalation(chatSession.workspaceId, { sessionId: chatSession.id }) : null;
 
-    await recordSessionEvent({
+  if (chatSession.status === "ACTIVE") {
+    await openEscalation({
       workspaceId: chatSession.workspaceId,
       sessionId: chatSession.id,
       contactId: chatSession.contactId,
-      type: "HUMAN_TAKEOVER",
-      detail: `${session.user.fullName} replied and took over the conversation; AI replies paused.`,
-      metadata: { userId: session.user.id, trigger: "reply" },
+      trigger: "MANUAL",
+      reason: `${session.user.fullName} replied to the customer.`,
+      actor,
+      customerNotice: null,
+      eventDetail: `${session.user.fullName} replied and took over the conversation; AI replies paused.`,
+      eventMetadata: { trigger: "reply" },
+    }).catch((error) => {
+      if (!(error instanceof EscalationError)) throw error;
     });
-
-    publishConversationEvent({ workspaceId: chatSession.workspaceId, sessionId: chatSession.id, type: "status" });
+  } else if (open?.status === "PENDING") {
+    await acceptEscalation({ workspaceId: chatSession.workspaceId, escalationId: open.id, actor }).catch(() => undefined);
   }
 
   const message = await appendSessionMessage({

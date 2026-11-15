@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { recordAudit } from "@/src/lib/audit";
+import { startTrial } from "@/src/lib/billing";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
   AUTH_COOKIE_NAME,
@@ -6,11 +8,13 @@ import {
   createSlug,
   createUniqueUsername,
   createUniqueWorkspaceSlug,
+  generateEmailVerificationToken,
   hashPassword,
   isValidEmail,
   sessionCookieOptions,
   validateNewPassword,
 } from "@/src/lib/auth";
+import { sendVerificationEmail } from "@/src/lib/mailer";
 import { prisma } from "@/src/lib/prisma";
 import {
   RATE_LIMITS,
@@ -81,6 +85,9 @@ export async function POST(request: Request) {
   const username = await createUniqueUsername(createSlug(email.split("@")[0] || fullName));
   const passwordHash = await hashPassword(password);
 
+  const verificationToken = generateEmailVerificationToken();
+  const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
   let user;
 
   try {
@@ -105,8 +112,12 @@ export async function POST(request: Request) {
           email,
           passwordHash,
           role: "OWNER",
+          isEmailVerified: false,
+          emailVerified: null,
+          emailVerificationToken: verificationToken,
+          emailVerificationExpiresAt: verificationExpiresAt,
         },
-        select: { id: true },
+        select: { id: true, workspaceId: true, fullName: true },
       });
     });
   } catch (error) {
@@ -120,13 +131,41 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  // Send email confirmation link in background
+  await sendVerificationEmail({
+    email,
+    fullName,
+    verificationToken,
+  }).catch((err) => {
+    console.error("[signup] Failed to send confirmation email:", err);
+  });
+
+  // Module 3: every new workspace starts with a free trial of the Growth plan. A failure
+  // here must not block the sign-up; the workspace then simply has no plan yet.
+  await startTrial(user.workspaceId).catch((error) => console.error("[billing] Could not start the trial:", error));
+
   const session = await createSession(user.id);
+  await recordAudit({
+    workspaceId: user.workspaceId,
+    actor: { type: "USER", id: user.id, name: user.fullName },
+    action: "workspace.created",
+    category: "auth",
+    summary: `${user.fullName} created the workspace and its owner account`,
+    targetType: "user",
+    targetId: user.id,
+    request,
+  });
   const response = NextResponse.json({
     success: true,
     redirectTo: "/setup",
+    message: "Account created successfully. Continue setting up your AI agent.",
   });
 
-  response.cookies.set(AUTH_COOKIE_NAME, session.token, sessionCookieOptions(session.expiresAt));
+  response.cookies.set(
+    AUTH_COOKIE_NAME,
+    session.token,
+    sessionCookieOptions(session.expiresAt),
+  );
 
   return response;
 }

@@ -4,6 +4,7 @@ import { type ContactIdentity, resolveContact } from "../contacts";
 import { generateSessionReply, loadAgentForReplies } from "../conversation-runtime";
 import { extractContactDetails } from "../lead-form";
 import { evaluateLeadCapture } from "../leads";
+import { checkInboundEscalation } from "../escalation";
 import { prisma } from "../prisma";
 import { RATE_LIMITS, consumeRateLimit } from "../rate-limit";
 import {
@@ -164,6 +165,19 @@ export async function handleChannelInbound({
     }
   } catch (error) {
     console.error(`[${channel.toLowerCase()}] Lead capture failed:`, error);
+  }
+
+  // Module 9 FE-1/FE-3: escalation triggers run before the AI answers.
+  const trigger = await checkInboundEscalation({ workspaceId: integration.workspaceId, sessionId: session.id, text });
+
+  if (trigger.escalated) {
+    if (trigger.noticeMessage) {
+      await deliver(trigger.noticeMessage.content).catch((error) =>
+        console.error(`[${channel.toLowerCase()}] Failed to deliver hand-over notice:`, error),
+      );
+    }
+
+    return { status: "human" as const };
   }
 
   if (session.status === "ESCALATED") {

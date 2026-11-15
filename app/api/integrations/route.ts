@@ -1,4 +1,5 @@
-import { requireRole } from "@/src/lib/rbac";
+import { hasRole, requireRole } from "@/src/lib/rbac";
+import { auditUser } from "@/src/lib/audit";
 import { createNotification } from "@/src/lib/notifications";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
@@ -13,6 +14,8 @@ import {
   missingSecretFields,
   readIntegrationConfig,
 } from "@/src/lib/integrations/config";
+import { describeMailboxError, testMailbox } from "@/src/lib/email-mailbox";
+import { isMailboxProvider, mailboxSettings } from "@/src/lib/email-mailbox-settings";
 import { testSlackConnection } from "@/src/lib/integrations/slack";
 import { testWhatsAppConnection } from "@/src/lib/integrations/whatsapp";
 import { generateToken } from "@/src/lib/secrets";
@@ -37,6 +40,7 @@ const supportedTypes = new Set<IntegrationTypeValue>(["EMAIL", "WHATSAPP", "SLAC
 async function testConnection(
   type: IntegrationTypeValue,
   config: Record<string, unknown>,
+  provider: string,
 ): Promise<{
   status: "CONNECTED" | "ERROR";
   statusMessage: string;
@@ -44,6 +48,38 @@ async function testConnection(
   discovered: Record<string, string>;
 }> {
   const plain = readIntegrationConfig(type, config as Prisma.JsonValue);
+
+  if (type === "EMAIL") {
+    // Forwarded email needs no login; a mailbox connection (Gmail) is tested by logging in.
+    if (!isMailboxProvider(provider)) {
+      return { status: "CONNECTED", statusMessage: "Ready to receive email.", externalId: null, discovered: {} };
+    }
+
+    const settings = mailboxSettings(provider, plain);
+
+    if (!settings) {
+      return {
+        status: "ERROR",
+        statusMessage: `Enter the ${provider} address and its app password.`,
+        externalId: null,
+        discovered: {},
+      };
+    }
+
+    try {
+      await testMailbox(settings);
+    } catch (error) {
+      return { status: "ERROR", statusMessage: describeMailboxError(error), externalId: null, discovered: {} };
+    }
+
+    return {
+      status: "CONNECTED",
+      statusMessage: `Connected to ${settings.user}. New emails become tickets within about 30 seconds.`,
+      externalId: `mailbox:${settings.user}`,
+      discovered: {},
+    };
+  }
+
   const missing = missingSecretFields(type, plain);
 
   if (missing.length > 0) {
@@ -121,7 +157,12 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ integrations: integrations.map(serializeIntegration) });
+  const includeSecrets = hasRole(session.user.role, "ADMIN");
+  return NextResponse.json({
+    integrations: integrations.map((integration) =>
+      serializeIntegration(integration, { includeSecrets }),
+    ),
+  });
 }
 
 export async function POST(request: Request) {
@@ -230,18 +271,25 @@ export async function POST(request: Request) {
   }
 
   const mergedConfig = mergeIntegrationConfig(type, body.config, existing?.config);
-  const connection = await testConnection(type, mergedConfig);
+  const provider =
+    body.provider?.trim() || (type === "SLACK" ? "Slack" : type === "WHATSAPP" ? "Meta Cloud API" : "Custom");
+  const connection = await testConnection(type, mergedConfig, provider);
+  // A mailbox connection receives at its own address; customer replies must go back to it.
+  const mailboxAddress =
+    type === "EMAIL" && isMailboxProvider(provider)
+      ? readIntegrationConfig(type, mergedConfig as Prisma.JsonValue).mailboxUser?.trim().toLowerCase() || null
+      : null;
 
   const data = {
     workspaceId: session.user.workspaceId,
     type,
     name: name.slice(0, 80),
-    provider: body.provider?.trim() || (type === "SLACK" ? "Slack" : type === "WHATSAPP" ? "Meta Cloud API" : "Custom"),
+    provider,
     status: connection.status,
     statusMessage: connection.statusMessage,
     externalId: connection.externalId,
     supportAddress:
-      type === "EMAIL" ? body.supportAddress?.trim().toLowerCase() || null : null,
+      type === "EMAIL" ? mailboxAddress || body.supportAddress?.trim().toLowerCase() || null : null,
     forwardingAddress:
       type === "EMAIL" ? body.forwardingAddress?.trim().toLowerCase() || null : null,
     inboxId: body.inboxId || null,
@@ -286,7 +334,17 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ integration: serializeIntegration(integration) });
+    await auditUser(session.user, {
+      action: existing ? "integration.updated" : "integration.created",
+      category: "integrations",
+      summary: `${session.user.fullName} ${existing ? "updated" : "connected"} ${integration.name} (${type.toLowerCase()})`,
+      targetType: "integration",
+      targetId: integration.id,
+      metadata: { type, provider: integration.provider, status: integration.status },
+      request,
+    });
+
+    return NextResponse.json({ integration: serializeIntegration(integration, { includeSecrets: true }) });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json(
@@ -294,7 +352,9 @@ export async function POST(request: Request) {
           error:
             type === "SLACK"
               ? "This Slack workspace is already connected to AssistDesk."
-              : "This WhatsApp number is already connected to AssistDesk.",
+              : type === "EMAIL"
+                ? "This mailbox is already connected to AssistDesk."
+                : "This WhatsApp number is already connected to AssistDesk.",
         },
         { status: 409 },
       );

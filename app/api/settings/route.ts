@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -68,6 +69,16 @@ export async function PATCH(request: Request) {
       },
     }),
   ]);
+
+  await auditUser(session.user, {
+    action: "settings.updated",
+    category: "settings",
+    summary: `${session.user.fullName} updated the workspace settings`,
+    targetType: "workspace",
+    targetId: session.user.workspaceId,
+    metadata: { workspaceName, supportEmail, timezone: settings.timezone, crossChannelMemory: settings.crossChannelMemory },
+    request,
+  });
 
   return NextResponse.json({ workspace, settings });
 }

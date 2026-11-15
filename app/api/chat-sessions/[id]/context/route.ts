@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
+import { listEscalations } from "@/src/lib/escalation-queries";
 import { prisma } from "@/src/lib/prisma";
 import { getIdleTimeoutMinutes, getSessionExpiresAt } from "@/src/lib/session-lifecycle";
 import { buildCustomerContext } from "@/src/lib/session-memory";
@@ -58,7 +59,7 @@ export async function GET(_request: Request, context: ChatSessionContextRouteCon
   }
 
   const contactId = chatSession.contactId;
-  const [otherSessions, tickets, aiContext, workspaceSettings, lead] = await Promise.all([
+  const [otherSessions, tickets, aiContext, workspaceSettings, lead, latestEscalation] = await Promise.all([
     contactId
       ? prisma.chatSession.findMany({
           where: { contactId, id: { not: chatSession.id } },
@@ -99,7 +100,16 @@ export async function GET(_request: Request, context: ChatSessionContextRouteCon
       orderBy: { lastActivityAt: "desc" },
       select: { id: true, status: true, score: true, source: true, intent: true, createdAt: true },
     }),
+    // Module 9: why this conversation is with the team, and the hand-over brief.
+    prisma.escalation.findFirst({
+      where: { sessionId: chatSession.id },
+      orderBy: [{ resolvedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
+      select: { id: true },
+    }),
   ]);
+  const [escalation] = latestEscalation
+    ? await listEscalations({ workspaceId: session.user.workspaceId, userId: session.user.id, ids: [latestEscalation.id] })
+    : [];
 
   const contact = chatSession.contact;
   const channels = [
@@ -111,6 +121,20 @@ export async function GET(_request: Request, context: ChatSessionContextRouteCon
   ];
 
   return NextResponse.json({
+    escalation: escalation
+      ? {
+          id: escalation.id,
+          status: escalation.status,
+          triggerLabel: escalation.triggerLabel,
+          reason: escalation.reason,
+          priority: escalation.priority,
+          summary: escalation.summary,
+          assignee: escalation.assignee,
+          slaDueAt: escalation.slaDueAt,
+          slaBreached: escalation.slaBreached,
+          createdAt: escalation.createdAt,
+        }
+      : null,
     session: {
       id: chatSession.id,
       channel: chatSession.channel,

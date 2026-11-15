@@ -21,6 +21,12 @@ function isHeading(line: string) {
   return trimmed.length <= 90 && headingPattern.test(trimmed) && !/[.,;]$/.test(trimmed);
 }
 
+/** Mostly bullets or short lines ("React development"): a list, not hard-wrapped prose. */
+function isListBlock(lines: string[]) {
+  const listLines = lines.filter((line) => /^(?:[-*•▪◦●–]|\d{1,2}[.)])\s/.test(line) || line.length <= 50);
+  return lines.length >= 3 && listLines.length >= lines.length / 2;
+}
+
 function tailOverlap(text: string) {
   if (text.length <= CHUNK_OVERLAP_CHARS) {
     return text;
@@ -77,7 +83,13 @@ export function chunkDocument(text: string): KnowledgeChunkDraft[] {
     }
 
     const pieces =
-      block.length > CHUNK_TARGET_CHARS ? splitSentences(block.replace(/\n/g, " ")) : [block];
+      block.length <= CHUNK_TARGET_CHARS
+        ? [block]
+        : isListBlock(lines)
+          ? lines.flatMap(splitSentences) // keep a long list one item per line
+          : splitSentences(block.replace(/\n/g, " ")); // join hard-wrapped prose first
+
+    let firstPiece = true;
 
     for (const part of pieces.flatMap(splitLongPiece)) {
       const trimmed = part.trim();
@@ -88,8 +100,10 @@ export function chunkDocument(text: string): KnowledgeChunkDraft[] {
         hasNewContent = false;
       }
 
-      current = current ? `${current}\n${trimmed}` : trimmed;
+      // A blank line keeps paragraphs and sections apart inside a chunk.
+      current = current ? `${current}${firstPiece ? "\n\n" : "\n"}${trimmed}` : trimmed;
       hasNewContent = true;
+      firstPiece = false;
     }
 
     if (chunks.length >= MAX_CHUNKS_PER_SOURCE) {

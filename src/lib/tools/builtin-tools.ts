@@ -2,10 +2,11 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { normalizeEmail, normalizePhone } from "../identity";
 import { retrieveKnowledgeMatches } from "../knowledge-runtime";
 import { captureLead } from "../leads";
+import { ConnectorError, findShopifyOrder } from "../connectors";
+import { EscalationError, openEscalation } from "../escalation";
 import { createNotification } from "../notifications";
 import { prisma } from "../prisma";
-import { publishConversationEvent } from "../realtime";
-import { appendSessionMessage, recordSessionEvent } from "../session-lifecycle";
+import { recordSessionEvent } from "../session-lifecycle";
 import { maskEmail, maskPhone } from "../session-memory";
 import { bookAppointment, findFreeSlots } from "./appointments";
 import { formatSlot } from "./appointments-math";
@@ -371,43 +372,31 @@ const escalateToHuman: BuiltInDefinition = {
       return { simulated: true, note: "Test mode: the conversation was not handed over." };
     }
 
-    if (ctx.sessionId) {
-      const session = await prisma.chatSession.findFirst({ where: { id: ctx.sessionId, workspaceId: ctx.workspaceId }, select: { status: true } });
-
-      if (session?.status === "CLOSED") {
-        throw new ToolError("This conversation has already ended.");
-      }
-
-      await prisma.chatSession.update({ where: { id: ctx.sessionId }, data: { status: "ESCALATED" }, select: { id: true } });
-      await recordSessionEvent({
-        workspaceId: ctx.workspaceId,
-        sessionId: ctx.sessionId,
-        contactId: ctx.contactId,
-        type: "HUMAN_TAKEOVER",
-        detail: `AI handed the conversation to the team: ${summary}`,
-        metadata: { trigger: "ai_tool", runId: ctx.runId },
-      });
-      await appendSessionMessage({
-        sessionId: ctx.sessionId,
-        workspaceId: ctx.workspaceId,
-        sender: "SYSTEM",
-        content: "The AI assistant has asked a team member to join this conversation.",
-      });
-      publishConversationEvent({ workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, type: "status" });
-    } else if (ctx.ticketId) {
-      await prisma.ticketMessage.create({
-        data: { workspaceId: ctx.workspaceId, ticketId: ctx.ticketId, sender: "SYSTEM", content: `[[INTERNAL_NOTE]]\nAI asked for a human: ${summary}` },
-      });
+    if (!ctx.sessionId && !ctx.ticketId) {
+      return { handedOver: false, note: "There is no conversation to hand over here." };
     }
 
-    await createNotification({
-      workspaceId: ctx.workspaceId,
-      type: "CHAT_WAITING",
-      severity: "WARNING",
-      title: `AI handed over ${ctx.customer.name ?? "a customer"} to the team`,
-      body: summary,
-      link: ctx.sessionId ? `/dashboard/chats?session=${ctx.sessionId}` : ctx.ticketId ? `/dashboard/tickets/${ctx.ticketId}` : "/dashboard/chats",
-    });
+    // Module 9: one escalation record (queue, SLA, hand-over summary) per hand-over.
+    const automatic = ctx.triggeredBy === "RULE";
+
+    try {
+      await openEscalation({
+        workspaceId: ctx.workspaceId,
+        sessionId: ctx.sessionId,
+        ticketId: ctx.ticketId,
+        contactId: ctx.contactId,
+        trigger: automatic ? "TOOL_FAILURE" : "AI_TOOL",
+        reason: summary,
+        priority: automatic ? "HIGH" : "MEDIUM",
+        eventDetail: `AI handed the conversation to the team: ${summary}`,
+        eventMetadata: { trigger: "ai_tool", runId: ctx.runId },
+      });
+    } catch (error) {
+      if (error instanceof EscalationError) {
+        throw new ToolError(error.message);
+      }
+      throw error;
+    }
 
     return { handedOver: true, note: "Tell the customer a team member will reply here shortly." };
   },
@@ -542,6 +531,51 @@ const searchKnowledgeBase: BuiltInDefinition = {
   },
 };
 
+/**
+ * Module 11 FE-1 (e-commerce): the customer's Shopify order. The order is shown only
+ * when the email or phone the customer gives (or that we already know) matches it.
+ */
+const shopifyOrderStatus: BuiltInDefinition = {
+  key: "shopify_order_status",
+  name: "Shopify order status",
+  description:
+    "Look up an order in the connected Shopify store: status, payment, items and tracking. Needs the order number and the email or phone used for the order (use the customer's known details if they already gave them). Never guess an order number.",
+  parameters: [
+    { name: "order_number", type: "string", description: "The order number, e.g. 1042 or #1042.", required: true },
+    { name: "email", type: "string", description: "Email used for the order, if the customer gave it.", required: false },
+    { name: "phone", type: "string", description: "Phone used for the order, if the customer gave it.", required: false },
+  ],
+  requiresConfirmation: false,
+  effect: "READ",
+  summarize: (values) => `Look up Shopify order ${values.order_number}`,
+  async execute(values, ctx) {
+    const given = { email: str(values.email), phone: str(values.phone) };
+    // Details the customer gave in this conversation count; masked ones from our memory don't.
+    const email = given.email && !isMasked(given.email) ? given.email : ctx.customer.email;
+    const phone = given.phone && !isMasked(given.phone) ? given.phone : ctx.customer.phone;
+
+    try {
+      const result = await findShopifyOrder(ctx.workspaceId, { orderNumber: String(values.order_number), email, phone });
+
+      if (!result.found) {
+        return {
+          found: false,
+          note: result.needsVerification
+            ? "Ask for the email or phone number used for the order, then look it up again."
+            : "No order with this number matches the customer's details. Ask them to check the number and the email or phone used.",
+        };
+      }
+
+      return result;
+    } catch (error) {
+      if (error instanceof ConnectorError) {
+        throw new ToolError(error.message);
+      }
+      throw error;
+    }
+  },
+};
+
 export const BUILT_IN_TOOLS: BuiltInDefinition[] = [
   getCustomerInfo,
   lookupTicketStatus,
@@ -551,6 +585,7 @@ export const BUILT_IN_TOOLS: BuiltInDefinition[] = [
   checkAvailability,
   bookAppointmentTool,
   searchKnowledgeBase,
+  shopifyOrderStatus,
 ];
 
 export const BUILT_IN_BY_KEY = new Map(BUILT_IN_TOOLS.map((tool) => [tool.key, tool]));

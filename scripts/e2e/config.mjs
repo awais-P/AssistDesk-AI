@@ -1,5 +1,17 @@
 // Settings for the end-to-end scripts. Everything comes from the environment so no credentials
 // live in the repo. Run them only against a development server with a throwaway database.
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// Settings can come from .env.demo at the project root (see .env.demo.example); the shell wins.
+const ENV_FILE = fileURLToPath(new URL("../../.env.demo", import.meta.url));
+if (existsSync(ENV_FILE)) {
+  process.loadEnvFile(ENV_FILE);
+}
+if (!process.env.E2E_BASE_URL && process.env.DEMO_PORT) {
+  process.env.E2E_BASE_URL = `http://localhost:${process.env.DEMO_PORT}`;
+}
+
 function required(name) {
   const value = process.env[name]?.trim();
 

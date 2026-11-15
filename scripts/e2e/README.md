@@ -5,12 +5,14 @@ These drive the **running app over HTTP** (real API routes, real database, real 
 | Suite | Command | Needs |
 |---|---|---|
 | Unit | `npm test` | nothing |
-| Integration | `TEST_DATABASE_URL=… npm run test:integration` | a throwaway PostgreSQL database with migrations applied |
+| Integration | `. .\scripts\tests-env.ps1; npm run test:integration` | local or throwaway PostgreSQL database with migrations applied |
 | **End-to-end** | `node scripts/e2e/e2e-all.mjs` | a running dev server + its database (below) |
+
+Results of the 10 Oct 2026 verification are in [VERIFICATION_REPORT.md](../../VERIFICATION_REPORT.md).
 
 ## Setup
 
-1. Use a **throwaway** PostgreSQL database (the scripts create workspaces, tickets, leads and so on). Apply migrations: `DATABASE_URL=… npx prisma migrate deploy`.
+1. Use a **local development or throwaway** PostgreSQL database (the scripts create workspaces, tickets, leads and so on). Create `scripts/tests-env.ps1` once from the template (`Copy-Item scripts/tests-env.example.ps1 scripts/tests-env.ps1`, then fill in your values), load it with `. .\scripts\tests-env.ps1`, then apply migrations with `npx prisma migrate deploy`.
 2. Start the dev server against it with these settings (in `.env` or the shell):
 
    ```
@@ -24,17 +26,21 @@ These drive the **running app over HTTP** (real API routes, real database, real 
    ```
 
    then `npm run dev`. Open the app once so the demo data is seeded.
-3. Run the scripts with the same values:
+3. Run the scripts after loading the environment:
 
-   ```bash
-   export E2E_BASE_URL=http://localhost:3000
-   export TEST_DATABASE_URL=<the throwaway database>
-   export ASSISTDESK_DEMO_PASSWORD=<same>
-   export CRON_SECRET=<same>
+   ```powershell
+   . .\scripts\tests-env.ps1
    node scripts/e2e/e2e-all.mjs            # all modules, ~130 checks, ~3 min
    node scripts/e2e/e2e-all.mjs --skip-ai  # without AI calls
-   node scripts/e2e/setup-m2.mjs && node scripts/e2e/e2e-m2.mjs   # Module 2 with a real model
+   node scripts/e2e/setup-m2.mjs           # configure Module 2 demo tools
+   node scripts/e2e/e2e-m2.mjs             # Module 2 with a real model
    ```
+
+`setup-m2.mjs` is a preparation script, not a test. It logs into the running
+application, adds the demo agent's `Track order` tool from its template if
+needed, enables and binds the available tools, and adds the
+`where is my order` / `track my order` intent rule. Run it after
+`seed-demo.mjs` and before `e2e-m2.mjs` or the Module 2 Playwright tests.
 
 Each check prints `PASS`/`FAIL`; the exit code is non-zero if anything failed. `e2e-all.mjs` also writes `e2e-all.results.json` next to itself (git-ignored).
 

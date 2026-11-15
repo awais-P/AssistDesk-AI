@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { dashboardItems, isDashboardItemActive } from "./dashboard-config";
 import { NotificationsBell } from "./notifications-bell";
+import { BrandIcon } from "../ui/brand-logo";
+import { useDashboardNavigation } from "./dashboard-navigation";
 
 const groups = ["Main", "AI", "Setup", "Settings"];
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -25,6 +27,12 @@ const iconPaths: Record<string, ReactNode> = {
     </>
   ),
   chats: <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12Z" />,
+  escalations: (
+    <>
+      <path d="M12 3.5 21 19.5H3Z" />
+      <path d="M12 10v4M12 16.8v.2" />
+    </>
+  ),
   contacts: (
     <>
       <rect x="4" y="3.5" width="16" height="17" rx="2" />
@@ -95,6 +103,24 @@ const iconPaths: Record<string, ReactNode> = {
     <>
       <path d="M3.5 12V4.5H11l9.5 9.5-7 7Z" />
       <path d="M8 8h.01" />
+    </>
+  ),
+  connectors: (
+    <>
+      <path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0Z" />
+      <path d="M12 16v5" />
+    </>
+  ),
+  billing: (
+    <>
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="M3 10h18M7 15h4" />
+    </>
+  ),
+  roles: (
+    <>
+      <path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6Z" />
+      <path d="m9 12 2 2 4-4" />
     </>
   ),
   "api-keys": (
@@ -179,6 +205,7 @@ type DashboardSidebarProps = {
 export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { targetHref, isPending, navigate } = useDashboardNavigation();
   const isDesktop = useSyncExternalStore(
     subscribeToDesktop,
     getDesktopSnapshot,
@@ -272,10 +299,8 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   return (
     <>
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/10 bg-[#111111]/95 px-4 py-2.5 backdrop-blur lg:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white text-xs font-semibold text-black">
-            A
-          </span>
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <BrandIcon size={32} className="rounded-lg border border-white/10" />
           <span className="text-sm font-semibold text-white">assistdesk.ai</span>
         </Link>
 
@@ -324,10 +349,8 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
         }`}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white text-xs font-semibold text-black">
-              A
-            </span>
+          <div className="flex items-center gap-2.5">
+            <BrandIcon size={32} className="rounded-lg border border-white/10" />
             <div>
               <p className="text-sm font-semibold text-white">assistdesk.ai</p>
               <p className="text-[10px] text-slate-400">Support workspace</p>
@@ -368,14 +391,31 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                 {dashboardItems
                   .filter((item) => item.group === group)
                   .map((item) => {
-                    const isActive = isDashboardItemActive(item, pathname);
+                    const isTarget = targetHref === item.href;
+                    const isActive = targetHref
+                      ? isTarget
+                      : isDashboardItemActive(item, pathname);
+                    const isPendingThis = isTarget && isPending && item.href !== pathname;
 
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
+                        prefetch={true}
                         aria-current={isActive ? "page" : undefined}
-                        onClick={() => setDrawerOpenedOn(null)}
+                        onClick={(event) => {
+                          setDrawerOpenedOn(null);
+                          if (
+                            event.ctrlKey ||
+                            event.metaKey ||
+                            event.shiftKey ||
+                            event.button !== 0
+                          ) {
+                            return;
+                          }
+                          event.preventDefault();
+                          navigate(item.href);
+                        }}
                         className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.85rem] transition ${
                           isActive
                             ? "bg-[#2a2a2a] font-semibold text-white"
@@ -386,6 +426,12 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                           <NavIcon section={item.section} />
                         </span>
                         <span className="truncate">{item.title}</span>
+                        {isPendingThis ? (
+                          <span className="ml-auto flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                          </span>
+                        ) : null}
                       </Link>
                     );
                   })}
@@ -398,8 +444,21 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
           <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-2.5 py-2">
             <Link
               href="/dashboard/profile"
+              prefetch={true}
               title={user.email}
-              onClick={() => setDrawerOpenedOn(null)}
+              onClick={(event) => {
+                setDrawerOpenedOn(null);
+                if (
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.shiftKey ||
+                  event.button !== 0
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                navigate("/dashboard/profile");
+              }}
               className="pressable flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/5"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#222222] text-xs font-semibold text-white">

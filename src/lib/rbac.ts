@@ -31,6 +31,9 @@ export function requireRole(user: { role: string }, minimum: WorkspaceRole) {
     return null;
   }
 
+  // Module 11 FE-5: the server installs a hook that writes refusals to the audit log.
+  globalThis.assistdeskOnRoleDenied?.(user, minimum);
+
   return NextResponse.json(
     {
       error: `This action needs the ${minimum.charAt(0)}${minimum.slice(1).toLowerCase()} role or higher. Ask a workspace admin for access.`,

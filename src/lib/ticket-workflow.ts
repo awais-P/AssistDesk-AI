@@ -1,7 +1,12 @@
+import { after } from "next/server";
+import { aiReplyAllowed } from "./billing";
+import { checkTicketEscalation, findOpenEscalation } from "./escalation";
 import { createNotification } from "./notifications";
 import { ensureAgentAutomationDefaults } from "./agent-automations";
+import { describeBlockMatch, matchBlockList, parseBlockList } from "./ticket-rules";
 import { estimateTokenUsage, hydrateKnowledgeSources } from "./knowledge-runtime";
 import { type ConversationTurn, generateAgentReply, toRuntimeAgent } from "./llm-runtime";
+import { applyCannedVariables, formatTicketLabel } from "./canned-variables";
 import { sendTicketReplyEmail } from "./mailer";
 import { prisma } from "./prisma";
 import { recordSessionEvent } from "./session-lifecycle";
@@ -175,7 +180,7 @@ async function resolveAssignedUser({
   return fallbackUser?.id ?? null;
 }
 
-async function createAutomationLog(data: {
+export async function createAutomationLog(data: {
   workspaceId: string;
   ticketId: string;
   agentId?: string | null;
@@ -209,7 +214,7 @@ const agentInclude = {
 };
 
 /** The inbox's own active agent, else any active agent of the workspace. */
-async function findTicketAgent(ticket: { workspaceId: string; inboxId: string | null }) {
+export async function findTicketAgent(ticket: { workspaceId: string; inboxId: string | null }) {
   return (
     (ticket.inboxId
       ? await prisma.aIAgent.findFirst({
@@ -248,6 +253,19 @@ const TICKET_HISTORY_WINDOW = 12;
  */
 async function generateTicketAiReply(ticket: ReplyTicket, agent: TicketAgent) {
   const startedAt = Date.now();
+
+  // Module 3: the plan's monthly AI replies.
+  if (!(await aiReplyAllowed(ticket.workspaceId))) {
+    await createAutomationLog({
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket.id,
+      agentId: agent.id,
+      action: "AI_RESPONSE",
+      status: "SKIPPED",
+      summary: "The plan's AI replies for this month are used up, so the team answers this ticket.",
+    });
+    return;
+  }
   // SYSTEM messages are internal notes and low-confidence drafts: never shown to the model.
   const thread = await prisma.ticketMessage.findMany({
     where: { ticketId: ticket.id, sender: { not: "SYSTEM" } },
@@ -418,6 +436,25 @@ export async function processTicketFollowUp(ticketId: string) {
 
   const humanReplies = await prisma.ticketMessage.count({ where: { ticketId, sender: "AGENT" } });
 
+  // Module 9: an upset or sensitive follow-up goes to the team instead of the AI, and
+  // while an escalation is open the AI stays out of the ticket.
+  if (humanReplies === 0) {
+    const latest = await prisma.ticketMessage.findFirst({ where: { ticketId, sender: "USER" }, orderBy: { createdAt: "desc" }, select: { content: true } });
+    const trigger = latest ? await checkTicketEscalation({ workspaceId: ticket.workspaceId, ticketId, text: latest.content }) : null;
+
+    if (trigger?.escalated || (await findOpenEscalation(ticket.workspaceId, { ticketId }))) {
+      await createAutomationLog({
+        workspaceId: ticket.workspaceId,
+        ticketId,
+        action: "AI_RESPONSE",
+        status: "SKIPPED",
+        summary: "This ticket is escalated to the team, so the AI did not answer the follow-up.",
+      });
+
+      return { processed: false, reason: "Escalated to the team." };
+    }
+  }
+
   if (humanReplies > 0) {
     await createAutomationLog({
       workspaceId: ticket.workspaceId,
@@ -452,7 +489,76 @@ export async function processTicketFollowUp(ticketId: string) {
   return { processed: true, agentId: agent.id };
 }
 
-export async function processIncomingTicket(ticketId: string) {
+/**
+ * FR-15.5: the inbox's chosen canned response, sent once to the customer when a new email
+ * ticket arrives (for example "We received your request"). Stored as an automated reply
+ * on the ticket, so an agent sees what the customer was told.
+ */
+export async function sendInboxAutoReply(ticket: {
+  id: string;
+  workspaceId: string;
+  ticketNumber: number;
+  subject: string;
+  status: string;
+  priority: string;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  createdAt: Date;
+  inbox: { autoReplyEnabled: boolean; autoReplyTemplateId: string | null } | null;
+}) {
+  if (!ticket.inbox?.autoReplyEnabled || !ticket.inbox.autoReplyTemplateId || !ticket.requesterEmail) {
+    return null;
+  }
+
+  const template = await prisma.cannedResponse.findFirst({
+    where: { id: ticket.inbox.autoReplyTemplateId, workspaceId: ticket.workspaceId },
+    select: { title: true, body: true },
+  });
+
+  if (!template?.body.trim()) {
+    return null;
+  }
+
+  const content = applyCannedVariables(template.body, {
+    customer_name: ticket.requesterName || "there",
+    customer_email: ticket.requesterEmail,
+    ticket_number: `#${ticket.ticketNumber}`,
+    subject: ticket.subject,
+    status: formatTicketLabel(ticket.status),
+    priority: formatTicketLabel(ticket.priority),
+    agent_name: "the support team",
+    created_date: ticket.createdAt.toISOString().slice(0, 10),
+  });
+  const message = await prisma.ticketMessage.create({
+    data: { workspaceId: ticket.workspaceId, ticketId: ticket.id, sender: "AI", authorName: "Auto-reply", content },
+    select: { id: true },
+  });
+  const delivery = await sendTicketReplyEmail({ ticketId: ticket.id, ticketMessageId: message.id, content });
+
+  await createAutomationLog({
+    workspaceId: ticket.workspaceId,
+    ticketId: ticket.id,
+    action: "AUTO_REPLY",
+    status: delivery.status === "SENT" ? "SUCCESS" : "FAILED",
+    summary:
+      delivery.status === "SENT"
+        ? `Auto-reply "${template.title}" sent to ${ticket.requesterEmail}.`.slice(0, 500)
+        : `Auto-reply "${template.title}" not delivered: ${delivery.error ?? delivery.status}`.slice(0, 500),
+  });
+
+  return { messageId: message.id, delivery };
+}
+
+type IncomingTicketOptions = {
+  /**
+   * Generate the AI reply after the response has been sent (dashboard-created tickets), so
+   * the agent does not wait for the model. Priority, tags and assignment are rule-based and
+   * still run inside the request.
+   */
+  deferAiReply?: boolean;
+};
+
+export async function processIncomingTicket(ticketId: string, options: IncomingTicketOptions = {}) {
   const workflowStart = Date.now();
 
   const ticket = await prisma.ticket.findUnique({
@@ -470,7 +576,35 @@ export async function processIncomingTicket(ticketId: string) {
     return { processed: false, reason: "Ticket not found." };
   }
 
+  // Module 9 FE-1 on email: an upset or sensitive email is escalated to the team, its
+  // priority raised and the AI auto-reply skipped.
+  const firstMessage = await prisma.ticketMessage.findFirst({ where: { ticketId: ticket.id, sender: "USER" }, orderBy: { createdAt: "asc" }, select: { content: true } });
+  const emailBody = (firstMessage?.content ?? ticket.previewText ?? "").trim();
+  // The subject counts once: many emails repeat it in the body.
+  const escalationText = emailBody.toLowerCase().includes(ticket.subject.trim().toLowerCase()) ? emailBody : `${ticket.subject}. ${emailBody}`;
   const agent = await findTicketAgent(ticket);
+  const automations = agent ? await ensureAgentAutomationDefaults(ticket.workspaceId, agent.id) : [];
+
+  // The block list runs first: a blocked ticket is closed and nothing else happens to it
+  // (no escalation, assignment or AI reply), whichever way it arrived (BUG-03).
+  const blockRule = automations.find((automation) => automation.key === "block-list" && automation.isEnabled);
+  const blocked = blockRule
+    ? matchBlockList(parseBlockList(blockRule.summary), {
+        email: ticket.requesterEmail,
+        subject: ticket.subject,
+        body: emailBody,
+      })
+    : null;
+
+  const escalationCheck = blocked
+    ? null
+    : await checkTicketEscalation({ workspaceId: ticket.workspaceId, ticketId: ticket.id, text: escalationText });
+  const escalated = escalationCheck?.escalated ? escalationCheck.escalation : null;
+
+  // FR-15.5: acknowledge a new email at once, before the AI or a person answers.
+  if (!blocked && ticket.source === "EMAIL") {
+    await sendInboxAutoReply(ticket).catch((error) => console.warn("[auto-reply]", error));
+  }
 
   if (!agent) {
     await createAutomationLog({
@@ -485,7 +619,6 @@ export async function processIncomingTicket(ticketId: string) {
     return { processed: false, reason: "No active AI agent found." };
   }
 
-  const automations = await ensureAgentAutomationDefaults(ticket.workspaceId, agent.id);
   const context = buildTicketContext(ticket);
   const ticketUpdate: {
     priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
@@ -493,15 +626,12 @@ export async function processIncomingTicket(ticketId: string) {
     assigneeId?: string | null;
   } = {};
 
-  if (!ticket.assigneeId) {
-    ticketUpdate.assigneeId = await resolveAssignedUser({
-      workspaceId: ticket.workspaceId,
-      currentAssigneeId: ticket.assigneeId,
-      summary: null,
-    });
-  }
-
-  const enabledAutomations = automations.filter((automation) => automation.isEnabled);
+  // Tickets are assigned only by the "Assign To" automation; with it switched off they
+  // stay unassigned for the team to pick up (BUG-05).
+  const enabledAutomations = automations.filter(
+    (automation) => automation.isEnabled && (!blocked || automation.key === "block-list"),
+  );
+  let deferredReply = false;
 
   for (const automation of enabledAutomations) {
     const startedAt = Date.now();
@@ -576,16 +706,32 @@ export async function processIncomingTicket(ticketId: string) {
     }
 
     if (automation.key === "ai-response") {
+      if (escalated) {
+        await createAutomationLog({
+          workspaceId: ticket.workspaceId,
+          ticketId: ticket.id,
+          agentId: agent.id,
+          action: "AI_RESPONSE",
+          status: "SKIPPED",
+          model: agent.model,
+          summary: `Escalated to the team instead of an AI reply: ${escalated.reason}`.slice(0, 500),
+          durationMs: Date.now() - startedAt,
+        });
+        continue;
+      }
+
+      if (options.deferAiReply) {
+        deferredReply = true;
+        continue;
+      }
+
       await generateTicketAiReply(ticket, agent);
       ticketUpdate.status = "IN_PROGRESS";
       continue;
     }
 
     if (automation.key === "block-list") {
-      const rules = normalize(automation.summary);
-      const requesterEmail = normalize(ticket.requesterEmail);
-
-      if (rules && requesterEmail && rules.includes(requesterEmail)) {
+      if (blocked) {
         ticketUpdate.status = "CLOSED";
       }
 
@@ -594,18 +740,22 @@ export async function processIncomingTicket(ticketId: string) {
         ticketId: ticket.id,
         agentId: agent.id,
         action: "BLOCK_LIST",
-        status:
-          rules && requesterEmail && rules.includes(requesterEmail)
-            ? "SUCCESS"
-            : "SKIPPED",
+        status: blocked ? "SUCCESS" : "SKIPPED",
         model: agent.model,
-        summary:
-          rules && requesterEmail && rules.includes(requesterEmail)
-            ? "Ticket matched the block list and was closed."
-            : "No block-list rule matched this ticket.",
+        summary: blocked
+          ? `Ticket closed without a reply: ${describeBlockMatch(blocked)}.`.slice(0, 500)
+          : "No block-list rule matched this ticket.",
         durationMs: Date.now() - startedAt,
       });
       continue;
+    }
+  }
+
+  // The escalation already raised the priority; the classifier must not lower it.
+  if (escalated && ticketUpdate.priority) {
+    const rank = { LOW: 0, MEDIUM: 1, HIGH: 2, URGENT: 3 } as const;
+    if (rank[ticketUpdate.priority] < rank[escalated.priority]) {
+      ticketUpdate.priority = escalated.priority;
     }
   }
 
@@ -615,6 +765,19 @@ export async function processIncomingTicket(ticketId: string) {
     },
     data: ticketUpdate,
   });
+
+  // A blocked sender's ticket is closed and gets no AI reply.
+  if (deferredReply && ticketUpdate.status !== "CLOSED") {
+    const statusAfterRules = ticketUpdate.status ?? ticket.status;
+    const job = () => runDeferredTicketReply(ticket.id, agent, statusAfterRules);
+
+    try {
+      after(job);
+    } catch {
+      // Outside a request scope (scripts, tests): run on the next tick instead.
+      setTimeout(() => void job(), 0);
+    }
+  }
 
   await createAutomationLog({
     workspaceId: ticket.workspaceId,
@@ -632,4 +795,27 @@ export async function processIncomingTicket(ticketId: string) {
     processed: true,
     agentId: agent.id,
   };
+}
+
+async function runDeferredTicketReply(ticketId: string, agent: TicketAgent, expectedStatus: string) {
+  try {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { inbox: true, assignee: true, ticketTags: true },
+    });
+
+    // Deleted, or already handled by a person in the meantime.
+    if (!ticket || ticket.status !== expectedStatus) {
+      return;
+    }
+
+    await generateTicketAiReply(ticket, agent);
+    // Only move it to In Progress if nobody changed the status while the model was working.
+    await prisma.ticket.updateMany({
+      where: { id: ticketId, status: expectedStatus as "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" },
+      data: { status: "IN_PROGRESS" },
+    });
+  } catch (error) {
+    console.error("[tickets] deferred AI reply failed", error);
+  }
 }

@@ -6,6 +6,8 @@ import {
   hashPassword,
   isValidEmail,
 } from "@/src/lib/auth";
+import { auditUser } from "@/src/lib/audit";
+import { checkLimit, limitMessage } from "@/src/lib/billing";
 import { createNotification } from "@/src/lib/notifications";
 import { prisma } from "@/src/lib/prisma";
 import { canAssignRole, requireRole } from "@/src/lib/rbac";
@@ -96,6 +98,13 @@ export async function POST(request: Request) {
     );
   }
 
+  // Module 3: the plan's team size.
+  const planCheck = await checkLimit(session.user.workspaceId, "seats", newEmails.length);
+
+  if (!planCheck.allowed) {
+    return NextResponse.json({ error: limitMessage("seats", planCheck), code: "plan_limit" }, { status: 402 });
+  }
+
   const created = [];
 
   for (const email of newEmails) {
@@ -109,6 +118,8 @@ export async function POST(request: Request) {
         passwordHash: await hashPassword(temporaryPassword),
         role: role as "ADMIN" | "MANAGER" | "AGENT",
         isActive: true,
+        isEmailVerified: true,
+        emailVerified: new Date(),
         mustChangePassword: true,
       },
       select: publicUserSelect,
@@ -125,6 +136,18 @@ export async function POST(request: Request) {
     body: created.map((user) => user.email).join(", "),
     link: "/dashboard/users",
   });
+
+  for (const user of created) {
+    await auditUser(session.user, {
+      action: "user.created",
+      category: "users",
+      summary: `${session.user.fullName} added ${user.email} as ${String(user.role).toLowerCase()}`,
+      targetType: "user",
+      targetId: user.id,
+      metadata: { email: user.email, role: user.role },
+      request,
+    });
+  }
 
   return NextResponse.json({
     users: created,

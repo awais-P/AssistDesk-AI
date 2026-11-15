@@ -14,13 +14,16 @@ const BATCH_SIZE = 64;
 const REQUEST_TIMEOUT_MS = 25_000;
 
 const stopWords = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from",
-  "how", "i", "if", "in", "is", "it", "me", "my", "of", "on", "or", "our", "so", "that",
-  "the", "this", "to", "was", "we", "what", "when", "where", "which", "who", "why",
-  "will", "with", "you", "your",
+  "a", "am", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from",
+  "go", "he", "how", "i", "if", "in", "is", "it", "me", "my", "no", "of", "oh", "ok", "on",
+  "or", "our", "so", "that", "the", "this", "to", "up", "us", "was", "we", "what", "when",
+  "where", "which", "who", "why", "will", "with", "you", "your",
 ]);
 
-/** Unicode-aware tokenizer (keeps Urdu, Arabic and accented words). */
+/**
+ * Unicode-aware tokenizer (keeps Urdu, Arabic and accented words). Two-letter words are
+ * kept unless they are stop words, so acronyms such as UI, AI, QA or 3D can be searched.
+ */
 export function tokenizeForSearch(value: string) {
   return value
     .normalize("NFKC")
@@ -32,7 +35,7 @@ export function tokenizeForSearch(value: string) {
         return false;
       }
 
-      return /^[a-z0-9]+$/.test(token) ? token.length > 2 : token.length > 1;
+      return token.length > 1;
     });
 }
 

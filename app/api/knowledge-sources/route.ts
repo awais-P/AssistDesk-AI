@@ -1,5 +1,7 @@
-import { requireRole } from "@/src/lib/rbac";
+import { requirePermission } from "@/src/lib/access";
+import { checkLimit, limitMessage } from "@/src/lib/billing";
 import { NextResponse } from "next/server";
+import { publicErrorMessage } from "@/src/lib/api-errors";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
   queueKnowledgeSourceProcessing,
@@ -139,13 +141,20 @@ export async function POST(request: Request) {
   }
 
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "knowledge.manage", request);
 
 
   if (forbidden) {
 
     return forbidden;
 
+  }
+
+  // Module 3: plan limit.
+  const planCheck = await checkLimit(session.user.workspaceId, "knowledgeSources");
+
+  if (!planCheck.allowed) {
+    return NextResponse.json({ error: limitMessage("knowledgeSources", planCheck), code: "plan_limit" }, { status: 402 });
   }
 
   try {
@@ -248,10 +257,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to create this knowledge source.",
+        error: publicErrorMessage(error, "Unable to create this knowledge source.", "knowledge-sources"),
       },
       { status: 400 },
     );

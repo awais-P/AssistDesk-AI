@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
+import { requirePermission } from "@/src/lib/access";
 import { getCurrentSession } from "@/src/lib/auth";
 import { exportLeadsCsv, parseLeadFilters } from "@/src/lib/lead-list";
-import { requireRole } from "@/src/lib/rbac";
 
 /**
  * CSV export of the filtered lead list (Module 8 FE-4), for CRMs and email tools.
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "data.export", request);
 
   if (forbidden) {
     return forbidden;
@@ -26,6 +27,14 @@ export async function GET(request: Request) {
     session.user.id,
   );
   const date = new Date().toISOString().slice(0, 10);
+
+  await auditUser(session.user, {
+    action: "data.exported",
+    category: "data",
+    summary: `${session.user.fullName} exported leads as CSV (${count} rows)`,
+    metadata: { query: new URL(request.url).search.slice(0, 300) },
+    request,
+  });
 
   return new Response(csv, {
     headers: {

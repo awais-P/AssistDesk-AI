@@ -14,32 +14,54 @@ import {
   readIntegrationConfig,
 } from "@/src/lib/integrations/config";
 
-describe("agent behaviour settings", () => {
-  it("normalises tone and length and builds prompt instructions", () => {
+describe("UT-07 agent behaviour settings", () => {
+  it("UT-07.01 keeps professional tone", () => {
     expect(normalizeAgentTone("PROFESSIONAL")).toBe("PROFESSIONAL");
+  });
+
+  it("UT-07.02 normalises unsupported tone to friendly", () => {
     expect(normalizeAgentTone("SHOUTY")).toBe("FRIENDLY");
+  });
+
+  it("UT-07.03 defaults response length to balanced", () => {
     expect(normalizeResponseLength(undefined)).toBe("BALANCED");
+  });
+
+  it("UT-07.04 builds empathetic short-response instructions", () => {
     expect(buildBehaviourInstructions("EMPATHETIC", "SHORT")).toMatch(
       /feelings[\s\S]*1-3 short sentences/,
     );
   });
 
-  it("clamps numeric settings", () => {
+  it("UT-07.05 clamps numeric settings to the maximum", () => {
     expect(clampAgentNumber(5, { min: 0, max: 1, fallback: 0.7 })).toBe(1);
+  });
+
+  it("UT-07.06 uses the fallback for invalid numeric settings", () => {
     expect(clampAgentNumber("x", { min: 0, max: 1, fallback: 0.7 })).toBe(0.7);
   });
 
-  it("fails over across all managed models starting with the chosen one", () => {
+  it("UT-07.07 starts model fallback with the chosen model", () => {
     const chain = getManagedFallbackModels("google/gemini-2.5-flash");
 
     expect(chain[0]).toBe("google/gemini-2.5-flash");
+  });
+
+  it("UT-07.08 includes a managed fallback model", () => {
+    const chain = getManagedFallbackModels("google/gemini-2.5-flash");
+
     expect(chain).toContain("groq/llama-3.3-70b-versatile");
+  });
+
+  it("UT-07.09 does not duplicate managed fallback models", () => {
+    const chain = getManagedFallbackModels("google/gemini-2.5-flash");
+
     expect(new Set(chain).size).toBe(chain.length);
   });
 });
 
-describe("integration secrets", () => {
-  it("encrypts tokens, masks them for the client and keeps them when left blank", () => {
+describe("UT-08 integration secrets", () => {
+  it("UT-08.01 encrypts tokens, masks them for the client and keeps them when left blank", () => {
     const first = mergeIntegrationConfig(
       "SLACK",
       { botToken: "xoxb-1234567890-secret", signingSecret: "signing-secret-value" },
@@ -59,12 +81,24 @@ describe("integration secrets", () => {
   });
 });
 
-describe("LLM reply sanity check", () => {
-  it("rejects moderation-model output and accepts real answers", () => {
+describe("UT-09 LLM reply sanity check", () => {
+  it("UT-09.01 rejects moderation safety output", () => {
     expect(isUnusableReply("User Safety: safe Response Safety: safe")).toBe(true);
+  });
+
+  it("UT-09.02 rejects unsafe moderation output", () => {
     expect(isUnusableReply("unsafe\nS2")).toBe(true);
+  });
+
+  it("UT-09.03 rejects a bare safety result", () => {
     expect(isUnusableReply("safe")).toBe(true);
+  });
+
+  it("UT-09.04 accepts a normal refund answer", () => {
     expect(isUnusableReply("Refunds are processed within 5 business days.")).toBe(false);
+  });
+
+  it("UT-09.05 accepts a normal shipping answer", () => {
     expect(isUnusableReply("Safe shipping is guaranteed on all orders.")).toBe(false);
   });
 });

@@ -14,7 +14,7 @@ let workspaceId = "";
 let agentId = "";
 let contactId = "";
 
-describe.skipIf(!enabled)("real model tool calling", () => {
+describe.skipIf(!enabled)("IT-13 real model tool calling", () => {
   beforeAll(async () => {
     const workspace = await prisma.workspace.create({ data: { name: `M2 real ${suffix}`, slug: `m2-real-${suffix}`, supportEmail: `real-${suffix}@example.com` } });
     workspaceId = workspace.id;
@@ -32,7 +32,7 @@ describe.skipIf(!enabled)("real model tool calling", () => {
     await prisma.$disconnect();
   });
 
-  it("calls lookup_ticket_status and answers from its result", async () => {
+  it("IT-13.01 calls lookup_ticket_status and answers from its result", async () => {
     const sessionId = (await prisma.chatSession.create({ data: { workspaceId, channel: "WEB_WIDGET", contactId } })).id;
     const { tools, settings } = await loadAgentToolset(workspaceId, agentId);
     const agent = { id: agentId, provider: "Default", model: process.env.REAL_LLM_MODEL ?? "groq/llama-3.3-70b-versatile", apiKey: null, systemPrompt: "You are a support assistant.", confidenceThreshold: 0.5, temperature: 0.2 };

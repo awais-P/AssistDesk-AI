@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -10,7 +11,7 @@ type InboxRouteContext = {
 };
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: InboxRouteContext,
 ) {
   const session = await getCurrentSession();
@@ -52,6 +53,15 @@ export async function DELETE(
     where: {
       id,
     },
+  });
+
+  await auditUser(session.user, {
+    action: "inbox.deleted",
+    category: "settings",
+    summary: `${session.user.fullName} deleted an inbox`,
+    targetType: "inbox",
+    targetId: id,
+    request,
   });
 
   return NextResponse.json({ success: true });

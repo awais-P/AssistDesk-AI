@@ -1,5 +1,7 @@
-import { requireRole } from "@/src/lib/rbac";
+import { requirePermission } from "@/src/lib/access";
+import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
+import { publicErrorMessage } from "@/src/lib/api-errors";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
   deleteStoredKnowledgeFile,
@@ -87,7 +89,7 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: KnowledgeSourceRouteContext,
 ) {
   const session = await getCurrentSession();
@@ -97,7 +99,7 @@ export async function DELETE(
   }
 
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "knowledge.manage", request);
 
 
   if (forbidden) {
@@ -136,6 +138,15 @@ export async function DELETE(
     },
   });
 
+  await auditUser(session.user, {
+    action: "knowledge.deleted",
+    category: "ai",
+    summary: `${session.user.fullName} deleted a knowledge source`,
+    targetType: "knowledge_source",
+    targetId: id,
+    request,
+  });
+
   return NextResponse.json({ success: true });
 }
 
@@ -150,7 +161,7 @@ export async function PATCH(
   }
 
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "knowledge.manage", request);
 
 
   if (forbidden) {
@@ -321,10 +332,7 @@ export async function PATCH(
   } catch (error) {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to update this knowledge source.",
+        error: publicErrorMessage(error, "Unable to update this knowledge source.", "knowledge-sources"),
       },
       { status: 400 },
     );

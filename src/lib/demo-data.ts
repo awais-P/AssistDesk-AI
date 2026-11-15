@@ -51,7 +51,14 @@ async function seedDemoData() {
         email: "admin@assistdesk.local",
         passwordHash: await hashPassword(process.env.ASSISTDESK_DEMO_PASSWORD as string),
         role: "ADMIN",
+        isEmailVerified: true,
+        emailVerified: new Date(),
       },
+    });
+  } else if (!adminUser.isEmailVerified) {
+    adminUser = await prisma.user.update({
+      where: { id: adminUser.id },
+      data: { isEmailVerified: true, emailVerified: new Date() },
     });
   }
 
@@ -64,7 +71,7 @@ async function seedDemoData() {
         name: "Support",
         emailPrefix: "support.assistdesk",
         ticketPrefix: "AD",
-        autoReplyEnabled: true,
+        autoReplyEnabled: false,
         senderEmail: "support@assistdesk.local",
       },
     });

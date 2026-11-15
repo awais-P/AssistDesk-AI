@@ -10,12 +10,15 @@ const compat = new FlatCompat({
 export default defineConfig([
   globalIgnores([
     ".next/**",
+    ".next-*/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
     "app/generated/**",
     "storage/**",
     ".chrome-*/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ]);

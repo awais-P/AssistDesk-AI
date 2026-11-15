@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { requireRole } from "@/src/lib/rbac";
@@ -119,7 +120,7 @@ export async function PATCH(request: Request, context: ToolRouteContext) {
 }
 
 /** Only custom tools can be deleted; built-in actions are switched off instead. */
-export async function DELETE(_request: Request, context: ToolRouteContext) {
+export async function DELETE(request: Request, context: ToolRouteContext) {
   const session = await getCurrentSession();
 
   if (!session) {
@@ -145,6 +146,15 @@ export async function DELETE(_request: Request, context: ToolRouteContext) {
 
   // Bindings cascade; past executions keep their tool name and key for the action log.
   await prisma.agentTool.deleteMany({ where: { id: tool.id, workspaceId: session.user.workspaceId } });
+
+  await auditUser(session.user, {
+    action: "tool.deleted",
+    category: "ai",
+    summary: `${session.user.fullName} deleted an AI action (tool)`,
+    targetType: "tool",
+    targetId: id,
+    request,
+  });
 
   return NextResponse.json({ success: true });
 }

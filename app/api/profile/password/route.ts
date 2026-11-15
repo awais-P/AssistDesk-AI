@@ -8,6 +8,7 @@ import {
   validateNewPassword,
   verifyPassword,
 } from "@/src/lib/auth";
+import { auditUser } from "@/src/lib/audit";
 import { prisma } from "@/src/lib/prisma";
 
 type ChangePasswordPayload = {
@@ -58,6 +59,14 @@ export async function PATCH(request: Request) {
 
   const currentToken = (await cookies()).get(AUTH_COOKIE_NAME)?.value ?? null;
   await revokeUserSessions(session.user.id, currentToken);
+  await auditUser(session.user, {
+    action: "auth.password_changed",
+    category: "auth",
+    summary: `${session.user.fullName} changed their password; other sign-ins were ended`,
+    targetType: "user",
+    targetId: session.user.id,
+    request,
+  });
 
   return NextResponse.json({ success: true });
 }

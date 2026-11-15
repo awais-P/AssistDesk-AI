@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 280" width="100%" height="100%">
+  <!-- Background -->
+  <rect width="280" height="280" rx="44" fill="#000000" />
+  <!-- Subtle Border Frame -->
+  <rect x="2" y="2" width="276" height="276" rx="42" fill="none" stroke="#222225" stroke-width="3" />
+
+  <!-- Semicircle Crown Arch -->
+  <path d="M 65 130 A 75 75 0 0 1 215 130" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="butt" />
+
+  <!-- Symmetrical Lateral Ear Slabs -->
+  <rect x="57" y="138" width="16" height="54" rx="8" fill="#FFFFFF" />
+  <rect x="207" y="138" width="16" height="54" rx="8" fill="#FFFFFF" />
+
+  <!-- The 'A' Crossbar (Floating Data Plank) -->
+  <rect x="85" y="142" width="110" height="8" rx="4" fill="#FFFFFF" />
+
+  <!-- 45-degree Angled Mic Stem + Precision Diamond Spark -->
+  <path d="M 215 180 L 215 210 L 175 230" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+  <polygon points="165,230 170,225 175,230 170,235" fill="#FFFFFF" />
+</svg>

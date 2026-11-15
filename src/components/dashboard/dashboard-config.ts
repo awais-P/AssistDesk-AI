@@ -39,6 +39,15 @@ export const dashboardItems: DashboardItem[] = [
     group: "Main",
   },
   {
+    href: "/dashboard/escalations",
+    title: "Escalations",
+    section: "escalations",
+    description:
+      "Conversations handed to your team because the customer asked for a person, was upset or raised a sensitive topic, with an AI brief and a response deadline.",
+    moduleLabel: "Module 9 - Support Escalation",
+    group: "Main",
+  },
+  {
     href: "/dashboard/contacts",
     title: "Contacts",
     section: "contacts",
@@ -178,7 +187,7 @@ export const dashboardItems: DashboardItem[] = [
     title: "API Keys",
     section: "api-keys",
     description:
-      "Store future integration tokens and external connection keys for platform features.",
+      "Keys for the public REST API: connect your CRM, help desk, store or scripts with scoped, revocable access.",
     moduleLabel: "Module 11 - Integrations & System Customization",
     group: "Settings",
   },
@@ -198,6 +207,30 @@ export const dashboardItems: DashboardItem[] = [
     description:
       "Connect channels like email, WhatsApp, Slack, and future external support entry points.",
     moduleLabel: "Module 1 / Module 11",
+    group: "Settings",
+  },
+  {
+    href: "/dashboard/connectors",
+    title: "Connectors",
+    section: "connectors",
+    description: "Connect HubSpot (CRM) and Shopify (online store): leads sync to the CRM and the AI can look up orders.",
+    moduleLabel: "Module 11 - Integrations & System Customization",
+    group: "Settings",
+  },
+  {
+    href: "/dashboard/billing",
+    title: "Billing",
+    section: "billing",
+    description: "Your plan, usage against its limits, invoices and payment history.",
+    moduleLabel: "Module 3 - Subscription & Payment",
+    group: "Settings",
+  },
+  {
+    href: "/dashboard/roles",
+    title: "Roles",
+    section: "roles",
+    description: "What each role may do, and custom roles with extra or fewer permissions.",
+    moduleLabel: "Module 11 - Integrations & System Customization",
     group: "Settings",
   },
   {

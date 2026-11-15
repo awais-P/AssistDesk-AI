@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-test/
 /out/
 
 # production
@@ -33,6 +34,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+!.env.demo.example
+
+# local PowerShell test environment values
+/scripts/tests-env.ps1
 
 # vercel
 .vercel
@@ -40,6 +45,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# editor
+.vscode/
 
 /app/generated/prisma
 
@@ -54,3 +62,8 @@ next-env.d.ts
 
 # End-to-end script output
 /scripts/e2e/*.results.json
+
+# Playwright UI test output and saved sign-in
+/test-results/
+/playwright-report/
+/tests/ui/.auth/

@@ -50,12 +50,103 @@ function splitIntoPassages(value: string, maxLength = 650) {
   return passages.length > 0 ? passages : [normalized.slice(0, maxLength)];
 }
 
-function splitIntoSentences(value: string) {
-  return value
-    .replace(/\s+/g, " ")
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
+const BULLET = /^\s*(?:[-*•▪◦●–]|\d{1,2}[.)])\s+/;
+/** Text written for the bot itself (e.g. "Chatbot Response Guidelines"), never quoted to a customer. */
+const BOT_INSTRUCTION =
+  /\b(?:chat ?bot|assistant|the bot|ai agent)\b[^.\n]{0,80}\b(?:should|must|shall|never|always|do not|don't)\b|\bresponse guidelines?\b|\bsystem prompt\b/i;
+const MAX_LINE_LENGTH = 220;
+const MAX_LIST_ITEMS = 8;
+
+/** A sentence, or a line that introduces a list together with the list's items. */
+type AnswerUnit = { lead: string; items: string[] };
+
+function shorten(text: string) {
+  if (text.length <= MAX_LINE_LENGTH) {
+    return text;
+  }
+
+  const cut = text.slice(0, MAX_LINE_LENGTH);
+  return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[,;:]$/, "")}…`;
+}
+
+/** "Services include:", "We offer" — introduces a list without naming its topic. */
+const GENERIC_LIST_INTRO = /^[\w\s]{0,30}\b(?:include|includes|including|offer|offers)\s*:?$/i;
+
+/** A short line without a full stop: a heading or a list item ("React development"). */
+function isShortLine(line: string) {
+  return line.length <= 70 && !/[.!?]$/.test(line);
+}
+
+/** A line that can introduce a list: a heading, "…:" or "Services include". */
+function introducesList(line: string) {
+  return isShortLine(line) || /(?::|\b(?:include|includes|including|offer|offers))$/i.test(line);
+}
+
+/**
+ * Splits a passage into answer units, keeping line breaks: list items stay attached to
+ * the heading or line that introduces them, so a list is quoted as a list instead of one
+ * run-on sentence. Short lines after an ordinary sentence are headings, not its items.
+ * Instructions written for the bot are left out.
+ */
+function splitIntoUnits(value: string) {
+  const units: AnswerUnit[] = [];
+  let current: AnswerUnit | null = null;
+  let heading: string | null = null;
+
+  for (const rawLine of value.replace(/\r/g, "").split("\n")) {
+    const line = rawLine.replace(BULLET, "").replace(/\s+/g, " ").trim();
+
+    if (!line || BOT_INSTRUCTION.test(line)) {
+      current = null;
+      continue;
+    }
+
+    const isItem = BULLET.test(rawLine) || isShortLine(line);
+
+    if (current && isItem && (BULLET.test(rawLine) || introducesList(current.lead) || current.items.length > 0)) {
+      current.items.push(line);
+      continue;
+    }
+
+    for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+      if (sentence && !BOT_INSTRUCTION.test(sentence)) {
+        // "Services include:" says nothing on its own: name the section it belongs to.
+        const lead =
+          heading && GENERIC_LIST_INTRO.test(sentence) ? `${heading.replace(/[.:]$/, "")}. ${sentence}` : sentence;
+        current = { lead, items: [] };
+        units.push(current);
+
+        if (isShortLine(sentence) && !GENERIC_LIST_INTRO.test(sentence)) {
+          heading = sentence;
+        }
+      }
+    }
+  }
+
+  return units;
+}
+
+function formatUnit(unit: AnswerUnit) {
+  if (unit.items.length === 0) {
+    return `- ${shorten(unit.lead)}`;
+  }
+
+  let { lead } = unit;
+  let items = unit.items;
+
+  // "UI Design" + "Services include" + items reads as "UI Design. Services include:".
+  if (/\b(?:include|includes|including|offer|offers)\s*:?$/i.test(items[0])) {
+    lead = `${lead.replace(/[.:]$/, "")}. ${items[0].replace(/:?$/, "")}`;
+    items = items.slice(1);
+  }
+
+  const shown = items.slice(0, MAX_LIST_ITEMS).map((item) => `- ${shorten(item)}`);
+
+  if (items.length > MAX_LIST_ITEMS) {
+    shown.push("- …and more");
+  }
+
+  return [`${shorten(lead).replace(/:?$/, ":")}`, ...shown].join("\n");
 }
 
 function scorePassage(question: string, passage: string) {
@@ -84,37 +175,48 @@ function scorePassage(question: string, passage: string) {
   return Math.min(1, score);
 }
 
+const OFFER_TEAM = "Would you like me to connect you with our team?";
+
 function detectGreeting(question: string) {
   return /^(hi|hello|hey|oi|assalam|salam)\b/.test(question.trim().toLowerCase());
 }
 
-function buildExtractiveAnswer(question: string, matches: RetrievedMatch[]) {
-  const candidates = matches.flatMap((match) =>
-    splitIntoSentences(match.excerpt).map((sentence) => ({
-      sentence,
-      score: scorePassage(question, sentence),
-    })),
+/**
+ * A message that is only a greeting ("hello", "Hi there!", "Assalam o Alaikum"), with no
+ * question in it. It is answered with a greeting, never with knowledge-base passages.
+ */
+export function isGreetingOnly(message: string) {
+  return /^(?:hi+|hello+|hey+|hiya|oi|yo|good\s+(?:morning|afternoon|evening)|(?:as+alam+u?\s*o?\s*alaikum|as+alam+|salam+|aoa))(?:\s+(?:there|team|everyone|all|sir|ji))?[\s!.,:)]*$/i.test(
+    message.trim(),
   );
+}
 
-  const ranked = candidates
+/**
+ * The answer used when no AI model replies: the units of the retrieved passages that
+ * best match the question. A matching list is quoted on its own; otherwise up to three
+ * matching sentences.
+ */
+export function buildExtractiveAnswer(question: string, matches: Array<{ excerpt: string }>) {
+  const ranked = matches
+    .flatMap((match) => splitIntoUnits(match.excerpt))
+    // A bare heading with nothing under it tells the customer nothing.
+    .filter((unit) => unit.items.length > 0 || !isShortLine(unit.lead))
+    .map((unit) => ({ unit, score: scorePassage(question, [unit.lead, ...unit.items].join(" ")) }))
     .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score)
+    // Equal matches: the fuller list answers better.
+    .sort((left, right) => right.score - left.score || right.unit.items.length - left.unit.items.length)
     .filter(
       (candidate, index, array) =>
-        array.findIndex(
-          (entry) =>
-            entry.sentence.toLowerCase() === candidate.sentence.toLowerCase(),
-        ) === index,
-    )
-    .slice(0, 3);
+        array.findIndex((entry) => entry.unit.lead.toLowerCase() === candidate.unit.lead.toLowerCase()) === index,
+    );
 
   if (ranked.length === 0) {
     return "";
   }
 
-  return `Based on the connected knowledge sources:\n${ranked
-    .map((item) => `- ${item.sentence}`)
-    .join("\n")}`;
+  const best = ranked[0].unit.items.length > 0 ? [ranked[0]] : ranked.filter((entry) => entry.unit.items.length === 0).slice(0, 3);
+
+  return best.map((entry) => formatUnit(entry.unit)).join("\n");
 }
 
 async function retrieveExtractiveMatches(
@@ -195,26 +297,26 @@ export async function generateGroundedAgentReply({
   confidenceThreshold: number;
   sources: RuntimeKnowledgeSource[];
 }) {
+  if (isGreetingOnly(question)) {
+    return {
+      reply: "Hello! How can I help you today?",
+      confidence: 1,
+      matches: [] as RetrievedMatch[],
+      tokens: estimateTokenUsage(question),
+      usedSourceIds: [],
+    };
+  }
+
   const matches = await retrieveKnowledgeMatches(question, sources);
   const topMatch = matches[0];
   const confidence = topMatch?.score ?? 0;
 
   if (!topMatch) {
-    if (detectGreeting(question)) {
-      return {
-        reply:
-          "Hello. I’m ready to help. Ask me a support question related to the connected knowledge sources and I’ll answer from that information.",
-        confidence: 1,
-        matches,
-        tokens: estimateTokenUsage(question),
-        usedSourceIds: [],
-      };
-    }
-
     return {
-      reply:
-        "I could not find any matching information in the connected knowledge sources yet. Add a text source or a readable URL source and try again.",
-      confidence,
+      reply: detectGreeting(question)
+        ? "Hello! How can I help you today?"
+        : `I don't have information about that yet. ${OFFER_TEAM}`,
+      confidence: detectGreeting(question) ? 1 : confidence,
       matches,
       tokens: estimateTokenUsage(question),
       usedSourceIds: [],
@@ -222,30 +324,24 @@ export async function generateGroundedAgentReply({
   }
 
   const usedSourceIds = Array.from(new Set(matches.map((match) => match.sourceId)));
+  const extract = buildExtractiveAnswer(question, matches);
 
-  if (confidence < confidenceThreshold) {
-    const partialAnswer =
-      buildExtractiveAnswer(question, matches) ||
-      `Most relevant source: **${topMatch.title}**\n${topMatch.excerpt}`;
-
-    return {
-      reply: `I found some partially related information, but not enough to answer confidently.\n\n${partialAnswer}`,
-      confidence,
-      matches,
-      tokens: estimateTokenUsage(question, partialAnswer),
-      usedSourceIds,
-    };
-  }
-
-  const conciseAnswer =
-    buildExtractiveAnswer(question, matches) ||
-    `Based on the connected knowledge sources:\n- ${topMatch.excerpt}`;
+  // Below the threshold (SRS FR-8.5) the closest information is offered as such, never
+  // as a confident answer; with nothing quotable the customer is offered the team.
+  const reply =
+    confidence < confidenceThreshold
+      ? extract
+        ? `I'm not completely sure, but this is the closest information I have:\n\n${extract}\n\n${OFFER_TEAM}`
+        : `I couldn't find a clear answer to that. ${OFFER_TEAM}`
+      : extract
+        ? `Here's what I found:\n\n${extract}`
+        : `I couldn't find a clear answer to that. ${OFFER_TEAM}`;
 
   return {
-    reply: conciseAnswer,
+    reply,
     confidence,
     matches,
-    tokens: estimateTokenUsage(question, conciseAnswer),
+    tokens: estimateTokenUsage(question, reply),
     usedSourceIds,
   };
 }

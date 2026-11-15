@@ -1,5 +1,7 @@
 import { createNotification } from "./notifications";
 import nodemailer from "nodemailer";
+import { mailboxSettings } from "./email-mailbox-settings";
+import { readIntegrationConfig } from "./integrations/config";
 import { prisma } from "./prisma";
 import { decryptSecret } from "./secrets";
 
@@ -94,6 +96,119 @@ export async function sendTeamEmail({
   }
 }
 
+/**
+ * Sends a confirmation/verification email to a newly signed up user with a link
+ * to verify their email address.
+ */
+export async function sendVerificationEmail({
+  email,
+  fullName,
+  verificationToken,
+}: {
+  email: string;
+  fullName: string;
+  verificationToken: string;
+}): Promise<{ status: EmailDeliveryStatus; error: string | null; verifyUrl: string }> {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verificationToken)}`;
+  const smtp = getDefaultSmtp();
+
+  if (!smtp) {
+    return {
+      status: "NOT_CONFIGURED",
+      error: "No platform SMTP sender is configured (ASSISTDESK_SMTP_HOST).",
+      verifyUrl,
+    };
+  }
+
+  try {
+    await createTransport(smtp).sendMail({
+      from: {
+        name: "AssistDesk",
+        address: process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`,
+      },
+      to: email.trim(),
+      subject: "Verify your AssistDesk account",
+      text: `Hi ${fullName},\n\nWelcome to AssistDesk! Please verify your email address by opening the following link in your browser:\n\n${verifyUrl}\n\nThis verification link expires in 24 hours.\n\nIf you did not sign up for AssistDesk, you can safely ignore this email.`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1e293b;">
+          <h2 style="color: #0f172a; margin-bottom: 16px;">Verify your AssistDesk account</h2>
+          <p>Hi ${fullName},</p>
+          <p>Welcome to AssistDesk! Please verify your email address to confirm your account and sign in.</p>
+          <p style="margin: 28px 0;">
+            <a href="${verifyUrl}" style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Verify Email Address</a>
+          </p>
+          <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Or copy and paste this URL into your browser:<br/><a href="${verifyUrl}" style="color: #0284c7; word-break: break-all;">${verifyUrl}</a></p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0;" />
+          <p style="color: #94a3b8; font-size: 12px;">This link will expire in 24 hours. If you did not create this account, please ignore this email.</p>
+        </div>
+      `,
+    });
+
+    return { status: "SENT", error: null, verifyUrl };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Send failed.";
+    console.error(`[mailer] Failed to send verification email to ${email}: ${message}`);
+    return { status: "FAILED", error: message.slice(0, 300), verifyUrl };
+  }
+}
+
+/**
+ * Sends a password reset email to a user with a secure reset link.
+ */
+export async function sendPasswordResetEmail({
+  email,
+  fullName,
+  resetToken,
+}: {
+  email: string;
+  fullName: string;
+  resetToken: string;
+}): Promise<{ status: EmailDeliveryStatus; error: string | null; resetUrl: string }> {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+  const smtp = getDefaultSmtp();
+
+  if (!smtp) {
+    return {
+      status: "NOT_CONFIGURED",
+      error: "No platform SMTP sender is configured (ASSISTDESK_SMTP_HOST).",
+      resetUrl,
+    };
+  }
+
+  try {
+    await createTransport(smtp).sendMail({
+      from: {
+        name: "AssistDesk",
+        address: process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`,
+      },
+      to: email.trim(),
+      subject: "Reset your AssistDesk password",
+      text: `Hi ${fullName},\n\nWe received a request to reset your AssistDesk password. Click the link below to choose a new password:\n\n${resetUrl}\n\nThis password reset link will expire in 1 hour.\n\nIf you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1e293b;">
+          <h2 style="color: #0f172a; margin-bottom: 16px;">Reset your AssistDesk password</h2>
+          <p>Hi ${fullName},</p>
+          <p>We received a request to reset the password for your AssistDesk account. Click the button below to set a new password:</p>
+          <p style="margin: 28px 0;">
+            <a href="${resetUrl}" style="background-color: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Reset Password</a>
+          </p>
+          <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Or copy and paste this URL into your browser:<br/><a href="${resetUrl}" style="color: #0284c7; word-break: break-all;">${resetUrl}</a></p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0;" />
+          <p style="color: #94a3b8; font-size: 12px;">This password reset link will expire in 1 hour. If you did not make this request, your account is safe and you can safely ignore this email.</p>
+        </div>
+      `,
+    });
+
+    return { status: "SENT", error: null, resetUrl };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Send failed.";
+    console.error(`[mailer] Failed to send password reset email to ${email}: ${message}`);
+    return { status: "FAILED", error: message.slice(0, 300), resetUrl };
+  }
+}
+
 /** Verifies SMTP credentials before an admin saves them (FR-15.6). */
 export async function verifySmtpSettings(settings: SmtpSettings) {
   await createTransport(settings).verify();
@@ -128,7 +243,7 @@ export async function sendTicketReplyEmail({
         include: {
           integrations: {
             where: { type: "EMAIL", isActive: true, supportAddress: { not: null } },
-            select: { supportAddress: true },
+            select: { supportAddress: true, provider: true, config: true },
             take: 1,
           },
         },
@@ -142,6 +257,12 @@ export async function sendTicketReplyEmail({
     result = { status: "NO_RECIPIENT", error: "This ticket has no requester email." };
   } else {
     const inbox = ticket.inbox;
+    const connection = inbox?.integrations[0];
+    // A Gmail mailbox connection sends from that same mailbox, so the customer's reply
+    // lands where AssistDesk reads it.
+    const mailbox = connection
+      ? mailboxSettings(connection.provider, readIntegrationConfig("EMAIL", connection.config))
+      : null;
     const smtp: SmtpSettings | null = inbox?.smtpHost
       ? {
           host: inbox.smtpHost,
@@ -150,7 +271,9 @@ export async function sendTicketReplyEmail({
           user: inbox.smtpUser,
           password: decryptSecret(inbox.smtpPassword),
         }
-      : getDefaultSmtp();
+      : mailbox
+        ? { host: mailbox.smtpHost, port: mailbox.smtpPort, secure: true, user: mailbox.user, password: mailbox.password }
+        : getDefaultSmtp();
 
     if (!smtp) {
       result = {
@@ -164,9 +287,11 @@ export async function sendTicketReplyEmail({
       // platform account can only send from its verified address, so replies go to the inbox.
       const fromAddress = inbox?.smtpHost
         ? inbox.senderEmail || inbox.smtpUser || inboxAddress
-        : process.env.ASSISTDESK_SMTP_FROM?.trim() || inboxAddress;
+        : mailbox
+          ? mailbox.user
+          : process.env.ASSISTDESK_SMTP_FROM?.trim() || inboxAddress;
       // Customer replies should reach the address that feeds the email integration.
-      const connectedSupportAddress = inbox?.integrations[0]?.supportAddress ?? null;
+      const connectedSupportAddress = connection?.supportAddress ?? null;
       const replyToAddress =
         connectedSupportAddress ||
         (inbox?.smtpHost ? fromAddress : inbox?.senderEmail || inboxAddress);

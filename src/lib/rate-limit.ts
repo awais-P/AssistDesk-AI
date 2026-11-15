@@ -37,6 +37,7 @@ export const RATE_LIMITS = {
   loginPerIdentifier: { limit: 5, windowSeconds: 10 * 60 },
   loginPerIp: { limit: 30, windowSeconds: 10 * 60 },
   signupPerIp: { limit: 5, windowSeconds: 60 * 60 },
+  agentCreatePerUser: { limit: 20, windowSeconds: 60 * 60 },
   aiTestPerUser: { limit: 30, windowSeconds: 60 },
 } satisfies Record<string, RateLimitPolicy>;
 

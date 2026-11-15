@@ -122,7 +122,6 @@ model Workspace {
   chatbots          Chatbot[]
   tags              Tag[]
   cannedResponses   CannedResponse[]
-  apiKeys           ApiKey[]
   settings          WorkspaceSetting?
   knowledgeSources  KnowledgeSource[]
   knowledgeChunks   KnowledgeChunk[]
@@ -145,28 +144,48 @@ model Workspace {
   agentRuns         AgentRun[]
   toolExecutions    ToolExecution[]
   appointments      Appointment[]
+  escalations       Escalation[]
+  auditLogs         AuditLog[]
+  apiKeys           ApiKey[]
+  connectors        Connector[]
+  customRoles       CustomRole[]
+  subscription      Subscription?
+  invoices          Invoice[]
 }
 
 model User {
-  id                 String    @id @default(cuid())
-  workspaceId        String
-  fullName           String
-  username           String    @unique
-  email              String    @unique
-  passwordHash       String?
-  role               UserRole  @default(ADMIN)
-  isActive           Boolean   @default(true)
-  lastSeenAt         DateTime?
-  mustChangePassword Boolean   @default(false)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  assignedTickets    Ticket[]  @relation("AssignedTickets")
-  createdTickets     Ticket[]  @relation("CreatedTickets")
-  sessions           Session[]
-  ownedLeads         Lead[]    @relation("LeadOwner")
+  id                         String       @id @default(cuid())
+  workspaceId                String
+  fullName                   String
+  username                   String       @unique
+  email                      String       @unique
+  passwordHash               String?
+  role                       UserRole     @default(ADMIN)
+  isActive                   Boolean      @default(true)
+  isEmailVerified            Boolean      @default(false)
+  emailVerified              DateTime?
+  emailVerificationToken     String?      @unique
+  emailVerificationExpiresAt DateTime?
+  passwordResetToken         String?      @unique
+  passwordResetExpiresAt     DateTime?
+  lastSeenAt                 DateTime?
+  mustChangePassword         Boolean      @default(false)
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+  workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedTickets            Ticket[]     @relation("AssignedTickets")
+  createdTickets             Ticket[]     @relation("CreatedTickets")
+  sessions                   Session[]
+  ownedLeads                 Lead[]       @relation("LeadOwner")
+  assignedEscalations        Escalation[] @relation("EscalationAssignee")
+  resolvedEscalations        Escalation[] @relation("EscalationResolver")
+  /// Module 11 FE-4: an admin-defined role (its base level is copied to `role`).
+  customRoleId               String?
+  customRole                 CustomRole?  @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  createdApiKeys             ApiKey[]     @relation("ApiKeyCreator")
 
   @@index([workspaceId])
+  @@index([customRoleId])
 }
 
 model Session {
@@ -183,25 +202,28 @@ model Session {
 }
 
 model Inbox {
-  id               String        @id @default(cuid())
-  workspaceId      String
-  name             String
-  emailPrefix      String        @unique
-  ticketPrefix     String
-  autoReplyEnabled Boolean       @default(false)
-  senderEmail      String?
-  senderName       String?
-  smtpHost         String?
-  smtpPort         Int?
-  smtpUser         String?
-  smtpPassword     String?
-  smtpSecure       Boolean       @default(true)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  tickets          Ticket[]
-  agents           AIAgent[]
-  integrations     Integration[]
+  id                  String          @id @default(cuid())
+  workspaceId         String
+  name                String
+  emailPrefix         String          @unique
+  ticketPrefix        String
+  autoReplyEnabled    Boolean         @default(false)
+  /// FR-15.5: canned response sent automatically to the customer when a new email ticket arrives.
+  autoReplyTemplateId String?
+  autoReplyTemplate   CannedResponse? @relation("InboxAutoReply", fields: [autoReplyTemplateId], references: [id], onDelete: SetNull)
+  senderEmail         String?
+  senderName          String?
+  smtpHost            String?
+  smtpPort            Int?
+  smtpUser            String?
+  smtpPassword        String?
+  smtpSecure          Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  workspace           Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tickets             Ticket[]
+  agents              AIAgent[]
+  integrations        Integration[]
 
   @@index([workspaceId])
 }
@@ -245,6 +267,8 @@ model AIAgent {
 
   @@index([workspaceId])
   @@index([inboxId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status])
 }
 
 model AgentAutomation {
@@ -335,6 +359,8 @@ model KnowledgeSource {
 
   @@index([workspaceId])
   @@index([agentId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status])
 }
 
 model KnowledgeChunk {
@@ -384,6 +410,7 @@ model Ticket {
   agentRuns      AgentRun[]
   toolExecutions ToolExecution[]
   logs           AutomationLog[]
+  escalations    Escalation[]
 
   @@unique([workspaceId, ticketNumber])
   @@index([workspaceId])
@@ -391,6 +418,9 @@ model Ticket {
   @@index([assigneeId])
   @@index([contactId])
   @@index([workspaceId, requesterEmail])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status, createdAt])
+  @@index([workspaceId, priority, createdAt])
 }
 
 model TicketMessage {
@@ -437,52 +467,49 @@ model TicketTag {
 }
 
 model CannedResponse {
-  id          String    @id @default(cuid())
-  workspaceId String
-  title       String
-  body        String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
-}
-
-model ApiKey {
-  id          String    @id @default(cuid())
-  workspaceId String
-  name        String
-  keyPreview  String
-  provider    String?
-  isActive    Boolean   @default(true)
-  lastUsedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id               String    @id @default(cuid())
+  workspaceId      String
+  title            String
+  body             String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  autoReplyInboxes Inbox[]   @relation("InboxAutoReply")
 
   @@index([workspaceId])
 }
 
 model WorkspaceSetting {
-  id                     String    @id @default(cuid())
-  workspaceId            String    @unique
-  theme                  String    @default("dark")
-  timezone               String    @default("Asia/Karachi")
-  supportSignature       String?
-  crossChannelMemory     Boolean   @default(true)
+  id                           String    @id @default(cuid())
+  workspaceId                  String    @unique
+  theme                        String    @default("dark")
+  timezone                     String    @default("Asia/Karachi")
+  supportSignature             String?
+  crossChannelMemory           Boolean   @default(true)
   /// Module 8 FE-3: team emails and Slack incoming-webhook URL (encrypted) told about new leads.
-  leadNotifyEmails       String[]  @default([])
-  leadSlackWebhookUrl    String?
+  leadNotifyEmails             String[]  @default([])
+  leadSlackWebhookUrl          String?
   /// Module 8 FE-2: create leads automatically when a customer shows buying intent
   /// on WhatsApp/Slack or types their contact details in the website chat.
-  autoCaptureLeads       Boolean   @default(true)
+  autoCaptureLeads             Boolean   @default(true)
   /// Module 2: appointment booking (book_appointment tool). Hours: { days: [1..7], start: "09:00", end: "17:00" }.
-  appointmentSlotMinutes Int       @default(30)
-  appointmentHours       Json?
-  appointmentDaysAhead   Int       @default(14)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-  workspace              Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  appointmentSlotMinutes       Int       @default(30)
+  appointmentHours             Json?
+  appointmentDaysAhead         Int       @default(14)
+  /// Module 9: automatic escalation to a human. Master switch, sentiment trigger
+  /// (score -1..1; escalate at or below the threshold), "I want a person" requests,
+  /// built-in sensitive topics plus the workspace's own trigger phrases, and the
+  /// time a team member has to accept an escalation (SLA).
+  escalationEnabled            Boolean   @default(true)
+  escalationSentimentEnabled   Boolean   @default(true)
+  escalationSentimentThreshold Float     @default(-0.5)
+  escalationOnHumanRequest     Boolean   @default(true)
+  escalationSensitiveTopics    Boolean   @default(true)
+  escalationKeywords           String[]  @default([])
+  escalationSlaMinutes         Int       @default(15)
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+  workspace                    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model ChatSession {
@@ -527,12 +554,15 @@ model ChatSession {
   agentRuns              AgentRun[]
   toolExecutions         ToolExecution[]
   appointments           Appointment[]
+  escalations            Escalation[]
 
   @@index([workspaceId])
   @@index([chatbotId])
   @@index([integrationId, externalId])
   @@index([contactId])
   @@index([workspaceId, status, lastActivityAt])
+  @@index([workspaceId, startedAt])
+  @@index([workspaceId, status, updatedAt])
 }
 
 model ChatMessage {
@@ -543,6 +573,8 @@ model ChatMessage {
   attachments Json?
   authorName  String?
   externalId  String?          @unique
+  /// Module 9 FE-3: sentiment of a customer message, -1 (very negative) to 1 (positive).
+  sentiment   Float?
   createdAt   DateTime         @default(now())
   session     ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   feedback    MessageFeedback?
@@ -570,6 +602,8 @@ model AutomationLog {
   @@index([ticketId])
   @@index([agentId])
   @@index([createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action, createdAt])
 }
 
 model Integration {
@@ -656,6 +690,9 @@ model Contact {
   memory          String?
   memoryUpdatedAt DateTime?
   lastChannel     ChannelType?
+  /// Module 9: set when an agent resolves an escalation with "keep this customer with
+  /// the team"; their new conversations go straight to a human until it is cleared.
+  aiPaused        Boolean        @default(false)
   firstSeenAt     DateTime       @default(now())
   lastSeenAt      DateTime       @default(now())
   createdAt       DateTime       @default(now())
@@ -666,6 +703,7 @@ model Contact {
   events          SessionEvent[]
   leads           Lead[]
   appointments    Appointment[]
+  escalations     Escalation[]
 
   @@unique([workspaceId, email])
   @@unique([workspaceId, phone])
@@ -741,6 +779,9 @@ model Lead {
   marketingConsent Boolean           @default(false)
   pageHost         String?
   lastActivityAt   DateTime          @default(now())
+  /// Module 11 FE-1: id of the matching record in the connected CRM (HubSpot).
+  crmId            String?
+  crmSyncedAt      DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1040,4 +1081,250 @@ model Appointment {
 
   @@index([workspaceId, startsAt])
   @@index([contactId])
+}
+
+enum EscalationStatus {
+  PENDING
+  ACCEPTED
+  RESOLVED
+}
+
+/// Module 9 Support Escalation: one record per hand-over of a conversation (or an
+/// email ticket) from the AI to the team. It is the escalation queue (PENDING), the
+/// work in progress (ACCEPTED, with an assignee) and the escalation log (RESOLVED,
+/// FE-6). `trigger` says what caused it: SENTIMENT, HUMAN_REQUEST, KEYWORD,
+/// CUSTOMER_FLAGGED, AI_TOOL, TOOL_FAILURE or MANUAL.
+model Escalation {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  sessionId          String?
+  ticketId           String?
+  contactId          String?
+  channel            ChannelType
+  trigger            String
+  reason             String
+  sentimentScore     Float?
+  priority           TicketPriority   @default(MEDIUM)
+  status             EscalationStatus @default(PENDING)
+  /// AI-written hand-over summary for the team (FE-2/FE-5).
+  summary            String?
+  summaryGeneratedAt DateTime?
+  assigneeId         String?
+  acceptedAt         DateTime?
+  resolvedAt         DateTime?
+  resolvedById       String?
+  /// HANDED_BACK (AI resumes), CLOSED (conversation ended) or RESOLVED (ticket).
+  resolution         String?
+  resolutionNote     String?
+  slaDueAt           DateTime?
+  slaBreachedAt      DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  session            ChatSession?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  ticket             Ticket?          @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  contact            Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  assignee           User?            @relation("EscalationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  resolvedBy         User?            @relation("EscalationResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([sessionId])
+  @@index([ticketId])
+  @@index([contactId])
+  @@index([assigneeId])
+}
+
+// ---------------------------------------------------------------- Module 11
+
+enum AuditActorType {
+  USER
+  API_KEY
+  SYSTEM
+}
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILED
+}
+
+/// Module 11 FE-5: security and activity log. Append-only: a database trigger
+/// refuses UPDATE; rows go only when the workspace is deleted.
+model AuditLog {
+  id          String         @id @default(cuid())
+  workspaceId String
+  actorType   AuditActorType @default(USER)
+  /// User or API key id. No foreign key, so the entry survives their deletion.
+  actorId     String?
+  actorName   String
+  /// e.g. "user.role_changed", "auth.login_failed", "api_key.created".
+  action      String
+  /// auth | users | settings | integrations | api | data | access | ai
+  category    String
+  outcome     AuditOutcome   @default(SUCCESS)
+  targetType  String?
+  targetId    String?
+  summary     String
+  metadata    Json?
+  ipHash      String?
+  userAgent   String?
+  createdAt   DateTime       @default(now())
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, category, createdAt])
+  @@index([workspaceId, actorId])
+}
+
+/// Module 11 FE-2: keys for the public REST API (/api/v1). Only a hash is stored.
+model ApiKey {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  name           String
+  /// The first characters of the key, shown so people can tell keys apart.
+  prefix         String
+  keyHash        String    @unique
+  scopes         String[]
+  createdById    String?
+  lastUsedAt     DateTime?
+  lastUsedIpHash String?
+  usageCount     Int       @default(0)
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy      User?     @relation("ApiKeyCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+}
+
+enum ConnectorProvider {
+  HUBSPOT
+  SHOPIFY
+}
+
+enum ConnectorStatus {
+  CONNECTED
+  ERROR
+  DISCONNECTED
+}
+
+/// Module 11 FE-1: a connection to a CRM or e-commerce platform.
+model Connector {
+  id           String            @id @default(cuid())
+  workspaceId  String
+  provider     ConnectorProvider
+  name         String
+  status       ConnectorStatus   @default(CONNECTED)
+  /// Non-secret settings (store domain, sync options).
+  config       Json?
+  /// The access token, encrypted (AES-256-GCM).
+  secret       String?
+  lastSyncedAt DateTime?
+  lastError    String?
+  syncedCount  Int               @default(0)
+  createdById  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, provider])
+}
+
+/// Module 11 FE-4: an admin-defined role on top of a base level, with extra or
+/// removed permissions.
+model CustomRole {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  name              String
+  description       String?
+  baseRole          UserRole
+  /// Permissions added on top of the base level.
+  permissions       String[]
+  /// Permissions of the base level that this role does not get.
+  deniedPermissions String[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  users             User[]
+
+  @@unique([workspaceId, name])
+}
+
+// ----------------------------------------------------------------- Module 3
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+/// Module 3: the workspace's plan. One per workspace; a workspace without a row
+/// predates billing and is not limited until it chooses a plan.
+model Subscription {
+  id                     String             @id @default(cuid())
+  workspaceId            String             @unique
+  /// FREE | STARTER | GROWTH | BUSINESS (see src/lib/billing-plans.ts)
+  plan                   String
+  /// MONTH | YEAR
+  interval               String             @default("MONTH")
+  status                 SubscriptionStatus @default(TRIALING)
+  /// STRIPE, or TEST (development without a payment provider)
+  provider               String             @default("STRIPE")
+  customerId             String?
+  providerSubscriptionId String?            @unique
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  trialEndsAt            DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  canceledAt             DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoices               Invoice[]
+
+  @@index([customerId])
+}
+
+/// Module 3 FE-5: invoices and payment history (amounts in the smallest currency unit).
+model Invoice {
+  id                String        @id @default(cuid())
+  workspaceId       String
+  subscriptionId    String?
+  number            String
+  provider          String
+  providerInvoiceId String?       @unique
+  /// PAID | OPEN | FAILED | VOID
+  status            String
+  currency          String        @default("usd")
+  amountDue         Int
+  amountPaid        Int           @default(0)
+  plan              String
+  interval          String
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  hostedUrl         String?
+  pdfUrl            String?
+  paidAt            DateTime?
+  createdAt         DateTime      @default(now())
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+/// Module 3: payment-provider events already handled (idempotency) and the billing history.
+model BillingEvent {
+  id          String   @id @default(cuid())
+  provider    String
+  eventId     String   @unique
+  type        String
+  workspaceId String?
+  summary     String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
 }

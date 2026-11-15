@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { requireRole } from "@/src/lib/rbac";
@@ -76,6 +77,15 @@ export async function POST(request: Request) {
       secret: storeWebhookSecret(secret),
       events,
     },
+  });
+  await auditUser(session.user, {
+    action: "webhook.created",
+    category: "integrations",
+    summary: `${session.user.fullName} added the webhook "${name}" to ${new URL(checked.url).host}`,
+    targetType: "webhook",
+    targetId: endpoint.id,
+    metadata: { events },
+    request,
   });
 
   // The signing secret is shown once; afterwards only a preview is available.

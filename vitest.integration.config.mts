@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
@@ -8,6 +9,11 @@ import { defineConfig } from "vitest/config";
  *
  *   TEST_DATABASE_URL=postgresql://… npm run test:integration
  */
+// TEST_DATABASE_URL can come from .env.demo (see .env.demo.example); the shell wins.
+if (existsSync(".env.demo")) {
+  process.loadEnvFile(".env.demo");
+}
+
 export default defineConfig({
   resolve: {
     alias: {

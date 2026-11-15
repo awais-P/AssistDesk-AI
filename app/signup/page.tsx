@@ -10,11 +10,30 @@ const inputClass =
 
 type Field = "fullName" | "email" | "password" | "confirmPassword";
 
+function EyeIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function EyeOffIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+    </svg>
+  );
+}
+
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [touched, setTouched] = useState<Record<Field, boolean>>({
     fullName: false,
     email: false,
@@ -222,23 +241,34 @@ export default function SignupPage() {
                   >
                     Password
                   </label>
-                  <input
-                    id="signupPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    onBlur={() => markTouched("password")}
-                    disabled={isLoading}
-                    placeholder="Create a password"
-                    aria-invalid={showPasswordRuleErrors && !passwordValid}
-                    aria-describedby="signupPassword-rules"
-                    className={`${inputClass} ${
-                      showPasswordRuleErrors && !passwordValid
-                        ? "border-red-500/50"
-                        : "border-white/10"
-                    }`}
-                  />
+                  <div className="relative">
+                    <input
+                      id="signupPassword"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      onBlur={() => markTouched("password")}
+                      disabled={isLoading}
+                      placeholder="Create a password"
+                      aria-invalid={showPasswordRuleErrors && !passwordValid}
+                      aria-describedby="signupPassword-rules"
+                      className={`${inputClass} pr-11 ${
+                        showPasswordRuleErrors && !passwordValid
+                          ? "border-red-500/50"
+                          : "border-white/10"
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      tabIndex={-1}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-white transition"
+                    >
+                      {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
                   <ul id="signupPassword-rules" className="mt-2 space-y-1 text-xs">
                     {passwordRules.map((rule) => (
                       <li
@@ -265,24 +295,35 @@ export default function SignupPage() {
                   >
                     Confirm Password
                   </label>
-                  <input
-                    id="signupConfirmPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(event) => {
-                      setConfirmPassword(event.target.value);
-                      if (event.target.value.length >= password.length) {
-                        markTouched("confirmPassword");
-                      }
-                    }}
-                    onBlur={() => markTouched("confirmPassword")}
-                    disabled={isLoading}
-                    placeholder="Type your password again"
-                    aria-invalid={Boolean(confirmError)}
-                    aria-describedby={confirmError ? "signupConfirmPassword-error" : undefined}
-                    className={`${inputClass} ${confirmError ? "border-red-500/50" : "border-white/10"}`}
-                  />
+                  <div className="relative">
+                    <input
+                      id="signupConfirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(event) => {
+                        setConfirmPassword(event.target.value);
+                        if (event.target.value.length >= password.length) {
+                          markTouched("confirmPassword");
+                        }
+                      }}
+                      onBlur={() => markTouched("confirmPassword")}
+                      disabled={isLoading}
+                      placeholder="Type your password again"
+                      aria-invalid={Boolean(confirmError)}
+                      aria-describedby={confirmError ? "signupConfirmPassword-error" : undefined}
+                      className={`${inputClass} pr-11 ${confirmError ? "border-red-500/50" : "border-white/10"}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      tabIndex={-1}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-white transition"
+                    >
+                      {showConfirmPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
                   {confirmError ? (
                     <p id="signupConfirmPassword-error" className="mt-1.5 text-xs text-red-300">
                       {confirmError}

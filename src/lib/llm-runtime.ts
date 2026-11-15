@@ -1,6 +1,7 @@
 import {
   estimateTokenUsage,
   generateGroundedAgentReply,
+  isGreetingOnly,
   type RuntimeKnowledgeSource,
 } from "./knowledge-runtime";
 import {
@@ -84,7 +85,9 @@ export function buildRetrievalQuery(question: string, history: ConversationTurn[
   const words = question.trim().split(/\s+/).filter(Boolean).length;
   const previousQuestion = [...history].reverse().find((turn) => turn.role === "user")?.content;
 
-  return words > 0 && words < 8 && previousQuestion
+  // A short follow-up ("and for gifts?") is searched together with the previous question;
+  // a greeting is not a follow-up.
+  return words > 0 && words < 8 && previousQuestion && !isGreetingOnly(question)
     ? `${previousQuestion.slice(0, 400)}\n${question}`
     : question;
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { requireRole } from "@/src/lib/rbac";
@@ -80,10 +81,19 @@ export async function PATCH(request: Request, context: WebhookRouteContext) {
   }
 
   const endpoint = await prisma.webhookEndpoint.update({ where: { id }, data });
+  await auditUser(auth.session.user, {
+    action: "webhook.updated",
+    category: "integrations",
+    summary: `${auth.session.user.fullName} updated the webhook "${endpoint.name}"`,
+    targetType: "webhook",
+    targetId: id,
+    metadata: { fields: Object.keys(data) },
+    request,
+  });
   return NextResponse.json({ endpoint: serializeEndpoint(endpoint) });
 }
 
-export async function DELETE(_request: Request, context: WebhookRouteContext) {
+export async function DELETE(request: Request, context: WebhookRouteContext) {
   const auth = await authorize();
 
   if (auth.error) {
@@ -96,6 +106,15 @@ export async function DELETE(_request: Request, context: WebhookRouteContext) {
   if (result.count === 0) {
     return NextResponse.json({ error: "Webhook not found." }, { status: 404 });
   }
+
+  await auditUser(auth.session.user, {
+    action: "webhook.deleted",
+    category: "integrations",
+    summary: `${auth.session.user.fullName} deleted a webhook`,
+    targetType: "webhook",
+    targetId: id,
+    request,
+  });
 
   return NextResponse.json({ success: true });
 }

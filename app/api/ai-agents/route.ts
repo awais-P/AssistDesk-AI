@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { checkLimit, limitMessage } from "@/src/lib/billing";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -15,6 +16,11 @@ import {
 import { serializeAgent } from "@/src/lib/agent-serializer";
 import { prisma } from "@/src/lib/prisma";
 import { encryptSecret } from "@/src/lib/secrets";
+import {
+  RATE_LIMITS,
+  consumeRateLimit,
+  tooManyRequests,
+} from "@/src/lib/rate-limit";
 
 type AgentPayload = {
   id?: string;
@@ -68,12 +74,24 @@ export async function POST(request: Request) {
 
 
   const forbidden = requireRole(session.user, "MANAGER");
-
-
   if (forbidden) {
-
     return forbidden;
+  }
 
+  // Module 3: plan limit.
+  const planCheck = await checkLimit(session.user.workspaceId, "agents");
+
+  if (!planCheck.allowed) {
+    return NextResponse.json({ error: limitMessage("agents", planCheck), code: "plan_limit" }, { status: 402 });
+  }
+
+  const limit = await consumeRateLimit(
+    `agent-create:${session.user.id}`,
+    RATE_LIMITS.agentCreatePerUser,
+  );
+
+  if (!limit.allowed) {
+    return tooManyRequests(limit, "Too many AI agents created. Please wait before creating more.");
   }
 
   const body = (await request.json().catch(() => ({}))) as AgentPayload;

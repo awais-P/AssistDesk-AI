@@ -17,6 +17,7 @@ type InboxEditorProps = {
     emailPrefix: string;
     senderEmail: string | null;
     autoReplyEnabled: boolean;
+    autoReplyTemplateId: string | null;
     ticketPrefix: string;
     assignedAgentId: string | null;
     senderName: string | null;
@@ -27,6 +28,8 @@ type InboxEditorProps = {
     hasSmtpPassword: boolean;
   };
   agentOptions: AgentOption[];
+  /** Canned responses that can be sent as the auto-reply (FR-15.5). */
+  cannedResponses: Array<{ id: string; title: string }>;
   currentUserEmail: string;
 };
 
@@ -74,6 +77,7 @@ export function InboxEditor({
   mode,
   inbox,
   agentOptions,
+  cannedResponses,
   currentUserEmail,
 }: InboxEditorProps) {
   const router = useRouter();
@@ -90,6 +94,10 @@ export function InboxEditor({
     inbox?.senderEmail && !inbox.senderEmail.endsWith("@assistdesk.ai")
       ? inbox.senderEmail
       : currentUserEmail,
+  );
+  const [autoReplyEnabled, setAutoReplyEnabled] = useState(inbox?.autoReplyEnabled ?? false);
+  const [autoReplyTemplateId, setAutoReplyTemplateId] = useState(
+    inbox?.autoReplyTemplateId ?? "",
   );
   const [assignedAgentId, setAssignedAgentId] = useState(
     inbox?.assignedAgentId ?? "",
@@ -181,6 +189,10 @@ export function InboxEditor({
       return "Choose an inbox email address, like support.";
     }
 
+    if (autoReplyEnabled && !autoReplyTemplateId) {
+      return "Choose the canned response to send as the auto-reply, or switch the auto-reply off.";
+    }
+
     if (!isCustomSender) {
       return "";
     }
@@ -223,7 +235,8 @@ export function InboxEditor({
           emailPrefix,
           // The platform sender replies from its own address; Reply-To routes answers back to this inbox.
           senderEmail: isCustomSender ? senderEmail : inboxAddress,
-          autoReplyEnabled: true,
+          autoReplyEnabled,
+          autoReplyTemplateId: autoReplyTemplateId || null,
           ticketPrefix: ticketPrefix || derivePrefix(name),
           assignedAgentId: assignedAgentId || null,
           senderName: senderName.trim(),
@@ -660,6 +673,74 @@ export function InboxEditor({
                   Gmail and Outlook need an app password (not your normal login
                   password) with two-step verification turned on. AssistDesk tests
                   the connection when you save, which can take a few seconds.
+                </p>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-[#0a0a0a] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p id="inbox-auto-reply-label" className="text-base font-semibold text-white">
+                  Auto-reply
+                </p>
+                <p className="mt-1 text-sm text-slate-400">
+                  Send a canned response to the customer as soon as a new email ticket
+                  arrives in this inbox, for example to confirm it was received.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoReplyEnabled}
+                aria-labelledby="inbox-auto-reply-label"
+                onClick={() => setAutoReplyEnabled((value) => !value)}
+                className={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+                  autoReplyEnabled ? "bg-white" : "bg-white/15"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 rounded-full transition ${
+                    autoReplyEnabled ? "translate-x-5 bg-[#050505]" : "translate-x-0.5 bg-slate-300"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {autoReplyEnabled ? (
+              <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-[#111111] p-4">
+                <label
+                  htmlFor="inbox-auto-reply-template"
+                  className="mb-2 block text-sm font-medium text-slate-300"
+                >
+                  Canned response to send
+                </label>
+                {cannedResponses.length > 0 ? (
+                  <select
+                    id="inbox-auto-reply-template"
+                    value={autoReplyTemplateId}
+                    onChange={(event) => setAutoReplyTemplateId(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-[#151515] px-4 py-3 text-sm text-white outline-none focus:border-white"
+                  >
+                    <option value="">Choose a canned response</option>
+                    {cannedResponses.map((response) => (
+                      <option key={response.id} value={response.id}>
+                        {response.title}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm text-slate-400">
+                    No canned responses yet.{" "}
+                    <Link href="/dashboard/canned-responses" className="text-white underline">
+                      Create one
+                    </Link>{" "}
+                    first, then come back to choose it.
+                  </p>
+                )}
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Variables such as {"{{customer_name}}"} and {"{{ticket_number}}"} are filled in.
+                  Blocked senders don&apos;t get it.
                 </p>
               </div>
             ) : null}

@@ -19,6 +19,8 @@ type IntegrationItem = {
   supportAddress: string | null;
   forwardingAddress: string | null;
   webhookSecret: string | null;
+  /** True when a secret exists but is hidden because the viewer is not an Admin. */
+  hasWebhookSecret?: boolean;
   config: Record<string, unknown>;
   isActive: boolean;
   lastSyncedAt: string | null;
@@ -71,6 +73,8 @@ type FormState = {
   accessToken: string;
   phoneNumberId: string;
   appSecret: string;
+  mailboxUser: string;
+  mailboxPassword: string;
 };
 
 type Notice = { tone: "success" | "error"; text: string } | null;
@@ -104,6 +108,8 @@ const emptyForm: FormState = {
   accessToken: "",
   phoneNumberId: "",
   appSecret: "",
+  mailboxUser: "",
+  mailboxPassword: "",
 };
 
 const inputClassName =
@@ -275,6 +281,19 @@ function ToggleSwitch({
         }`}
       />
     </button>
+  );
+}
+
+function HiddenSecretNote({ label }: { label: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-[#111111] p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-400">
+        Only Admins and Owners can see this value.
+      </p>
+    </div>
   );
 }
 
@@ -496,6 +515,7 @@ export function IntegrationsWorkspace({
         autoCreateTickets: integration.config.autoCreateTickets !== false,
         syncReplies: integration.config.syncReplies !== false,
         phoneNumberId: configText(integration.config, "phoneNumberId"),
+        mailboxUser: configText(integration.config, "mailboxUser"),
       });
     } else {
       setForm({
@@ -529,6 +549,15 @@ export function IntegrationsWorkspace({
   function validateForm() {
     if (!form.name.trim()) {
       return "Give this connection a name so you can recognise it later.";
+    }
+
+    if (form.type === "EMAIL" && form.provider === "Gmail") {
+      // The Gmail address is the support address; the server checks the login on save.
+      if (!form.mailboxUser.trim()) {
+        return "Enter the Gmail address customers email.";
+      }
+
+      return form.mailboxPassword.trim() || form.id ? "" : "Enter the App Password for this Gmail address.";
     }
 
     if (form.type === "EMAIL") {
@@ -587,12 +616,16 @@ export function IntegrationsWorkspace({
       return {
         ...base,
         provider: form.provider,
-        supportAddress: form.supportAddress,
+        supportAddress: form.provider === "Gmail" ? form.mailboxUser.trim() : form.supportAddress,
         forwardingAddress: form.forwardingAddress || null,
         inboxId: form.inboxId || null,
         config: {
           autoCreateTickets: form.autoCreateTickets,
           syncReplies: form.syncReplies,
+          // Gmail: AssistDesk reads this mailbox itself. A blank password keeps the saved one.
+          ...(form.provider === "Gmail"
+            ? { mailboxUser: form.mailboxUser.trim(), mailboxPassword: form.mailboxPassword.trim() }
+            : {}),
         },
       };
     }
@@ -1048,17 +1081,21 @@ export function IntegrationsWorkspace({
                               void handleCopy(`${integration.id}-whatsapp`, urls.whatsapp)
                             }
                           />
-                          <CopyField
-                            label="Verify token"
-                            value={integration.webhookSecret ?? ""}
-                            copied={copiedKey === `${integration.id}-verify`}
-                            onCopy={() =>
-                              void handleCopy(
-                                `${integration.id}-verify`,
-                                integration.webhookSecret ?? "",
-                              )
-                            }
-                          />
+                          {integration.webhookSecret ? (
+                            <CopyField
+                              label="Verify token"
+                              value={integration.webhookSecret}
+                              copied={copiedKey === `${integration.id}-verify`}
+                              onCopy={() =>
+                                void handleCopy(
+                                  `${integration.id}-verify`,
+                                  integration.webhookSecret ?? "",
+                                )
+                              }
+                            />
+                          ) : (
+                            <HiddenSecretNote label="Verify token" />
+                          )}
                         </>
                       ) : null}
                       {integration.type === "EMAIL" ? (
@@ -1083,6 +1120,8 @@ export function IntegrationsWorkspace({
                                 )
                               }
                             />
+                          ) : integration.hasWebhookSecret ? (
+                            <HiddenSecretNote label="Webhook Secret" />
                           ) : null}
                           <p className="text-xs leading-5 text-slate-400 xl:col-span-2">
                             Use this endpoint for provider forwarding or
@@ -1236,6 +1275,54 @@ export function IntegrationsWorkspace({
                     </select>
                   </div>
 
+                  {form.provider === "Gmail" ? (
+                    <>
+                      <div>
+                        <label
+                          htmlFor="integration-mailbox-user"
+                          className="mb-2 block text-sm font-medium text-slate-300"
+                        >
+                          Gmail Address
+                        </label>
+                        <input
+                          id="integration-mailbox-user"
+                          type="email"
+                          value={form.mailboxUser}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, mailboxUser: event.target.value }))
+                          }
+                          placeholder="yourcompany.support@gmail.com"
+                          className={inputClassName}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="integration-mailbox-password"
+                          className="mb-2 block text-sm font-medium text-slate-300"
+                        >
+                          App Password
+                        </label>
+                        <input
+                          id="integration-mailbox-password"
+                          type="password"
+                          autoComplete="new-password"
+                          value={form.mailboxPassword}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, mailboxPassword: event.target.value }))
+                          }
+                          placeholder={form.id ? "Saved. Leave blank to keep it" : "16-character app password"}
+                          className={inputClassName}
+                        />
+                        <p className="mt-2 text-xs text-slate-500">
+                          Use a mailbox just for support. Create the password under Google Account → Security →
+                          App passwords (2-Step Verification must be on). AssistDesk checks this mailbox every
+                          30 seconds, turns new emails into tickets and replies from this address.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
                   <div>
                     <label
                       htmlFor="integration-support-address"
@@ -1283,6 +1370,8 @@ export function IntegrationsWorkspace({
                       ticket creation.
                     </p>
                   </div>
+                    </>
+                  )}
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>

@@ -4,14 +4,15 @@ import { decryptSecret, encryptSecret, maskSecret } from "../secrets";
 type ChannelType = "EMAIL" | "WHATSAPP" | "SLACK" | "VOICE";
 
 const secretFieldsByType: Record<ChannelType, string[]> = {
-  EMAIL: [],
+  // The app password of a mailbox connection (Gmail); other email connections have no secret.
+  EMAIL: ["mailboxPassword"],
   VOICE: [],
   SLACK: ["botToken", "signingSecret"],
   WHATSAPP: ["accessToken", "appSecret"],
 };
 
 const plainFieldsByType: Record<ChannelType, string[]> = {
-  EMAIL: [],
+  EMAIL: ["mailboxUser"],
   VOICE: [],
   SLACK: ["botUserId", "teamName"],
   WHATSAPP: ["phoneNumberId", "displayPhoneNumber", "verifiedName"],
@@ -56,6 +57,10 @@ export function mergeIntegrationConfig(
 
   if (type === "EMAIL" || type === "VOICE") {
     for (const [key, value] of Object.entries(submitted)) {
+      if (secretFieldsByType[type].includes(key) || plainFieldsByType[type].includes(key)) {
+        continue; // handled above: secrets stay encrypted, blanks keep the stored value
+      }
+
       if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
         next[key] = value;
       }

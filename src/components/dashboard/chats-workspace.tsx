@@ -55,7 +55,21 @@ type ReplyResponse = {
   };
 };
 
+type SessionEscalation = {
+  id: string;
+  status: "PENDING" | "ACCEPTED" | "RESOLVED";
+  triggerLabel: string;
+  reason: string;
+  priority: string;
+  summary: string | null;
+  assignee: { id: string; fullName: string } | null;
+  slaDueAt: string | null;
+  slaBreached: boolean;
+  createdAt: string;
+};
+
 type SessionContext = {
+  escalation?: SessionEscalation | null;
   session: {
     id: string;
     channel: string;
@@ -1383,6 +1397,22 @@ export function ChatsWorkspace({
     error: "",
   });
   const [contextReloadToken, setContextReloadToken] = useState(0);
+  const [escalationBusy, setEscalationBusy] = useState(false);
+
+  async function acceptSessionEscalation(escalationId: string) {
+    setEscalationBusy(true);
+
+    try {
+      await fetch(`/api/escalations/${escalationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "accept" }),
+      });
+    } finally {
+      setEscalationBusy(false);
+      setContextReloadToken((value) => value + 1);
+    }
+  }
   const [isContextFetching, setIsContextFetching] = useState(false);
   const [summaryState, setSummaryState] = useState<{
     sessionId: string | null;
@@ -2472,6 +2502,57 @@ export function ChatsWorkspace({
                   </div>
                 </div>
               </div>
+
+              {(() => {
+                // Module 9: why this conversation is with the team, and the AI's brief.
+                const escalation =
+                  contextState.sessionId === selectedSession.id ? contextState.data?.escalation : null;
+
+                if (!escalation || escalation.status === "RESOLVED" || selectedSession.status !== "ESCALATED") {
+                  return null;
+                }
+
+                return (
+                  <section
+                    aria-label="Escalation"
+                    className={`mx-4 mt-3 rounded-xl border px-4 py-3 text-sm ${
+                      escalation.slaBreached ? "border-red-500/40 bg-red-500/10" : "border-amber-500/30 bg-amber-500/[0.07]"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold text-amber-100">
+                        Escalated · {escalation.triggerLabel} · {escalation.priority.toLowerCase()} priority
+                        <span className="ml-2 font-normal text-slate-300">
+                          {escalation.assignee
+                            ? `${escalation.assignee.fullName} is handling this`
+                            : escalation.slaBreached
+                              ? "Waiting past the response time"
+                              : "Waiting for a team member"}
+                        </span>
+                      </p>
+                      <div className="flex gap-2">
+                        {escalation.status === "PENDING" ? (
+                          <button
+                            type="button"
+                            disabled={escalationBusy}
+                            onClick={() => void acceptSessionEscalation(escalation.id)}
+                            className={primaryButtonClass}
+                          >
+                            {escalationBusy ? "Accepting..." : "Accept"}
+                          </button>
+                        ) : null}
+                        <Link href={`/dashboard/escalations?id=${escalation.id}`} className={actionButtonClass}>
+                          Details
+                        </Link>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-slate-300">{escalation.reason}</p>
+                    <p className="mt-2 whitespace-pre-line text-slate-200">
+                      {escalation.summary ?? "The AI is writing a hand-over brief..."}
+                    </p>
+                  </section>
+                );
+              })()}
 
               <div
                 ref={threadRef}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
 import { getCurrentSession } from "@/src/lib/auth";
 import { normalizeEmail } from "@/src/lib/identity";
 import { prisma } from "@/src/lib/prisma";
@@ -105,6 +106,13 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
 
+  await auditUser(session.user, {
+    action: "settings.leads_updated",
+    category: "settings",
+    summary: `${session.user.fullName} changed the lead notification settings`,
+    metadata: { fields: Object.keys(data) },
+    request,
+  });
   await prisma.workspaceSetting.upsert({
     where: { workspaceId: session.user.workspaceId },
     update: data,

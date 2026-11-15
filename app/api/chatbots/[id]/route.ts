@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -10,7 +11,7 @@ type ChatbotRouteContext = {
 };
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: ChatbotRouteContext,
 ) {
   const session = await getCurrentSession();
@@ -52,6 +53,15 @@ export async function DELETE(
     where: {
       id,
     },
+  });
+
+  await auditUser(session.user, {
+    action: "chatbot.deleted",
+    category: "ai",
+    summary: `${session.user.fullName} deleted a chatbot`,
+    targetType: "chatbot",
+    targetId: id,
+    request,
   });
 
   return NextResponse.json({ success: true });

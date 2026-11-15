@@ -10,9 +10,22 @@ async function AsyncAgentsContent({ workspaceId }: { workspaceId: string }) {
   const [agents, inboxes] = await Promise.all([
     prisma.aIAgent.findMany({
       where: { workspaceId },
-      // The key is loaded only so the server can build a masked preview.
-      omit: { apiKey: false },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        provider: true,
+        model: true,
+        apiKey: true,
+        systemPrompt: true,
+        inboxId: true,
+        temperature: true,
+        confidenceThreshold: true,
+        maxTokens: true,
+        tone: true,
+        responseLength: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
         inbox: {
           select: {
             name: true,

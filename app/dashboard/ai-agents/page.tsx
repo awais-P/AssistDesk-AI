@@ -1,21 +1,15 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AgentsWorkspace } from "@/src/components/dashboard/agents-workspace";
 import { serializeAgent } from "@/src/lib/agent-serializer";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import AIAgentsLoading from "./loading";
 
-export default async function AIAgentsPage() {
-  const session = await getCurrentSession();
-
-  if (!session) {
-    redirect("/login");
-  }
-
+async function AsyncAgentsContent({ workspaceId }: { workspaceId: string }) {
   const [agents, inboxes] = await Promise.all([
     prisma.aIAgent.findMany({
-      where: {
-        workspaceId: session.user.workspaceId,
-      },
+      where: { workspaceId },
       // The key is loaded only so the server can build a masked preview.
       omit: { apiKey: false },
       include: {
@@ -31,9 +25,7 @@ export default async function AIAgentsPage() {
       take: 100,
     }),
     prisma.inbox.findMany({
-      where: {
-        workspaceId: session.user.workspaceId,
-      },
+      where: { workspaceId },
       select: {
         id: true,
         name: true,
@@ -74,5 +66,19 @@ export default async function AIAgentsPage() {
         emailPrefix: inbox.emailPrefix,
       }))}
     />
+  );
+}
+
+export default async function AIAgentsPage() {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  return (
+    <Suspense fallback={<AIAgentsLoading />}>
+      <AsyncAgentsContent workspaceId={session.user.workspaceId} />
+    </Suspense>
   );
 }

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import {
   OverviewWorkspace,
@@ -7,6 +8,7 @@ import { getCurrentSession } from "@/src/lib/auth";
 import { listNotifications } from "@/src/lib/notifications";
 import { countOnlineOperators } from "@/src/lib/presence";
 import { prisma } from "@/src/lib/prisma";
+import DashboardLoading from "./loading";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -57,18 +59,15 @@ function toAgentRow(
   };
 }
 
-export default async function DashboardOverviewPage({
-  searchParams,
-}: DashboardOverviewPageProps) {
-  const session = await getCurrentSession();
-
-  if (!session) {
-    redirect("/login");
-  }
-
-  const { range } = await searchParams;
-  const rangeDays = range === "30" ? 30 : 7;
-  const workspaceId = session.user.workspaceId;
+async function AsyncOverviewContent({
+  workspaceId,
+  user,
+  rangeDays,
+}: {
+  workspaceId: string;
+  user: { id: string; fullName: string };
+  rangeDays: 30 | 7;
+}) {
   const now = Date.now();
   const rangeStart = new Date(now - rangeDays * DAY_MS);
   const activeChatWindowStart = new Date(now - DAY_MS);
@@ -128,7 +127,7 @@ export default async function DashboardOverviewPage({
     prisma.knowledgeSource.count({
       where: { workspaceId, status: "SYNCED", processingError: { not: null } },
     }),
-    listNotifications(workspaceId, session.user.id, 8),
+    listNotifications(workspaceId, user.id, 8),
     // FR-11.3: leads captured in the selected period, and how many are hot (score 70+).
     prisma.lead.count({
       where: { workspaceId, createdAt: { gte: rangeStart } },
@@ -192,7 +191,7 @@ export default async function DashboardOverviewPage({
   return (
     <OverviewWorkspace
       rangeDays={rangeDays}
-      firstName={session.user.fullName.split(" ")[0] || session.user.fullName}
+      firstName={user.fullName.split(" ")[0] || user.fullName}
       kpis={{
         aiReplies: totals.replies,
         avgResponseMs: totals.replies > 0 ? totals.durationMs / totals.replies : null,
@@ -216,5 +215,28 @@ export default async function DashboardOverviewPage({
       alerts={alerts.notifications}
       unreadAlerts={alerts.unreadCount}
     />
+  );
+}
+
+export default async function DashboardOverviewPage({
+  searchParams,
+}: DashboardOverviewPageProps) {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  const { range } = await searchParams;
+  const rangeDays: 30 | 7 = range === "30" ? 30 : 7;
+
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <AsyncOverviewContent
+        workspaceId={session.user.workspaceId}
+        user={{ id: session.user.id, fullName: session.user.fullName }}
+        rangeDays={rangeDays}
+      />
+    </Suspense>
   );
 }

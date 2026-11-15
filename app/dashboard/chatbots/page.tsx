@@ -1,19 +1,15 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { ChatbotsWorkspace } from "@/src/components/dashboard/chatbots-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import ChatbotsLoading from "./loading";
 
-export default async function ChatbotsPage() {
-  const session = await getCurrentSession();
-
-  if (!session) {
-    redirect("/login");
-  }
-
+async function AsyncChatbotsContent({ workspaceId }: { workspaceId: string }) {
   const [chatbots, agents] = await Promise.all([
     prisma.chatbot.findMany({
       where: {
-        workspaceId: session.user.workspaceId,
+        workspaceId,
       },
       select: {
         id: true,
@@ -50,7 +46,7 @@ export default async function ChatbotsPage() {
     }),
     prisma.aIAgent.findMany({
       where: {
-        workspaceId: session.user.workspaceId,
+        workspaceId,
       },
       select: {
         id: true,
@@ -95,5 +91,19 @@ export default async function ChatbotsPage() {
         status: agent.status,
       }))}
     />
+  );
+}
+
+export default async function ChatbotsPage() {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  return (
+    <Suspense fallback={<ChatbotsLoading />}>
+      <AsyncChatbotsContent workspaceId={session.user.workspaceId} />
+    </Suspense>
   );
 }

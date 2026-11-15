@@ -1,19 +1,15 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { InboxesWorkspace } from "@/src/components/dashboard/inboxes-workspace";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import InboxesLoading from "./loading";
 
-export default async function InboxesPage() {
-  const session = await getCurrentSession();
-
-  if (!session) {
-    redirect("/login");
-  }
-
+async function AsyncInboxesContent({ workspaceId }: { workspaceId: string }) {
   const [inboxes, agents] = await Promise.all([
     prisma.inbox.findMany({
       where: {
-        workspaceId: session.user.workspaceId,
+        workspaceId,
       },
       select: {
         id: true,
@@ -29,7 +25,7 @@ export default async function InboxesPage() {
     }),
     prisma.aIAgent.findMany({
       where: {
-        workspaceId: session.user.workspaceId,
+        workspaceId,
       },
       select: {
         id: true,
@@ -59,5 +55,19 @@ export default async function InboxesPage() {
         };
       })}
     />
+  );
+}
+
+export default async function InboxesPage() {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  return (
+    <Suspense fallback={<InboxesLoading />}>
+      <AsyncInboxesContent workspaceId={session.user.workspaceId} />
+    </Suspense>
   );
 }

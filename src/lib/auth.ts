@@ -199,6 +199,101 @@ export async function verifyEmailToken(token: string) {
   return { success: true, user: updatedUser };
 }
 
+export function generatePasswordResetToken() {
+  return randomBytes(32).toString("hex");
+}
+
+export async function createPasswordResetForUser(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findFirst({
+    where: {
+      email: normalizedEmail,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+    },
+  });
+
+  if (!user) {
+    return { success: false, notFound: true, user: null, token: null };
+  }
+
+  const token = generatePasswordResetToken();
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetToken: token,
+      passwordResetExpiresAt: expiresAt,
+    },
+  });
+
+  return { success: true, notFound: false, user, token, expiresAt };
+}
+
+export async function resetPasswordWithToken(token: string, newPassword: string) {
+  if (!token || typeof token !== "string") {
+    return { success: false, error: "Password reset token is required." };
+  }
+
+  const passwordError = validateNewPassword(newPassword);
+  if (passwordError) {
+    return { success: false, error: passwordError };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      passwordResetToken: token,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      passwordResetExpiresAt: true,
+      emailVerified: true,
+    },
+  });
+
+  if (!user) {
+    return {
+      success: false,
+      error: "Invalid or expired password reset link. Please request a new one.",
+    };
+  }
+
+  if (user.passwordResetExpiresAt && user.passwordResetExpiresAt < new Date()) {
+    return {
+      success: false,
+      error: "This password reset link has expired. Please request a new one.",
+      expired: true,
+    };
+  }
+
+  const newHash = await hashPassword(newPassword);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: newHash,
+      passwordResetToken: null,
+      passwordResetExpiresAt: null,
+      mustChangePassword: false,
+      isEmailVerified: true,
+      emailVerified: user.emailVerified || new Date(),
+    },
+  });
+
+  // Invalidate any existing sessions across devices
+  await revokeUserSessions(user.id);
+
+  return { success: true, user };
+}
+
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);

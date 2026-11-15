@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
+  AUTH_COOKIE_NAME,
+  createSession,
   createSlug,
   createUniqueUsername,
   createUniqueWorkspaceSlug,
   generateEmailVerificationToken,
   hashPassword,
   isValidEmail,
+  sessionCookieOptions,
   validateNewPassword,
 } from "@/src/lib/auth";
 import { sendVerificationEmail } from "@/src/lib/mailer";
@@ -126,7 +129,7 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  // Send email confirmation link
+  // Send email confirmation link in background
   await sendVerificationEmail({
     email,
     fullName,
@@ -135,10 +138,18 @@ export async function POST(request: Request) {
     console.error("[signup] Failed to send confirmation email:", err);
   });
 
-  return NextResponse.json({
+  const session = await createSession(user.id);
+  const response = NextResponse.json({
     success: true,
-    requiresVerification: true,
-    redirectTo: `/verify-email?pending=true&email=${encodeURIComponent(email)}`,
-    message: "A confirmation email has been sent. Please verify your email before onboarding.",
+    redirectTo: "/setup",
+    message: "Account created successfully. Continue setting up your AI agent.",
   });
+
+  response.cookies.set(
+    AUTH_COOKIE_NAME,
+    session.token,
+    sessionCookieOptions(session.expiresAt),
+  );
+
+  return response;
 }

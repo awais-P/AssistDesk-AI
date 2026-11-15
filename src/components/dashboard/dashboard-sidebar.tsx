@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { dashboardItems, isDashboardItemActive } from "./dashboard-config";
 import { NotificationsBell } from "./notifications-bell";
+import { BrandIcon } from "../ui/brand-logo";
+import { useDashboardNavigation } from "./dashboard-navigation";
 
 const groups = ["Main", "AI", "Setup", "Settings"];
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -185,6 +187,7 @@ type DashboardSidebarProps = {
 export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { targetHref, isPending, navigate } = useDashboardNavigation();
   const isDesktop = useSyncExternalStore(
     subscribeToDesktop,
     getDesktopSnapshot,
@@ -278,10 +281,8 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   return (
     <>
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/10 bg-[#111111]/95 px-4 py-2.5 backdrop-blur lg:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white text-xs font-semibold text-black">
-            A
-          </span>
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <BrandIcon size={32} className="rounded-lg border border-white/10" />
           <span className="text-sm font-semibold text-white">assistdesk.ai</span>
         </Link>
 
@@ -330,10 +331,8 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
         }`}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white text-xs font-semibold text-black">
-              A
-            </span>
+          <div className="flex items-center gap-2.5">
+            <BrandIcon size={32} className="rounded-lg border border-white/10" />
             <div>
               <p className="text-sm font-semibold text-white">assistdesk.ai</p>
               <p className="text-[10px] text-slate-400">Support workspace</p>
@@ -374,14 +373,31 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                 {dashboardItems
                   .filter((item) => item.group === group)
                   .map((item) => {
-                    const isActive = isDashboardItemActive(item, pathname);
+                    const isTarget = targetHref === item.href;
+                    const isActive = targetHref
+                      ? isTarget
+                      : isDashboardItemActive(item, pathname);
+                    const isPendingThis = isTarget && isPending && item.href !== pathname;
 
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
+                        prefetch={true}
                         aria-current={isActive ? "page" : undefined}
-                        onClick={() => setDrawerOpenedOn(null)}
+                        onClick={(event) => {
+                          setDrawerOpenedOn(null);
+                          if (
+                            event.ctrlKey ||
+                            event.metaKey ||
+                            event.shiftKey ||
+                            event.button !== 0
+                          ) {
+                            return;
+                          }
+                          event.preventDefault();
+                          navigate(item.href);
+                        }}
                         className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.85rem] transition ${
                           isActive
                             ? "bg-[#2a2a2a] font-semibold text-white"
@@ -392,6 +408,12 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                           <NavIcon section={item.section} />
                         </span>
                         <span className="truncate">{item.title}</span>
+                        {isPendingThis ? (
+                          <span className="ml-auto flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                          </span>
+                        ) : null}
                       </Link>
                     );
                   })}
@@ -404,8 +426,21 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
           <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-2.5 py-2">
             <Link
               href="/dashboard/profile"
+              prefetch={true}
               title={user.email}
-              onClick={() => setDrawerOpenedOn(null)}
+              onClick={(event) => {
+                setDrawerOpenedOn(null);
+                if (
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.shiftKey ||
+                  event.button !== 0
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                navigate("/dashboard/profile");
+              }}
               className="pressable flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/5"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#222222] text-xs font-semibold text-white">

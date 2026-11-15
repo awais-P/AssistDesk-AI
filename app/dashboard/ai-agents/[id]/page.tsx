@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { AgentConfigurationWorkspace } from "@/src/components/dashboard/agent-configuration-workspace";
 import { ensureAgentAutomationDefaults } from "@/src/lib/agent-automations";
 import { serializeAgent } from "@/src/lib/agent-serializer";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
+import AgentDetailLoading from "./loading";
 
 type AgentDetailPageProps = {
   params: Promise<{
@@ -29,22 +31,19 @@ function normalizeTab(value?: string) {
   return "overview";
 }
 
-export default async function AgentDetailPage({
-  params,
-  searchParams,
-}: AgentDetailPageProps) {
-  const session = await getCurrentSession();
-
-  if (!session) {
-    redirect("/login");
-  }
-
-  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-
+async function AsyncAgentDetailContent({
+  workspaceId,
+  agentId,
+  tab,
+}: {
+  workspaceId: string;
+  agentId: string;
+  tab?: string;
+}) {
   const agent = await prisma.aIAgent.findFirst({
     where: {
-      id,
-      workspaceId: session.user.workspaceId,
+      id: agentId,
+      workspaceId,
     },
     // The key is loaded only so the server can build a masked preview.
     omit: { apiKey: false },
@@ -62,11 +61,11 @@ export default async function AgentDetailPage({
   }
 
   const [automations, usage] = await Promise.all([
-    ensureAgentAutomationDefaults(session.user.workspaceId, agent.id),
+    ensureAgentAutomationDefaults(workspaceId, agent.id),
     // Every AI generation (Playground, widget, channels, tickets) is logged with its model.
     prisma.automationLog.aggregate({
       where: {
-        workspaceId: session.user.workspaceId,
+        workspaceId,
         agentId: agent.id,
         model: {
           not: null,
@@ -85,7 +84,7 @@ export default async function AgentDetailPage({
 
   return (
     <AgentConfigurationWorkspace
-      initialTab={normalizeTab(resolvedSearchParams.tab)}
+      initialTab={normalizeTab(tab)}
       initialAgent={{
         id: serializedAgent.id,
         name: serializedAgent.name,
@@ -129,5 +128,28 @@ export default async function AgentDetailPage({
         isEnabled: automation.isEnabled,
       }))}
     />
+  );
+}
+
+export default async function AgentDetailPage({
+  params,
+  searchParams,
+}: AgentDetailPageProps) {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
+
+  return (
+    <Suspense fallback={<AgentDetailLoading />}>
+      <AsyncAgentDetailContent
+        workspaceId={session.user.workspaceId}
+        agentId={id}
+        tab={resolvedSearchParams.tab}
+      />
+    </Suspense>
   );
 }

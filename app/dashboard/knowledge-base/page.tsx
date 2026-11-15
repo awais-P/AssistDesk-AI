@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/src/lib/auth";
 import { getConfiguredEmbeddingModel } from "@/src/lib/embeddings";
@@ -6,24 +7,25 @@ import { prisma } from "@/src/lib/prisma";
 import { hasRole } from "@/src/lib/rbac";
 import { isPineconeConfigured } from "@/src/lib/vector-store";
 import { KnowledgeBaseClient } from "@/src/components/dashboard/knowledge-base-client";
+import KnowledgeBaseLoading from "./loading";
 
-export default async function KnowledgeBasePage() {
-  const session = await getCurrentSession();
-
-  if (!session) {
-    redirect("/login");
-  }
-
+async function AsyncKnowledgeBaseContent({
+  workspaceId,
+  role,
+}: {
+  workspaceId: string;
+  role: string;
+}) {
   // Re-queue jobs interrupted by a server restart so the list heals itself.
   try {
-    await recoverStaleKnowledgeJobs(session.user.workspaceId);
+    await recoverStaleKnowledgeJobs(workspaceId);
   } catch (error) {
     console.error("[knowledge-base] Unable to recover stale indexing jobs:", error);
   }
 
   const sources = await prisma.knowledgeSource.findMany({
     where: {
-      workspaceId: session.user.workspaceId,
+      workspaceId,
     },
     select: {
       id: true,
@@ -63,9 +65,26 @@ export default async function KnowledgeBasePage() {
   return (
     <KnowledgeBaseClient
       initialSources={sources}
-      canManage={hasRole(session.user.role, "MANAGER")}
+      canManage={hasRole(role, "MANAGER")}
       pineconeConfigured={isPineconeConfigured()}
       embeddingModel={getConfiguredEmbeddingModel()}
     />
+  );
+}
+
+export default async function KnowledgeBasePage() {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  return (
+    <Suspense fallback={<KnowledgeBaseLoading />}>
+      <AsyncKnowledgeBaseContent
+        workspaceId={session.user.workspaceId}
+        role={session.user.role}
+      />
+    </Suspense>
   );
 }

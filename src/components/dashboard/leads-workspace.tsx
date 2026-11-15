@@ -626,10 +626,23 @@ export function LeadsWorkspace({
       <div
         aria-busy={isLoading}
         className={`mt-3 rounded-[22px] border border-white/10 bg-[#0a0a0a] transition-opacity ${
-          isLoading ? "opacity-60" : ""
+          isLoading && leads.length > 0 ? "opacity-60" : ""
         }`}
       >
-        {leads.length === 0 ? (
+        {isLoading && leads.length === 0 ? (
+          <div className="divide-y divide-white/5 p-6 space-y-4" role="status" aria-live="polite">
+            <span className="sr-only">Loading leads...</span>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="flex items-center gap-4 py-3">
+                <div className="h-4 w-36 animate-pulse rounded bg-white/[0.07]" />
+                <div className="h-4 w-28 animate-pulse rounded bg-white/[0.07]" />
+                <div className="h-4 flex-1 animate-pulse rounded bg-white/[0.07]" />
+                <div className="h-6 w-20 animate-pulse rounded-full bg-white/[0.07]" />
+                <div className="h-4 w-24 animate-pulse rounded bg-white/[0.07]" />
+              </div>
+            ))}
+          </div>
+        ) : leads.length === 0 ? (
           <div className="flex min-h-[260px] flex-col items-center justify-center px-6 py-16 text-center">
             <svg
               viewBox="0 0 24 24"

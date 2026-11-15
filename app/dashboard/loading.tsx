@@ -1,23 +1,43 @@
+import {
+  Skeleton,
+  SkeletonHeader,
+  SkeletonStatGrid,
+} from "@/src/components/ui/skeleton";
+
 export default function DashboardLoading() {
   return (
-    <div className="px-5 py-4 md:px-6" role="status" aria-live="polite">
-      <span className="sr-only">Loading page...</span>
-      <div className="animate-pulse" aria-hidden="true">
-        <div className="h-8 w-48 rounded-lg bg-white/[0.06]" />
-        <div className="mt-3 h-4 w-80 max-w-full rounded bg-white/[0.04]" />
+    <div className="space-y-6 px-5 py-6 md:px-8" role="status" aria-live="polite">
+      <span className="sr-only">Loading dashboard...</span>
+      <SkeletonHeader
+        titleWidth="w-56"
+        subtitleWidth="w-96"
+        hasAction
+      />
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div
-              key={index}
-              className="h-28 rounded-xl border border-white/10 bg-[#0a0a0a]"
-            />
-          ))}
+      <SkeletonStatGrid count={4} />
+
+      <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+        <div className="rounded-2xl border border-white/10 bg-[#0a0a0a] p-6">
+          <div className="flex items-center justify-between mb-6">
+            <Skeleton className="h-5 w-40 rounded" />
+            <Skeleton className="h-8 w-24 rounded-lg" />
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
         </div>
 
-        <div className="mt-6 grid gap-5 xl:grid-cols-[1.4fr_1fr]">
-          <div className="h-72 rounded-xl border border-white/10 bg-[#0a0a0a]" />
-          <div className="h-72 rounded-xl border border-white/10 bg-[#0a0a0a]" />
+        <div className="rounded-2xl border border-white/10 bg-[#0a0a0a] p-6">
+          <Skeleton className="h-5 w-32 rounded mb-6" />
+          <div className="space-y-4">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-44 rounded" />
+                  <Skeleton className="h-3 w-28 rounded" />
+                </div>
+                <Skeleton className="h-6 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

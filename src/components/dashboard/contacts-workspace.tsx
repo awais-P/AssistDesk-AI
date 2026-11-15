@@ -169,10 +169,22 @@ export function ContactsWorkspace({ initialContacts, initialTotal }: ContactsWor
       <div
         aria-busy={isLoading}
         className={`mt-3 rounded-[22px] border border-white/10 bg-[#0a0a0a] transition-opacity ${
-          isLoading ? "opacity-60" : ""
+          isLoading && contacts.length > 0 ? "opacity-60" : ""
         }`}
       >
-        {contacts.length === 0 ? (
+        {isLoading && contacts.length === 0 ? (
+          <div className="divide-y divide-white/5 p-6 space-y-4" role="status" aria-live="polite">
+            <span className="sr-only">Loading customers...</span>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="flex items-center gap-4 py-3">
+                <div className="h-4 w-40 animate-pulse rounded bg-white/[0.07]" />
+                <div className="h-4 w-48 animate-pulse rounded bg-white/[0.07]" />
+                <div className="h-4 flex-1 animate-pulse rounded bg-white/[0.07]" />
+                <div className="h-4 w-20 animate-pulse rounded bg-white/[0.07]" />
+              </div>
+            ))}
+          </div>
+        ) : contacts.length === 0 ? (
           <div className="flex min-h-[260px] flex-col items-center justify-center px-6 py-16 text-center">
             <svg
               viewBox="0 0 24 24"

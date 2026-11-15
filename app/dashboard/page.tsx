@@ -228,7 +228,7 @@ export default async function DashboardOverviewPage({
   }
 
   const { range } = await searchParams;
-  const rangeDays: 30 | 7 = range === "30" ? 30 : 7;
+  const rangeDays = range === "30" ? 30 : 7;
 
   return (
     <Suspense fallback={<DashboardLoading />}>

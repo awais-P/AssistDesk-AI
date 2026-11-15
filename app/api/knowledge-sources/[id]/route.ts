@@ -1,6 +1,7 @@
 import { requirePermission } from "@/src/lib/access";
 import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
+import { publicErrorMessage } from "@/src/lib/api-errors";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
   deleteStoredKnowledgeFile,
@@ -331,10 +332,7 @@ export async function PATCH(
   } catch (error) {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to update this knowledge source.",
+        error: publicErrorMessage(error, "Unable to update this knowledge source.", "knowledge-sources"),
       },
       { status: 400 },
     );

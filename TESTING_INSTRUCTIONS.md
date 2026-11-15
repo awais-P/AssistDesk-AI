@@ -201,10 +201,12 @@ The test IDs in the final report map to the repository as follows:
 | ID family | Test layer | Location | Main coverage |
 |---|---|---|---|
 | `UT-01`–`UT-49` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, tool logic, Gmail mailbox parsing, and business rules BR-4 and BR-7 (`business-rules.test.ts`) |
+| `UT-61`–`UT-63` | Unit | `tests/unit/ticket-rules.test.ts`, `middleware.test.ts` | Priority-1 fixes: block-list rules and inactivity delays, safe error messages, cross-site check and security headers |
 | `UT-58` | Unit | `tests/unit/billing.test.ts` | Module 3: plans and prices, trials and the effective plan, upgrade/downgrade detection, downgrade blockers, limit messages |
 | `UT-54`, `UT-57`, `UT-59`, `UT-60` | Unit | `tests/unit/audit-and-permissions.test.ts` | Module 11: permission matrix and custom roles, audit redaction and filters, API key generation and validation, OpenAPI coverage, Shopify domain and order-ownership rules, HubSpot mapping |
 | `UT-50`–`UT-53` | Unit | `tests/unit/escalation.test.ts` | Module 9: sentiment (English, Roman Urdu, Urdu), requests for a person, sensitive topics and trigger phrases, the escalation decision and SLA, queue stats, CSV export, settings validation, the fallback hand-over brief |
 | `IT-01`–`IT-18` | Integration | `tests/integration/` | Tool registry and built-ins, HTTP tools, agent reasoning and fallbacks, intent rules, tool administration, appointments, action logs, ticket workflows, Gmail mailbox to tickets (`IT-18`), the opt-in real-model test (`IT-13`), and business rules BR-1, BR-2, BR-3 and BR-5 (`business-rules.int.ts`) using PostgreSQL |
+| `IT-28` | Integration | `tests/integration/p1-fixes.int.ts` | Priority-1 fixes: webhook secret only for admins, block list, assignment, inbox auto-reply, follow-up and auto-close, Playground limits, offline new-chat email, background-job lease |
 | `IT-26`–`IT-27` | Integration | `tests/integration/billing.int.ts`, `billing-stripe.int.ts` | Module 3: trial, plan limits, checkout, proration, cancellation, renewal, AI-reply limit, invoices (test provider); Stripe Checkout, signed webhooks, renewals, failed payments, plan changes and portal (fake Stripe client) |
 | `IT-22`–`IT-25` | Integration | `tests/integration/audit-log.int.ts`, `public-api.int.ts`, `connectors.int.ts`, `custom-roles.int.ts` | Module 11: security & audit log, API keys and the public REST API, HubSpot/Shopify connectors (fake vendor APIs), custom roles and permissions |
 | `IT-19`–`IT-21` | Integration | `tests/integration/escalation.int.ts`, `escalation-api.int.ts` | Module 9: escalation lifecycle (queue, accept, assign, resolve), one open escalation per conversation, customer kept with the team, SLA breach, email ticket escalation, hand-over brief, escalation APIs and role checks |
@@ -221,6 +223,7 @@ The test IDs in the final report map to the repository as follows:
 | `UI-WID-*` | Browser functional | `tests/ui/widget.spec.ts` | Widget branding, grounded answers, email capture, controls, allowed domains, and live takeover |
 | `UI-M2-*` | Browser functional | `tests/ui/agentic-tools.spec.ts` | Tool listing, tool test-runner, action logs, chain of thought, filters, and appointments |
 | `UI-LED-*` | Browser functional | `tests/ui/leads.spec.ts` | Lead listing, filters, details, CSV export, and lead settings |
+| `UI-P1-*` | Browser functional | `tests/ui/p1-fixes.spec.ts` | Priority-1 fixes: inbox auto-reply, automation help, security headers and cross-site refusal |
 | `UI-BIL-*` | Browser functional | `tests/ui/billing.spec.ts` | Module 3: billing page, yearly prices, forged webhook refused |
 | `UI-M11-*` | Browser functional | `tests/ui/integrations-admin.spec.ts` | Module 11: audit log tab, API key lifecycle, custom roles, connector checks, OpenAPI |
 | `UI-ESC-*` | Browser functional | `tests/ui/escalations.spec.ts` | Module 9: a visitor asking for a person is escalated to the queue, accept and hand back, escalation settings, CSV export |

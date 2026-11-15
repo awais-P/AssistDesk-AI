@@ -1,4 +1,4 @@
-import { requireRole } from "@/src/lib/rbac";
+import { hasRole, requireRole } from "@/src/lib/rbac";
 import { auditUser } from "@/src/lib/audit";
 import { createNotification } from "@/src/lib/notifications";
 import { NextResponse } from "next/server";
@@ -157,7 +157,12 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ integrations: integrations.map(serializeIntegration) });
+  const includeSecrets = hasRole(session.user.role, "ADMIN");
+  return NextResponse.json({
+    integrations: integrations.map((integration) =>
+      serializeIntegration(integration, { includeSecrets }),
+    ),
+  });
 }
 
 export async function POST(request: Request) {
@@ -339,7 +344,7 @@ export async function POST(request: Request) {
       request,
     });
 
-    return NextResponse.json({ integration: serializeIntegration(integration) });
+    return NextResponse.json({ integration: serializeIntegration(integration, { includeSecrets: true }) });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json(

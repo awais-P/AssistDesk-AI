@@ -10,14 +10,21 @@ export default async function NewInboxPage() {
     redirect("/login");
   }
 
-  const agents = await prisma.aIAgent.findMany({
+  const [agents, cannedResponses] = await Promise.all([
+    prisma.aIAgent.findMany({
     where: {
       workspaceId: session.user.workspaceId,
     },
     orderBy: {
       createdAt: "asc",
     },
-  });
+  }),
+    prisma.cannedResponse.findMany({
+      where: { workspaceId: session.user.workspaceId },
+      orderBy: { title: "asc" },
+      select: { id: true, title: true },
+    }),
+  ]);
 
   return (
     <InboxEditor
@@ -26,6 +33,7 @@ export default async function NewInboxPage() {
         id: agent.id,
         name: agent.name,
       }))}
+      cannedResponses={cannedResponses}
       currentUserEmail={session.user.email}
     />
   );

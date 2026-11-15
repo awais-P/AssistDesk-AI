@@ -71,7 +71,7 @@ async function seedDemoData() {
         name: "Support",
         emailPrefix: "support.assistdesk",
         ticketPrefix: "AD",
-        autoReplyEnabled: true,
+        autoReplyEnabled: false,
         senderEmail: "support@assistdesk.local",
       },
     });

@@ -1,5 +1,4 @@
 import {
-  Skeleton,
   SkeletonHeader,
   SkeletonTable,
 } from "@/src/components/ui/skeleton";

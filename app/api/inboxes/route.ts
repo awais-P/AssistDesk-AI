@@ -11,6 +11,7 @@ type InboxPayload = {
   emailPrefix?: string;
   senderEmail?: string;
   autoReplyEnabled?: boolean;
+  autoReplyTemplateId?: string | null;
   ticketPrefix?: string;
   assignedAgentId?: string | null;
   senderName?: string;
@@ -183,6 +184,28 @@ export async function POST(request: Request) {
     }
   }
 
+  // FR-15.5: the auto-reply sends a canned response from this workspace.
+  const autoReplyTemplateId =
+    typeof body.autoReplyTemplateId === "string" && body.autoReplyTemplateId.trim()
+      ? body.autoReplyTemplateId.trim()
+      : null;
+  const autoReplyEnabled = body.autoReplyEnabled === true;
+
+  if (autoReplyTemplateId) {
+    const template = await prisma.cannedResponse.findFirst({
+      where: { id: autoReplyTemplateId, workspaceId: session.user.workspaceId },
+      select: { id: true },
+    });
+
+    if (!template) {
+      return NextResponse.json({ error: "That canned response doesn't exist in this workspace." }, { status: 400 });
+    }
+  }
+
+  if (autoReplyEnabled && !autoReplyTemplateId) {
+    return NextResponse.json({ error: "Choose the canned response to send as the auto-reply." }, { status: 400 });
+  }
+
   const data = {
     workspaceId: session.user.workspaceId,
     name,
@@ -191,7 +214,8 @@ export async function POST(request: Request) {
       body.ticketPrefix?.trim().toUpperCase() ||
       name.slice(0, 2).toUpperCase() ||
       "AD",
-    autoReplyEnabled: body.autoReplyEnabled ?? true,
+    autoReplyEnabled,
+    autoReplyTemplateId,
     senderEmail,
     senderName: body.senderName?.trim().slice(0, 80) || null,
     smtpHost,

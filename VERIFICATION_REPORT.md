@@ -305,15 +305,15 @@ Found while testing: the partner's sign-up unit test (UT-55.13) stubs the databa
 |---|---|---|---|
 | BUG-34 | Medium | `src/lib/agent-engine/graph.ts`: when a model asked for more than 4 actions in one step, the extra calls were dropped **without a reply message**. OpenAI-compatible APIs reject the next request when a tool call has no reply, so every model in the chain would have failed and the run would have fallen back. | Every extra call now gets a "not run — call it again next step" reply (`MAX_CALLS_PER_STEP`). New integration test: 6 calls in one step → 4 run, 6 answered. Suite: 43/43. |
 
-### 5.2 Open: settings that do nothing (recommend fixing or hiding before the demo)
+### 5.2 Settings that did nothing (fixed 16 Nov 2026)
 
-| Item | Where | Effect |
-|---|---|---|
-| "AI Follow-up" and "Close Ticket" automations | `src/lib/agent-automations.ts` (7 defined; `ticket-workflow.ts` runs 5) | Can be switched on but never run. |
-| Chatbot "Email notifications" toggle (FR-13.8) | Saved in `app/api/chatbots/route.ts`; used only by the settings preview | No effect on the real widget. |
-| Inbox `autoReplyEnabled` (FR-15.5) | Stored only | No UI and no auto-reply sent. |
-| `EMAIL` / `VOICE` session-expiry policies | `session-lifecycle.ts` constants | No email or voice chat sessions exist (email runs through tickets). |
-| Cron jobs (sessions, knowledge recovery, webhook retries) | `app/api/cron/*` | Nothing schedules them (no `vercel.json`) and `CRON_SECRET` is empty, so the routes return 503. Expiry and recovery still happen lazily, but **webhook retries only run when the cron is called**. |
+| Item | Now |
+|---|---|
+| "AI Follow-up" and "Close Ticket" automations | Run every 5 minutes (`src/lib/ticket-inactivity.ts`): one follow-up email when the customer leaves our reply unanswered, then the ticket is closed; escalated tickets and tickets waiting for the team are skipped (IT-28.05). |
+| Chatbot "Email notifications" (FR-13.8) | Asks visitors for their email in the widget (as before) and now emails the team when a chat starts while nobody is online (IT-28.07). |
+| Inbox auto-reply (FR-15.5) | Switch plus canned-response choice on the inbox page; sent once when a new email ticket arrives, with variables filled in (IT-28.04, UI-P1-01). |
+| `EMAIL` / `VOICE` session-expiry policies | Still unused (no email or voice chat sessions exist). |
+| Cron jobs | The server runs them itself every 5 minutes with a database lease (`src/lib/background-jobs.ts`, IT-28.08); `vercel.json` schedules the routes on serverless hosting. |
 
 ### 5.3 Other findings
 

@@ -10,7 +10,15 @@ type IntegrationWithRelations = Prisma.IntegrationGetPayload<{
   include: typeof integrationInclude;
 }>;
 
-export function serializeIntegration(integration: IntegrationWithRelations) {
+/**
+ * `includeSecrets` must be true only for Admins and Owners. The webhook secret lets anyone
+ * post inbound email as this workspace, and the WhatsApp verify token re-registers the
+ * callback, so other roles get `null` (SEC-19).
+ */
+export function serializeIntegration(
+  integration: IntegrationWithRelations,
+  options: { includeSecrets?: boolean } = {},
+) {
   return {
     id: integration.id,
     type: integration.type,
@@ -22,7 +30,8 @@ export function serializeIntegration(integration: IntegrationWithRelations) {
     supportAddress: integration.supportAddress,
     forwardingAddress: integration.forwardingAddress,
     // WhatsApp needs its verify token pasted into Meta; email needs its webhook secret.
-    webhookSecret: integration.webhookSecret,
+    webhookSecret: options.includeSecrets ? integration.webhookSecret : null,
+    hasWebhookSecret: Boolean(integration.webhookSecret),
     config: maskIntegrationConfig(integration.type, integration.config),
     isActive: integration.isActive,
     lastSyncedAt: integration.lastSyncedAt?.toISOString() ?? null,

@@ -35,18 +35,20 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 
 ### Priority 1: fix before the demo (correctness, security, things an examiner can switch on)
 
+> ✅ **All ten done on 16 Nov 2026** (see CHANGELOG "Priority-1 fixes"; tests UT-61–UT-63, IT-28, UI-P1-01…03). #8 is partial: there is no script-src CSP because Next.js adds inline scripts without a nonce. Found on the way: the partner's email-verification migration locked out every existing account (DATA-11), fixed by a follow-up migration.
+
 | # | Item | Module / ID | Effort |
 |---|---|---|---|
-| 1 | **Webhook secret visible to every role.** `GET /api/integrations` has no role check and returns `webhookSecret` (`src/lib/integrations/serialize.ts:25`), so any Agent can read the email webhook secret and forge inbound emails. Mask it and show it to Admins only. | M11 / SEC-19 | S |
-| 2 | **Block-list never matches domains or keywords.** It checks `rules.includes(email)` (`ticket-workflow.ts:661`). On the direct email path (`email-ingestion.ts`) a blocked sender still gets an AI reply. | M1 / BUG-03 | S |
-| 3 | **Auto-assign runs even when "Assign To" is off.** It falls back to the oldest user (`ticket-workflow.ts:549-555`). | M1 / BUG-05 | S |
-| 4 | **Settings that do nothing** (UI-44, BUG-06): "AI Follow-up" and "Close Ticket" automations, the chatbot "Email notifications" toggle (FR-13.8), and inbox `autoReplyEnabled` (FR-15.5). Implement or hide each one. Implementing means an inactivity job for the two automations, sending the email notification, and an auto-reply template with sending. | M1, M7 | S to hide / M to build |
-| 5 | **Schedule the background jobs.** Session expiry, knowledge-job recovery and **lead-webhook retries** run only when `/api/cron/*` is called, and nothing calls it (no `vercel.json`, `CRON_SECRET` empty). Add in-process timers in `instrumentation.ts`, like email polling, SLA and billing already have, plus a `vercel.json` for hosting. | M5, M8, M10 / OPS-13 | S |
-| 6 | **Playground has no limits.** No rate limit and no plan limit, so any user can spend the managed AI keys. Add the `aiTestPerUser` limiter and `aiReplyAllowed`. | M5 / SEC-39 | S |
-| 7 | **Internal errors returned to the client.** Knowledge-source routes send the raw Prisma `error.message` (`knowledge-sources/route.ts:256`, `[id]/route.ts:331`). | M10 / SEC-16 | S |
-| 8 | **No security headers.** Add CSP, `frame-ancestors` and `X-Frame-Options` for the dashboard (the widget stays frameable), plus an Origin check on state-changing requests. | All / SEC-14 | M |
-| 9 | **Migrate every developer database.** Each dev DB (including `assistdeskDb`) needs `npx prisma migrate deploy` for the M9, M11, M3 and partner index migrations. | Ops | S |
-| 10 | **Clean the partner's lint errors.** 35 `no-explicit-any` errors in `email-verification.test.ts` and `password-reset.test.ts`, plus unused `Skeleton` imports in three `loading.tsx` files. `npm run lint` must be green for the "lint, test, build" rule. | Ops | S |
+| 1 ✅ | **Webhook secret visible to every role.** `GET /api/integrations` has no role check and returns `webhookSecret` (`src/lib/integrations/serialize.ts:25`), so any Agent can read the email webhook secret and forge inbound emails. Mask it and show it to Admins only. | M11 / SEC-19 | S |
+| 2 ✅ | **Block-list never matches domains or keywords.** It checks `rules.includes(email)` (`ticket-workflow.ts:661`). On the direct email path (`email-ingestion.ts`) a blocked sender still gets an AI reply. | M1 / BUG-03 | S |
+| 3 ✅ | **Auto-assign runs even when "Assign To" is off.** It falls back to the oldest user (`ticket-workflow.ts:549-555`). | M1 / BUG-05 | S |
+| 4 ✅ | **Settings that do nothing** (UI-44, BUG-06): "AI Follow-up" and "Close Ticket" automations, the chatbot "Email notifications" toggle (FR-13.8), and inbox `autoReplyEnabled` (FR-15.5). Implement or hide each one. Implementing means an inactivity job for the two automations, sending the email notification, and an auto-reply template with sending. | M1, M7 | S to hide / M to build |
+| 5 ✅ | **Schedule the background jobs.** Session expiry, knowledge-job recovery and **lead-webhook retries** run only when `/api/cron/*` is called, and nothing calls it (no `vercel.json`, `CRON_SECRET` empty). Add in-process timers in `instrumentation.ts`, like email polling, SLA and billing already have, plus a `vercel.json` for hosting. | M5, M8, M10 / OPS-13 | S |
+| 6 ✅ | **Playground has no limits.** No rate limit and no plan limit, so any user can spend the managed AI keys. Add the `aiTestPerUser` limiter and `aiReplyAllowed`. | M5 / SEC-39 | S |
+| 7 ✅ | **Internal errors returned to the client.** Knowledge-source routes send the raw Prisma `error.message` (`knowledge-sources/route.ts:256`, `[id]/route.ts:331`). | M10 / SEC-16 | S |
+| 8 🟡 | **No security headers.** Add CSP, `frame-ancestors` and `X-Frame-Options` for the dashboard (the widget stays frameable), plus an Origin check on state-changing requests. | All / SEC-14 | M |
+| 9 ✅ | **Migrate every developer database.** Each dev DB (including `assistdeskDb`) needs `npx prisma migrate deploy` for the M9, M11, M3 and partner index migrations. | Ops | S |
+| 10 ✅ | **Clean the partner's lint errors.** 35 `no-explicit-any` errors in `email-verification.test.ts` and `password-reset.test.ts`, plus unused `Skeleton` imports in three `loading.tsx` files. `npm run lint` must be green for the "lint, test, build" rule. | Ops | S |
 
 ### Priority 2: biggest score gains
 
@@ -72,7 +74,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 ## 3. Detailed list by module
 
 ### M1: Assistant creation & omnichannel (≈ 80%)
-- [ ] **FE-1:** "AI Follow-up" and "Close Ticket" automations have no runner (`agent-automations.ts:42,51`). (P1 #4)
+- [x] **FE-1:** "AI Follow-up" and "Close Ticket" automations have no runner (`agent-automations.ts:42,51`). (P1 #4) ✅ *16 Nov*
 - [ ] **FE-3 / FR-16.5:** Slack connects with a pasted bot token; the SRS asks for OAuth (`oauth.v2.access`). (M)
 - [ ] **FE-3:** WhatsApp handles text and buttons only; add images, documents and voice notes. (M)
 - [ ] **FE-3:** Slack, WhatsApp and SMTP have never run against real accounts ⚠️. (P2 #16)
@@ -83,7 +85,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **FR-14.8:** "empty = unlimited" is impossible (range 1–1000). (S)
 - [ ] **FR-17.x widget:** the header dot follows the AI, not humans online; no read receipts; AI and human bubbles look the same; "voice" is browser dictation. (M)
 - [ ] **Backend:** deleting an agent is a hard delete (it is now audit-logged); the SDS describes a soft delete. (S)
-- [ ] **BUG-03, BUG-05:** block-list and auto-assign. (P1 #2, #3)
+- [x] **BUG-03, BUG-05:** block-list and auto-assign. (P1 #2, #3) ✅ *16 Nov*
 - [ ] **BUG-19:** typing an agent name in the setup wizard overwrites a custom system prompt; retrying a partial URL save re-submits saved URLs. (S)
 - [ ] **BUG-25:** a message with only an attachment is answered using the file name as the question. (S)
 - [ ] **AI-07:** ticket "AI" priority is a regex; bare `down` matches "download". Use word boundaries or an LLM call. (S)
@@ -114,9 +116,9 @@ The rest of the list (§3 and §4). Pick items as time allows.
 
 ### M5: Real-time context & sessions (≈ 80%)
 - [ ] **FE-2:** voice in the shared Contact. (P2 #12)
-- [ ] **FE-5:** schedule the cron. (P1 #5)
+- [x] **FE-5:** schedule the cron. (P1 #5) ✅ *16 Nov*
 - [ ] **FE-5:** the EMAIL and VOICE expiry policies (`session-lifecycle.ts:35-36`) are defined but never used. Use or remove them. (S)
-- [ ] **FE-6:** Playground rate limit. (P1 #6)
+- [x] **FE-6:** Playground rate limit. (P1 #6) ✅ *16 Nov*
 - [ ] **Streaming:** replies are not streamed token by token. (P2 #11)
 - [ ] **SRS event:** a widget request from an unauthorised origin returns 403 but is not logged. Add an audit entry (`chatbot-widget.ts:97`, `widget/[widgetId]/page.tsx:66`). (S)
 - [ ] **PER-3 / OPS-09:** real-time push is in-process; across instances it's a 2 s poll. Use Postgres LISTEN/NOTIFY or Redis to scale out. (M)
@@ -143,7 +145,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **FR-6.1 / 6.2:** avatars in the chat list; customer presence dot. (P2 #13)
 - [ ] **FR-6.8:** "System Bot" entries are shown inside the thread. (S)
 - [ ] **FR-15.1:** no unsaved-changes prompt on any form (`beforeunload` / route-leave guard). (S)
-- [ ] **FR-15.5 / UI-21:** inbox auto-reply. There is no toggle (hard-coded `true`), no template choice and no sending. (P1 #4)
+- [x] **FR-15.5 / UI-21:** inbox auto-reply. There is no toggle (hard-coded `true`), no template choice and no sending. (P1 #4) ✅ *16 Nov*
 - [ ] **FR-5.4:** no separate advanced-filter panel on Tickets. (S)
 - [ ] No user avatar upload on the profile. (S)
 - [ ] **BUG-26:** Agents see ticket Delete buttons (the server refuses); creating and renaming tags has no role check. (S)
@@ -152,7 +154,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **UI-37:** `workspace-resource-overview.tsx` and `dashboard-placeholder-page.tsx` are dead code; delete them. (S)
 
 ### M8: Lead generation (≈ 90%)
-- [ ] **CI-3:** webhook retries need the scheduler. (P1 #5)
+- [x] **CI-3:** webhook retries need the scheduler. (P1 #5) ✅ *16 Nov*
 - [ ] **USE-2:** the lead form validates only after submit, not as the user types. (S)
 - [ ] **UI-41:** status counts ignore the filters; no chatbot filter in the UI (the API has one); CSV export caps at 5,000 rows. (S)
 - [ ] **DATA-10:** "Forget this customer" deletes leads without sending `lead.deleted` webhooks; old webhook delivery payloads are never purged. (S)
@@ -163,7 +165,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] Team/skill routing and round-robin auto-assignment. (P2 #18)
 - [ ] Email and Slack escalation alerts. (P2 #18)
 - [ ] **AI-19:** sentiment is a lexicon scorer, not a model (accepted; tunable).
-- [ ] **OPS-16:** the SLA check runs in every server process; a serverless host needs the scheduler. (P1 #5)
+- [x] **OPS-16:** the SLA check runs in every server process; a serverless host needs the scheduler. (P1 #5) ✅ *16 Nov*
 
 ### M10: Knowledge base (≈ 78%)
 - [ ] **FE-1:** Pinecone coded but not configured ⚠️; or switch to pgvector. (P2 #15)
@@ -172,9 +174,9 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **FR-10.2:** no `.doc`, no progress bar; files on local disk, not cloud storage. (P2 #14)
 - [ ] **FR-10.1:** Knowledge base sits under "Setup" in the sidebar, not "AI". (S)
 - [ ] **FE-3:** delete is a hard delete (now audit-logged); the SDS shows a DELETED state. (S)
-- [ ] **FE-4:** the recovery cron isn't scheduled. (P1 #5)
+- [x] **FE-4:** the recovery cron isn't scheduled. (P1 #5) ✅ *16 Nov*
 - [ ] OCR for scanned PDFs. (M)
-- [ ] **SEC-16:** raw error messages. (P1 #7)
+- [x] **SEC-16:** raw error messages. (P1 #7) ✅ *16 Nov*
 - [ ] **AI-11:** semantic score calibration is tuned to `text-embedding-3-small`; re-tune if the model changes (accepted).
 
 ### M11: Integrations & customization (≈ 82%)
@@ -185,14 +187,14 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] Public API write endpoints: update/close tickets, knowledge content, webhook management. (M)
 - [ ] Custom roles cover the ten listed permissions only; other pages follow the base level. (M to widen)
 - [ ] Audit-log retention setting. (S)
-- [ ] **SEC-19:** webhook secret. (P1 #1)
+- [x] **SEC-19:** webhook secret. (P1 #1) ✅ *16 Nov*
 
 ---
 
 ## 4. Cross-cutting
 
 ### Security (not tied to one module)
-- [ ] **SEC-14:** security headers and Origin check. (P1 #8)
+- [x] **SEC-14:** security headers and Origin check. (P1 #8) 🟡 *16 Nov: done except a script-src CSP*
 - [ ] **SEC-17:**
   - a changed profile email is not re-verified;
   - invited users are marked verified without a click.
@@ -217,7 +219,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **UI-23:** inline validation is missing on login, the setup wizard, domains and the hex colour field. (S)
 
 ### Operations and tooling
-- [ ] **OPS-13:** cron scheduling. (P1 #5)
+- [x] **OPS-13:** cron scheduling. (P1 #5) ✅ *16 Nov*
 - [ ] **OPS-05:** `AGENTS.md` (included by `CLAUDE.md`) says the project uses a newer Next.js with docs in `node_modules/next/dist/docs`, but the installed version is 15.5.15 and that folder doesn't exist. Correct or remove the note. (S)
 - [ ] **OPS-03 / DOC-03:** unused packages `@deepgram/sdk` (until voice), `@stripe/stripe-js`, `zustand`, `@tanstack/react-query`. (P2 #20)
 - [ ] **OPS-10:** the E2E and demo scripts still run on PGlite with retries; the integration tests are fine. (S)

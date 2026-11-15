@@ -19,6 +19,8 @@ type IntegrationItem = {
   supportAddress: string | null;
   forwardingAddress: string | null;
   webhookSecret: string | null;
+  /** True when a secret exists but is hidden because the viewer is not an Admin. */
+  hasWebhookSecret?: boolean;
   config: Record<string, unknown>;
   isActive: boolean;
   lastSyncedAt: string | null;
@@ -279,6 +281,19 @@ function ToggleSwitch({
         }`}
       />
     </button>
+  );
+}
+
+function HiddenSecretNote({ label }: { label: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-[#111111] p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-400">
+        Only Admins and Owners can see this value.
+      </p>
+    </div>
   );
 }
 
@@ -1066,17 +1081,21 @@ export function IntegrationsWorkspace({
                               void handleCopy(`${integration.id}-whatsapp`, urls.whatsapp)
                             }
                           />
-                          <CopyField
-                            label="Verify token"
-                            value={integration.webhookSecret ?? ""}
-                            copied={copiedKey === `${integration.id}-verify`}
-                            onCopy={() =>
-                              void handleCopy(
-                                `${integration.id}-verify`,
-                                integration.webhookSecret ?? "",
-                              )
-                            }
-                          />
+                          {integration.webhookSecret ? (
+                            <CopyField
+                              label="Verify token"
+                              value={integration.webhookSecret}
+                              copied={copiedKey === `${integration.id}-verify`}
+                              onCopy={() =>
+                                void handleCopy(
+                                  `${integration.id}-verify`,
+                                  integration.webhookSecret ?? "",
+                                )
+                              }
+                            />
+                          ) : (
+                            <HiddenSecretNote label="Verify token" />
+                          )}
                         </>
                       ) : null}
                       {integration.type === "EMAIL" ? (
@@ -1101,6 +1120,8 @@ export function IntegrationsWorkspace({
                                 )
                               }
                             />
+                          ) : integration.hasWebhookSecret ? (
+                            <HiddenSecretNote label="Webhook Secret" />
                           ) : null}
                           <p className="text-xs leading-5 text-slate-400 xl:col-span-2">
                             Use this endpoint for provider forwarding or

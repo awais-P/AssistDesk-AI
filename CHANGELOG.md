@@ -18,6 +18,31 @@ Entry template:
 
 ---
 
+## 2026-11-16 — Priority-1 fixes before the demo
+**Module:** M1, M5, M7, M8, M10, M11 and operations   **Author:** Claude (with Muhammad Awais)
+**Files:**
+- New: `src/lib/ticket-rules.ts`, `src/lib/ticket-inactivity.ts`, `src/lib/chat-alerts.ts`, `src/lib/background-jobs.ts`, `src/lib/api-errors.ts`, `middleware.ts`, `vercel.json`, `prisma/migrations/20261116150000_inbox_auto_reply/`, `prisma/migrations/20261116160000_verify_existing_users/`
+- Changed: `src/lib/ticket-workflow.ts`, `src/lib/integrations/serialize.ts`, `app/api/integrations/route.ts`, `app/dashboard/integrations/page.tsx`, `integrations-workspace.tsx`, `app/api/knowledge-sources/route.ts`, `app/api/knowledge-sources/[id]/route.ts`, `app/api/ai-agents/[id]/playground/route.ts`, `app/api/widget/[widgetId]/messages/route.ts`, `app/api/inboxes/route.ts`, `app/dashboard/inboxes/{new,[id]}/page.tsx`, `inbox-editor.tsx`, `agent-configuration-workspace.tsx`, `chatbot-configuration-workspace.tsx`, `setup-wizard.tsx`, `demo-data.ts`, `instrumentation.ts`, `app/api/cron/sessions/route.ts`, `next.config.ts`, `eslint.config.mjs`, `prisma/schema.prisma`, `.env.example`, partner test files `email-verification.test.ts` / `password-reset.test.ts` (lint only), three `loading.tsx` files (unused imports)
+- Tests: `tests/unit/ticket-rules.test.ts` (UT-61, UT-62), `tests/unit/middleware.test.ts` (UT-63), `tests/integration/p1-fixes.int.ts` (IT-28), `tests/ui/p1-fixes.spec.ts` (UI-P1-01…03)
+
+**Fixed:**
+- **Webhook secret (SEC-19):** the email webhook secret and WhatsApp verify token reach the browser only for Admins and Owners; other roles see "Only Admins and Owners can see this value".
+- **Block list (BUG-03):** matches exact addresses, whole domains (and subdomains) and whole-word keywords in the subject or message; it runs first, so a blocked ticket is closed with no escalation, assignment, auto-reply or AI reply, on the email path too.
+- **Auto-assign (BUG-05):** tickets are assigned only by the "Assign To" automation.
+- **Error messages (SEC-16):** database and file-system errors are logged on the server and replaced by a plain message.
+- **Playground (SEC-39):** 30 tests a minute per user and only while the plan has AI replies left.
+- **Dead settings (UI-44, BUG-06):** "AI Follow-up" and "Close Ticket" now run (one follow-up, then close; counted from our last real reply; escalated tickets skipped); inbox auto-reply sends a chosen canned response on a new email ticket (FR-15.5); "Email notifications" also emails the team when a chat starts while nobody is online (FR-13.8). The automation drawer explains what each setting accepts.
+- **Background jobs (OPS-13):** session expiry, knowledge recovery, webhook retries and the ticket automations run every 5 minutes in the server (one instance per round, via a database lease); `vercel.json` schedules the cron routes for serverless hosting. Off with `ASSISTDESK_BACKGROUND_JOBS=false`.
+- **Security headers (SEC-14, partly):** dashboard pages can't be framed (`frame-ancestors 'none'`, `X-Frame-Options`), plus nosniff, referrer and permissions policies and HSTS in production; the widget stays frameable. Signed-in API writes from another site are refused (403).
+- **Locked-out accounts (DATA-11):** the email-verification migration had marked every existing account unverified, so they could no longer sign in; a follow-up migration marks accounts without a pending verification as verified.
+- **Lint:** 0 errors (the partner's test files used `any`; generated Playwright reports and the demo build folder are no longer linted).
+
+**Updated:** all migrations applied to the dev database `assistdeskDb` (M9, M11, partner's, M3 and the two above).
+
+**Tests on 16 Nov:** unit 337/337, integration 162 + 1 opt-in skipped, browser UI-P1 3/3, typecheck 0 errors, lint 0 errors.
+
+---
+
 ## 2026-11-16 — Remaining-work list for M1–M11
 **Module:** all   **Author:** Claude (with Muhammad Awais)
 **Files:** new `REMAINING_WORK.md`; updated `ROADMAP.md` (pointer), `M11_INTEGRATIONS_CUSTOMIZATION.md` and `VERIFICATION_REPORT.md` (custom roles now cover ten permissions, incl. `billing.manage`)

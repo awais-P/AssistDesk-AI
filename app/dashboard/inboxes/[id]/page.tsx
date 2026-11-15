@@ -18,7 +18,7 @@ export default async function InboxEditPage({ params }: InboxEditPageProps) {
 
   const { id } = await params;
 
-  const [inbox, agents] = await Promise.all([
+  const [inbox, agents, cannedResponses] = await Promise.all([
     prisma.inbox.findFirst({
       where: {
         id,
@@ -37,6 +37,11 @@ export default async function InboxEditPage({ params }: InboxEditPageProps) {
         createdAt: "asc",
       },
     }),
+    prisma.cannedResponse.findMany({
+      where: { workspaceId: session.user.workspaceId },
+      orderBy: { title: "asc" },
+      select: { id: true, title: true },
+    }),
   ]);
 
   if (!inbox) {
@@ -54,6 +59,7 @@ export default async function InboxEditPage({ params }: InboxEditPageProps) {
         emailPrefix: inbox.emailPrefix,
         senderEmail: inbox.senderEmail,
         autoReplyEnabled: inbox.autoReplyEnabled,
+        autoReplyTemplateId: inbox.autoReplyTemplateId,
         ticketPrefix: inbox.ticketPrefix,
         assignedAgentId: assignedAgent?.id ?? null,
         senderName: inbox.senderName,
@@ -68,6 +74,7 @@ export default async function InboxEditPage({ params }: InboxEditPageProps) {
         id: agent.id,
         name: agent.name,
       }))}
+      cannedResponses={cannedResponses}
       currentUserEmail={session.user.email}
     />
   );

@@ -4,6 +4,7 @@ import { checkEscalationSla } from "@/src/lib/escalation";
 import { prisma } from "@/src/lib/prisma";
 import { safeEqual } from "@/src/lib/secrets";
 import { expireIdleSessions } from "@/src/lib/session-lifecycle";
+import { runTicketInactivityAutomations } from "@/src/lib/ticket-inactivity";
 import { expireStaleConfirmations } from "@/src/lib/tools/registry";
 
 export const dynamic = "force-dynamic";
@@ -54,12 +55,17 @@ async function run(request: Request) {
   // Module 3: trial ends and test-mode renewals.
   const billing = await runBillingMaintenance();
 
+  // The agents' "AI Follow-up" and "Close Ticket" automations.
+  const ticketInactivity = await runTicketInactivityAutomations();
+
   return NextResponse.json({
     success: true,
     expiredSessions: closed,
     expiredConfirmations,
     escalationSlaBreaches: escalationSla.breached,
     billing,
+    ticketFollowUps: ticketInactivity.followUps,
+    ticketsClosed: ticketInactivity.closed,
     removedRateLimitBuckets: buckets.count,
     durationMs: Date.now() - startedAt,
   });

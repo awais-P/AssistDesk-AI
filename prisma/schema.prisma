@@ -202,25 +202,28 @@ model Session {
 }
 
 model Inbox {
-  id               String        @id @default(cuid())
-  workspaceId      String
-  name             String
-  emailPrefix      String        @unique
-  ticketPrefix     String
-  autoReplyEnabled Boolean       @default(false)
-  senderEmail      String?
-  senderName       String?
-  smtpHost         String?
-  smtpPort         Int?
-  smtpUser         String?
-  smtpPassword     String?
-  smtpSecure       Boolean       @default(true)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  tickets          Ticket[]
-  agents           AIAgent[]
-  integrations     Integration[]
+  id                  String          @id @default(cuid())
+  workspaceId         String
+  name                String
+  emailPrefix         String          @unique
+  ticketPrefix        String
+  autoReplyEnabled    Boolean         @default(false)
+  /// FR-15.5: canned response sent automatically to the customer when a new email ticket arrives.
+  autoReplyTemplateId String?
+  autoReplyTemplate   CannedResponse? @relation("InboxAutoReply", fields: [autoReplyTemplateId], references: [id], onDelete: SetNull)
+  senderEmail         String?
+  senderName          String?
+  smtpHost            String?
+  smtpPort            Int?
+  smtpUser            String?
+  smtpPassword        String?
+  smtpSecure          Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  workspace           Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tickets             Ticket[]
+  agents              AIAgent[]
+  integrations        Integration[]
 
   @@index([workspaceId])
 }
@@ -464,13 +467,14 @@ model TicketTag {
 }
 
 model CannedResponse {
-  id          String    @id @default(cuid())
-  workspaceId String
-  title       String
-  body        String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id               String    @id @default(cuid())
+  workspaceId      String
+  title            String
+  body             String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  autoReplyInboxes Inbox[]   @relation("InboxAutoReply")
 
   @@index([workspaceId])
 }

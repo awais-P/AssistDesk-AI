@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
+import { checkLimit, limitMessage } from "@/src/lib/billing";
+import { consumeRateLimit, RATE_LIMITS, tooManyRequests } from "@/src/lib/rate-limit";
 import { hydrateKnowledgeSources } from "@/src/lib/knowledge-runtime";
 import {
   type ConversationTurn,
@@ -62,6 +64,23 @@ export async function POST(
     return NextResponse.json(
       { error: "A message is required to test the agent." },
       { status: 400 },
+    );
+  }
+
+  // Every test calls a model on the workspace's (or the platform's) key: 30 a minute per
+  // user, and only while the plan still has AI replies this month (SEC-39).
+  const limit = await consumeRateLimit(`ai-test:${session.user.id}`, RATE_LIMITS.aiTestPerUser);
+
+  if (!limit.allowed) {
+    return tooManyRequests(limit, "Too many test messages. Wait a moment and try again.");
+  }
+
+  const replies = await checkLimit(session.user.workspaceId, "aiReplies");
+
+  if (!replies.allowed) {
+    return NextResponse.json(
+      { error: limitMessage("aiReplies", replies), code: "plan_limit" },
+      { status: 402 },
     );
   }
 

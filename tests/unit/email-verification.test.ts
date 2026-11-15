@@ -45,7 +45,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
     });
 
     it("UT-55.04 rejects an invalid or unknown verification token", async () => {
-      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as any);
+      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as never);
 
       const result = await verifyEmailToken("nonexistent-token-1234567890abcdef1234567890abcdef");
       expect(result.success).toBe(false);
@@ -60,7 +60,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         emailVerificationExpiresAt: new Date(Date.now() - 3600_000), // 1 hour ago
       };
 
-      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(expiredUser as any);
+      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(expiredUser as never);
 
       const result = await verifyEmailToken("expired-token");
       expect(result.success).toBe(false);
@@ -85,8 +85,8 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         emailVerificationExpiresAt: null,
       };
 
-      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(validUser as any);
-      const updateSpy = vi.spyOn(prisma.user, "update").mockResolvedValue(updatedUser as any);
+      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(validUser as never);
+      const updateSpy = vi.spyOn(prisma.user, "update").mockResolvedValue(updatedUser as never);
 
       const result = await verifyEmailToken("valid-token-123");
       expect(result.success).toBe(true);
@@ -159,7 +159,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         isEmailVerified: false,
         emailVerified: null,
         workspaceId: "ws_1",
-      } as any);
+      } as never);
 
       const request = new Request("http://localhost/api/auth/login", {
         method: "POST",
@@ -193,14 +193,14 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         isEmailVerified: true,
         emailVerified: new Date(),
         workspaceId: "ws_1",
-      } as any);
+      } as never);
 
       vi.spyOn(prisma.session, "create").mockResolvedValue({
         id: "sess_1",
         token: "tok",
         userId: "usr_verified",
         expiresAt: new Date(Date.now() + 86400000),
-      } as any);
+      } as never);
 
       vi.spyOn(prisma.workspace, "findUnique").mockResolvedValue({
         id: "ws_1",
@@ -208,9 +208,9 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         agents: [{ id: "agent_1" }],
         knowledgeSources: [{ id: "ks_1" }],
         chatbots: [{ id: "cb_1" }],
-      } as any);
+      } as never);
 
-      vi.spyOn(prisma.rateLimitBucket, "deleteMany").mockResolvedValue({ count: 1 } as any);
+      vi.spyOn(prisma.rateLimitBucket, "deleteMany").mockResolvedValue({ count: 1 } as never);
 
       const request = new Request("http://localhost/api/auth/login", {
         method: "POST",
@@ -236,21 +236,21 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         email: "toverify@example.com",
         emailVerificationToken: "test-token-xyz",
         emailVerificationExpiresAt: new Date(Date.now() + 86400000),
-      } as any);
+      } as never);
 
       vi.spyOn(prisma.user, "update").mockResolvedValue({
         id: "usr_to_verify",
         email: "toverify@example.com",
         isEmailVerified: true,
         emailVerified: new Date(),
-      } as any);
+      } as never);
 
       vi.spyOn(prisma.session, "create").mockResolvedValue({
         id: "sess_v",
         token: "session_tok",
         userId: "usr_to_verify",
         expiresAt: new Date(Date.now() + 86400000),
-      } as any);
+      } as never);
 
       // GET query test
       const getReq = new Request("http://localhost/api/auth/verify?token=test-token-xyz", {
@@ -295,7 +295,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         fullName: "Done User",
         isEmailVerified: true,
         emailVerified: new Date(),
-      } as any);
+      } as never);
 
       const verifiedReq = new Request("http://localhost/api/auth/resend-verification", {
         method: "POST",
@@ -314,7 +314,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         fullName: "Need User",
         isEmailVerified: false,
         emailVerified: null,
-      } as any);
+      } as never);
 
       vi.spyOn(prisma.user, "update").mockResolvedValueOnce({
         id: "usr_need_resend",
@@ -322,7 +322,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         fullName: "Need User",
         emailVerificationToken: "new-token-123",
         emailVerificationExpiresAt: new Date(Date.now() + 86400000),
-      } as any);
+      } as never);
 
       const unverifiedReq = new Request("http://localhost/api/auth/resend-verification", {
         method: "POST",
@@ -338,11 +338,11 @@ describe("UT-55 email verification on signup & login restrictions", () => {
     it("UT-55.13 signup logs in user and redirects directly to /setup for AI agent onboarding", async () => {
       const { POST: signupPost } = await import("@/app/api/auth/signup/route");
 
-      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as any);
-      vi.spyOn(prisma.workspace, "findUnique").mockResolvedValue(null as any);
-      vi.spyOn(prisma.user, "findUnique").mockResolvedValue(null as any);
+      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as never);
+      vi.spyOn(prisma.workspace, "findUnique").mockResolvedValue(null as never);
+      vi.spyOn(prisma.user, "findUnique").mockResolvedValue(null as never);
 
-      vi.spyOn(prisma, "$transaction").mockImplementation(async (callback: any) => {
+      vi.spyOn(prisma, "$transaction").mockImplementation((async (callback: (tx: unknown) => Promise<unknown>) => {
         return callback({
           workspace: {
             create: vi.fn().mockResolvedValue({ id: "ws_signup" }),
@@ -351,14 +351,14 @@ describe("UT-55 email verification on signup & login restrictions", () => {
             create: vi.fn().mockResolvedValue({ id: "usr_new", email: "newuser@example.com" }),
           },
         });
-      });
+      }) as never);
 
       vi.spyOn(prisma.session, "create").mockResolvedValue({
         id: "sess_new",
         token: "session_tok",
         userId: "usr_new",
         expiresAt: new Date(Date.now() + 86400000),
-      } as any);
+      } as never);
 
       const request = new Request("http://localhost/api/auth/signup", {
         method: "POST",

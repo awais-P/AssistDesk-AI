@@ -242,7 +242,7 @@ export function SetupWizard({ user, initialState }: SetupWizardProps) {
           name: inboxName,
           emailPrefix,
           senderEmail,
-          autoReplyEnabled: true,
+          autoReplyEnabled: false,
         }),
       });
 

@@ -3,8 +3,10 @@ import { aiReplyAllowed } from "./billing";
 import { checkTicketEscalation, findOpenEscalation } from "./escalation";
 import { createNotification } from "./notifications";
 import { ensureAgentAutomationDefaults } from "./agent-automations";
+import { describeBlockMatch, matchBlockList, parseBlockList } from "./ticket-rules";
 import { estimateTokenUsage, hydrateKnowledgeSources } from "./knowledge-runtime";
 import { type ConversationTurn, generateAgentReply, toRuntimeAgent } from "./llm-runtime";
+import { applyCannedVariables, formatTicketLabel } from "./canned-variables";
 import { sendTicketReplyEmail } from "./mailer";
 import { prisma } from "./prisma";
 import { recordSessionEvent } from "./session-lifecycle";
@@ -178,7 +180,7 @@ async function resolveAssignedUser({
   return fallbackUser?.id ?? null;
 }
 
-async function createAutomationLog(data: {
+export async function createAutomationLog(data: {
   workspaceId: string;
   ticketId: string;
   agentId?: string | null;
@@ -212,7 +214,7 @@ const agentInclude = {
 };
 
 /** The inbox's own active agent, else any active agent of the workspace. */
-async function findTicketAgent(ticket: { workspaceId: string; inboxId: string | null }) {
+export async function findTicketAgent(ticket: { workspaceId: string; inboxId: string | null }) {
   return (
     (ticket.inboxId
       ? await prisma.aIAgent.findFirst({
@@ -487,6 +489,66 @@ export async function processTicketFollowUp(ticketId: string) {
   return { processed: true, agentId: agent.id };
 }
 
+/**
+ * FR-15.5: the inbox's chosen canned response, sent once to the customer when a new email
+ * ticket arrives (for example "We received your request"). Stored as an automated reply
+ * on the ticket, so an agent sees what the customer was told.
+ */
+export async function sendInboxAutoReply(ticket: {
+  id: string;
+  workspaceId: string;
+  ticketNumber: number;
+  subject: string;
+  status: string;
+  priority: string;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  createdAt: Date;
+  inbox: { autoReplyEnabled: boolean; autoReplyTemplateId: string | null } | null;
+}) {
+  if (!ticket.inbox?.autoReplyEnabled || !ticket.inbox.autoReplyTemplateId || !ticket.requesterEmail) {
+    return null;
+  }
+
+  const template = await prisma.cannedResponse.findFirst({
+    where: { id: ticket.inbox.autoReplyTemplateId, workspaceId: ticket.workspaceId },
+    select: { title: true, body: true },
+  });
+
+  if (!template?.body.trim()) {
+    return null;
+  }
+
+  const content = applyCannedVariables(template.body, {
+    customer_name: ticket.requesterName || "there",
+    customer_email: ticket.requesterEmail,
+    ticket_number: `#${ticket.ticketNumber}`,
+    subject: ticket.subject,
+    status: formatTicketLabel(ticket.status),
+    priority: formatTicketLabel(ticket.priority),
+    agent_name: "the support team",
+    created_date: ticket.createdAt.toISOString().slice(0, 10),
+  });
+  const message = await prisma.ticketMessage.create({
+    data: { workspaceId: ticket.workspaceId, ticketId: ticket.id, sender: "AI", authorName: "Auto-reply", content },
+    select: { id: true },
+  });
+  const delivery = await sendTicketReplyEmail({ ticketId: ticket.id, ticketMessageId: message.id, content });
+
+  await createAutomationLog({
+    workspaceId: ticket.workspaceId,
+    ticketId: ticket.id,
+    action: "AUTO_REPLY",
+    status: delivery.status === "SENT" ? "SUCCESS" : "FAILED",
+    summary:
+      delivery.status === "SENT"
+        ? `Auto-reply "${template.title}" sent to ${ticket.requesterEmail}.`.slice(0, 500)
+        : `Auto-reply "${template.title}" not delivered: ${delivery.error ?? delivery.status}`.slice(0, 500),
+  });
+
+  return { messageId: message.id, delivery };
+}
+
 type IncomingTicketOptions = {
   /**
    * Generate the AI reply after the response has been sent (dashboard-created tickets), so
@@ -520,10 +582,29 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
   const emailBody = (firstMessage?.content ?? ticket.previewText ?? "").trim();
   // The subject counts once: many emails repeat it in the body.
   const escalationText = emailBody.toLowerCase().includes(ticket.subject.trim().toLowerCase()) ? emailBody : `${ticket.subject}. ${emailBody}`;
-  const escalationCheck = await checkTicketEscalation({ workspaceId: ticket.workspaceId, ticketId: ticket.id, text: escalationText });
-  const escalated = escalationCheck.escalated ? escalationCheck.escalation : null;
-
   const agent = await findTicketAgent(ticket);
+  const automations = agent ? await ensureAgentAutomationDefaults(ticket.workspaceId, agent.id) : [];
+
+  // The block list runs first: a blocked ticket is closed and nothing else happens to it
+  // (no escalation, assignment or AI reply), whichever way it arrived (BUG-03).
+  const blockRule = automations.find((automation) => automation.key === "block-list" && automation.isEnabled);
+  const blocked = blockRule
+    ? matchBlockList(parseBlockList(blockRule.summary), {
+        email: ticket.requesterEmail,
+        subject: ticket.subject,
+        body: emailBody,
+      })
+    : null;
+
+  const escalationCheck = blocked
+    ? null
+    : await checkTicketEscalation({ workspaceId: ticket.workspaceId, ticketId: ticket.id, text: escalationText });
+  const escalated = escalationCheck?.escalated ? escalationCheck.escalation : null;
+
+  // FR-15.5: acknowledge a new email at once, before the AI or a person answers.
+  if (!blocked && ticket.source === "EMAIL") {
+    await sendInboxAutoReply(ticket).catch((error) => console.warn("[auto-reply]", error));
+  }
 
   if (!agent) {
     await createAutomationLog({
@@ -538,7 +619,6 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
     return { processed: false, reason: "No active AI agent found." };
   }
 
-  const automations = await ensureAgentAutomationDefaults(ticket.workspaceId, agent.id);
   const context = buildTicketContext(ticket);
   const ticketUpdate: {
     priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
@@ -546,15 +626,11 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
     assigneeId?: string | null;
   } = {};
 
-  if (!ticket.assigneeId) {
-    ticketUpdate.assigneeId = await resolveAssignedUser({
-      workspaceId: ticket.workspaceId,
-      currentAssigneeId: ticket.assigneeId,
-      summary: null,
-    });
-  }
-
-  const enabledAutomations = automations.filter((automation) => automation.isEnabled);
+  // Tickets are assigned only by the "Assign To" automation; with it switched off they
+  // stay unassigned for the team to pick up (BUG-05).
+  const enabledAutomations = automations.filter(
+    (automation) => automation.isEnabled && (!blocked || automation.key === "block-list"),
+  );
   let deferredReply = false;
 
   for (const automation of enabledAutomations) {
@@ -655,10 +731,7 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
     }
 
     if (automation.key === "block-list") {
-      const rules = normalize(automation.summary);
-      const requesterEmail = normalize(ticket.requesterEmail);
-
-      if (rules && requesterEmail && rules.includes(requesterEmail)) {
+      if (blocked) {
         ticketUpdate.status = "CLOSED";
       }
 
@@ -667,15 +740,11 @@ export async function processIncomingTicket(ticketId: string, options: IncomingT
         ticketId: ticket.id,
         agentId: agent.id,
         action: "BLOCK_LIST",
-        status:
-          rules && requesterEmail && rules.includes(requesterEmail)
-            ? "SUCCESS"
-            : "SKIPPED",
+        status: blocked ? "SUCCESS" : "SKIPPED",
         model: agent.model,
-        summary:
-          rules && requesterEmail && rules.includes(requesterEmail)
-            ? "Ticket matched the block list and was closed."
-            : "No block-list rule matched this ticket.",
+        summary: blocked
+          ? `Ticket closed without a reply: ${describeBlockMatch(blocked)}.`.slice(0, 500)
+          : "No block-list rule matched this ticket.",
         durationMs: Date.now() - startedAt,
       });
       continue;

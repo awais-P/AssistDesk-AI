@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { notifyNewChatWhileOffline } from "@/src/lib/chat-alerts";
 import { authorizeWidgetRequest } from "@/src/lib/chatbot-widget";
 import { normalizeEmail, normalizePhone, resolveContact } from "@/src/lib/contacts";
 import { extractContactDetails, parseLeadForm, publicLeadForm } from "@/src/lib/lead-form";
@@ -259,6 +260,15 @@ export async function POST(request: Request, context: WidgetMessagesRouteContext
       body: `${chatbot.name}: ${content.slice(0, 140)}`,
       link: "/dashboard/chats",
     });
+
+    // FR-13.8: email the team when a chat starts and no one is online (after the reply).
+    const alert = { customerName: session.customerName, customerEmail: session.customerEmail, firstMessage: content };
+    const sendAlert = () => notifyNewChatWhileOffline(chatbot, alert).catch((error) => console.warn("[chat-alerts]", error));
+    try {
+      after(sendAlert);
+    } catch {
+      void sendAlert(); // outside a request scope (tests, scripts)
+    }
   }
 
   // Module 8 FE-2: contact details the visitor types in the chat are remembered and

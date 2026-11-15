@@ -157,6 +157,30 @@ type AutomationItem = {
   enabled: boolean;
 };
 
+/** What each automation reads from its setting, shown in the configure drawer. */
+const automationConfigHelp: Record<string, { label: string; placeholder: string; help: string }> = {
+  "block-list": {
+    label: "Blocked senders and keywords",
+    placeholder: "spam@example.com\nexample.org\nwin a prize",
+    help: "One per line (or separated by commas): an email address, a whole domain such as example.org, or a word or phrase found in the subject or message. Matching tickets are closed without a reply.",
+  },
+  "ai-follow-up": {
+    label: "Delay",
+    placeholder: "After 24h of inactivity",
+    help: "How long the customer can leave our last reply unanswered before one short follow-up email is sent. Use hours, days or weeks (1 hour to 90 days).",
+  },
+  "close-ticket": {
+    label: "Delay",
+    placeholder: "After 48h of inactivity",
+    help: "How long after our last reply, with no answer from the customer, the ticket is closed. Use hours, days or weeks (1 hour to 90 days).",
+  },
+  "assign-to": {
+    label: "Team member",
+    placeholder: "agent@yourcompany.com",
+    help: "Email, username or full name of the team member who gets new tickets. If nobody matches, the oldest active member is used.",
+  },
+};
+
 const tabItems: Array<{ key: AgentTabKey; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "sources", label: "Sources" },
@@ -2177,15 +2201,20 @@ export function AgentConfigurationWorkspace({
                 htmlFor="automation-config-note"
                 className="mb-2 block text-sm font-medium text-white"
               >
-                Summary / Config Note
+                {automationConfigHelp[automationDrawerItem?.key ?? ""]?.label ?? "Summary / Config Note"}
               </label>
               <textarea
                 id="automation-config-note"
                 value={automationDraftDetail}
                 onChange={(event) => setAutomationDraftDetail(event.target.value)}
-                placeholder="Example: After 24h of inactivity"
+                placeholder={automationConfigHelp[automationDrawerItem?.key ?? ""]?.placeholder ?? "Example: After 24h of inactivity"}
+                aria-describedby="automation-config-help"
                 className="min-h-[160px] w-full rounded-xl border border-white/10 bg-[#111111] px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-white"
               />
+              <p id="automation-config-help" className="mt-2 text-xs leading-5 text-slate-400">
+                {automationConfigHelp[automationDrawerItem?.key ?? ""]?.help ??
+                  "A note stored with this automation."}
+              </p>
             </div>
 
             <div className="flex justify-end gap-3 border-t border-white/10 pt-4">

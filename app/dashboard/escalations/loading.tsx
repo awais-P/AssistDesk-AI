@@ -1,5 +1,4 @@
 import {
-  Skeleton,
   SkeletonHeader,
   SkeletonStatGrid,
   SkeletonTable,

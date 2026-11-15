@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/src/lib/auth";
+import { hasRole } from "@/src/lib/rbac";
 import { prisma } from "@/src/lib/prisma";
 import {
   integrationInclude,
@@ -68,8 +69,13 @@ export default async function IntegrationsPage() {
 
   return (
     <IntegrationsWorkspace
-      // Serialized integrations carry masked secrets only; raw tokens never reach the client.
-      initialIntegrations={integrations.map(serializeIntegration)}
+      // Serialized integrations carry masked secrets only; the webhook secret and verify
+      // token reach the browser only for Admins and Owners (SEC-19).
+      initialIntegrations={integrations.map((integration) =>
+        serializeIntegration(integration, {
+          includeSecrets: hasRole(session.user.role, "ADMIN"),
+        }),
+      )}
       inboxes={inboxes}
       agents={agents}
       initialChatbots={chatbots}

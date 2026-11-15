@@ -1292,7 +1292,7 @@ export function ChatbotConfigurationWorkspace({
             >
               <ToggleRow
                 title="Email notifications"
-                description="Get an email alert if a customer starts a new chat and no operators are currently online."
+                description="Ask visitors for their email so the team can reply later, and email your team when a customer starts a chat while no one is online."
                 checked={emailNotifications}
                 onChange={setEmailNotifications}
               />

@@ -58,7 +58,7 @@ describe("UT-56 forgot password & reset password workflow", () => {
 
   describe("Password Reset Request (createPasswordResetForUser)", () => {
     it("UT-56.04 handles non-existent user without throwing", async () => {
-      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as any);
+      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as never);
 
       const result = await createPasswordResetForUser("unknown@example.com");
       expect(result.success).toBe(false);
@@ -70,9 +70,9 @@ describe("UT-56 forgot password & reset password workflow", () => {
         id: "usr_reset_1",
         email: "valid@example.com",
         fullName: "Valid User",
-      } as any);
+      } as never);
 
-      const updateSpy = vi.spyOn(prisma.user, "update").mockResolvedValue({} as any);
+      const updateSpy = vi.spyOn(prisma.user, "update").mockResolvedValue({} as never);
 
       const result = await createPasswordResetForUser("valid@example.com");
       expect(result.success).toBe(true);
@@ -100,7 +100,7 @@ describe("UT-56 forgot password & reset password workflow", () => {
     });
 
     it("UT-56.07 rejects invalid or unknown token", async () => {
-      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as any);
+      vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as never);
 
       const result = await resetPasswordWithToken("unknown-token", "ValidPass123");
       expect(result.success).toBe(false);
@@ -111,7 +111,7 @@ describe("UT-56 forgot password & reset password workflow", () => {
       vi.spyOn(prisma.user, "findFirst").mockResolvedValue({
         id: "usr_expired",
         passwordResetExpiresAt: new Date(Date.now() - 60_000), // 1 minute ago
-      } as any);
+      } as never);
 
       const result = await resetPasswordWithToken("expired-token", "ValidPass123");
       expect(result.success).toBe(false);
@@ -126,26 +126,29 @@ describe("UT-56 forgot password & reset password workflow", () => {
         fullName: "Test User",
         passwordResetExpiresAt: new Date(Date.now() + 1800_000), // 30 min left
         emailVerified: new Date(),
-      } as any);
+      } as never);
 
-      let updatedData: any = null;
-      vi.spyOn(prisma.user, "update").mockImplementation(((args: any) => {
+      type UpdateData = Record<string, unknown> & { passwordHash: string };
+      let updatedData: UpdateData | null = null;
+      vi.spyOn(prisma.user, "update").mockImplementation(((args: { data: UpdateData }) => {
         updatedData = args.data;
         return Promise.resolve({ id: "usr_valid_target" });
-      }) as any);
+      }) as never);
 
-      const deleteSessionsSpy = vi.spyOn(prisma.session, "deleteMany").mockResolvedValue({ count: 2 } as any);
+      const deleteSessionsSpy = vi.spyOn(prisma.session, "deleteMany").mockResolvedValue({ count: 2 } as never);
 
       const result = await resetPasswordWithToken("valid-token-123", "BrandNewPass2026");
       expect(result.success).toBe(true);
       expect(updatedData).not.toBeNull();
-      expect(updatedData.passwordResetToken).toBeNull();
-      expect(updatedData.passwordResetExpiresAt).toBeNull();
-      expect(updatedData.mustChangePassword).toBe(false);
-      expect(updatedData.passwordHash.startsWith("$2")).toBe(true);
+      // Assigned inside the mock above, which TypeScript's flow analysis can't see.
+      const data = updatedData as unknown as UpdateData;
+      expect(data.passwordResetToken).toBeNull();
+      expect(data.passwordResetExpiresAt).toBeNull();
+      expect(data.mustChangePassword).toBe(false);
+      expect(data.passwordHash.startsWith("$2")).toBe(true);
 
       // Verify the new bcrypt hash can verify the new password
-      const verification = await verifyPassword("BrandNewPass2026", updatedData.passwordHash);
+      const verification = await verifyPassword("BrandNewPass2026", data.passwordHash);
       expect(verification.valid).toBe(true);
 
       // Verify old sessions were revoked
@@ -173,8 +176,8 @@ describe("UT-56 forgot password & reset password workflow", () => {
         id: "usr_test",
         email: "registered@example.com",
         fullName: "Registered User",
-      } as any);
-      vi.spyOn(prisma.user, "update").mockResolvedValue({} as any);
+      } as never);
+      vi.spyOn(prisma.user, "update").mockResolvedValue({} as never);
 
       const validReq = new Request("http://localhost/api/auth/forgot-password", {
         method: "POST",
@@ -206,9 +209,9 @@ describe("UT-56 forgot password & reset password workflow", () => {
         email: "user@example.com",
         fullName: "User API",
         passwordResetExpiresAt: new Date(Date.now() + 1800_000),
-      } as any);
-      vi.spyOn(prisma.user, "update").mockResolvedValue({} as any);
-      vi.spyOn(prisma.session, "deleteMany").mockResolvedValue({ count: 1 } as any);
+      } as never);
+      vi.spyOn(prisma.user, "update").mockResolvedValue({} as never);
+      vi.spyOn(prisma.session, "deleteMany").mockResolvedValue({ count: 1 } as never);
 
       const successReq = new Request("http://localhost/api/auth/reset-password", {
         method: "POST",

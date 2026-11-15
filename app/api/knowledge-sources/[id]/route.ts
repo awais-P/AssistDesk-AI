@@ -1,4 +1,5 @@
-import { requireRole } from "@/src/lib/rbac";
+import { requirePermission } from "@/src/lib/access";
+import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -87,7 +88,7 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: KnowledgeSourceRouteContext,
 ) {
   const session = await getCurrentSession();
@@ -97,7 +98,7 @@ export async function DELETE(
   }
 
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "knowledge.manage", request);
 
 
   if (forbidden) {
@@ -136,6 +137,15 @@ export async function DELETE(
     },
   });
 
+  await auditUser(session.user, {
+    action: "knowledge.deleted",
+    category: "ai",
+    summary: `${session.user.fullName} deleted a knowledge source`,
+    targetType: "knowledge_source",
+    targetId: id,
+    request,
+  });
+
   return NextResponse.json({ success: true });
 }
 
@@ -150,7 +160,7 @@ export async function PATCH(
   }
 
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "knowledge.manage", request);
 
 
   if (forbidden) {

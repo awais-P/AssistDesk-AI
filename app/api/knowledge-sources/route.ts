@@ -1,4 +1,4 @@
-import { requireRole } from "@/src/lib/rbac";
+import { requirePermission } from "@/src/lib/access";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
   }
 
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "knowledge.manage", request);
 
 
   if (forbidden) {

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
+import { requirePermission } from "@/src/lib/access";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { loadAnalyticsReports, parseAnalyticsRange, workspaceTimeZone } from "@/src/lib/analytics";
 import { anonymizeCustomer, interactionStatus } from "@/src/lib/analytics-math";
 import { getCurrentSession } from "@/src/lib/auth";
 import { csvCell } from "@/src/lib/lead-list";
 import { prisma } from "@/src/lib/prisma";
-import { requireRole } from "@/src/lib/rbac";
 
 const MAX_EXPORT_ROWS = 10_000;
 const EXPORT_TYPES = new Set(["interactions", "conversations", "faq"]);
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const forbidden = requireRole(session.user, "MANAGER");
+  const forbidden = requirePermission(session.user, "data.export", request);
 
   if (forbidden) {
     return forbidden;
@@ -161,6 +162,14 @@ export async function GET(request: Request) {
       ]),
     );
   }
+
+  await auditUser(session.user, {
+    action: "data.exported",
+    category: "data",
+    summary: `${session.user.fullName} exported analytics (${type}) as CSV`,
+    metadata: { query: new URL(request.url).search.slice(0, 300) },
+    request,
+  });
 
   const date = new Date().toISOString().slice(0, 10);
 

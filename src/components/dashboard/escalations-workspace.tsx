@@ -8,7 +8,7 @@ import { RelativeTime } from "./notifications-bell";
 
 type Stats = ReturnType<typeof computeEscalationStats>;
 type Member = { id: string; fullName: string; role: string };
-type ListResponse = { items: SerializedEscalation[]; stats: Stats; members: Member[]; me: { id: string; role: string }; error?: string };
+type ListResponse = { items: SerializedEscalation[]; stats: Stats; members: Member[]; me: { id: string; role: string; canExport: boolean; canAssign: boolean }; error?: string };
 
 const REFRESH_MS = 15_000;
 
@@ -38,8 +38,6 @@ const primaryButtonClass =
   "pressable inline-flex h-9 items-center justify-center rounded-lg bg-white px-3.5 text-sm font-semibold text-black transition hover:bg-neutral-200 disabled:opacity-50";
 const selectClass =
   "h-9 rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-white outline-none transition focus:border-white disabled:opacity-60";
-
-const roleRank: Record<string, number> = { AGENT: 1, MANAGER: 2, ADMIN: 3 };
 
 const triggerNames: Record<string, string> = {
   SENTIMENT: "Negative sentiment",
@@ -160,7 +158,8 @@ export function EscalationsWorkspace({ initialView, focusId }: { initialView: Es
 
   const stats = data?.stats;
   const me = data?.me;
-  const isManager = (roleRank[me?.role ?? ""] ?? 0) >= roleRank.MANAGER;
+  // Module 11: assigning and taking over follow the user's permissions (custom roles).
+  const isManager = me?.canAssign ?? false;
   const items = data?.items ?? [];
 
   return (
@@ -177,9 +176,11 @@ export function EscalationsWorkspace({ initialView, focusId }: { initialView: Es
           <Link href="/dashboard/escalations/settings" className={secondaryButtonClass}>
             Settings
           </Link>
-          <a href={`/api/escalations?view=${view}&format=csv`} download className={secondaryButtonClass}>
-            Export CSV
-          </a>
+          {me?.canExport ? (
+            <a href={`/api/escalations?view=${view}&format=csv`} download className={secondaryButtonClass}>
+              Export CSV
+            </a>
+          ) : null}
         </div>
       </div>
 

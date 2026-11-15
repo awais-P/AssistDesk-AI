@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { auditUser } from "@/src/lib/audit";
 import { createNotification } from "@/src/lib/notifications";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
@@ -327,6 +328,16 @@ export async function POST(request: Request) {
         dedupeMinutes: 5,
       });
     }
+
+    await auditUser(session.user, {
+      action: existing ? "integration.updated" : "integration.created",
+      category: "integrations",
+      summary: `${session.user.fullName} ${existing ? "updated" : "connected"} ${integration.name} (${type.toLowerCase()})`,
+      targetType: "integration",
+      targetId: integration.id,
+      metadata: { type, provider: integration.provider, status: integration.status },
+      request,
+    });
 
     return NextResponse.json({ integration: serializeIntegration(integration) });
   } catch (error) {

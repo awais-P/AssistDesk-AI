@@ -331,7 +331,8 @@ export const getCurrentSession = cache(async function getCurrentSession() {
   const session = await prisma.session.findUnique({
     where: { token: tokenHash },
     include: {
-      user: true,
+      // Module 11 FE-4: the custom role's extra and removed permissions.
+      user: { include: { customRole: { select: { id: true, name: true, permissions: true, deniedPermissions: true } } } },
     },
   });
 

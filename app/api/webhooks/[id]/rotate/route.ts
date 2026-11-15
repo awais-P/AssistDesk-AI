@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { requireRole } from "@/src/lib/rbac";
@@ -12,7 +13,7 @@ type WebhookRotateRouteContext = {
 };
 
 /** Issues a new signing secret (shown once). The old one stops working immediately. */
-export async function POST(_request: Request, context: WebhookRotateRouteContext) {
+export async function POST(request: Request, context: WebhookRotateRouteContext) {
   const session = await getCurrentSession();
 
   if (!session) {
@@ -39,6 +40,15 @@ export async function POST(_request: Request, context: WebhookRotateRouteContext
   const endpoint = await prisma.webhookEndpoint.update({
     where: { id },
     data: { secret: storeWebhookSecret(secret) },
+  });
+
+  await auditUser(session.user, {
+    action: "webhook.secret_rotated",
+    category: "integrations",
+    summary: `${session.user.fullName} rotated the signing secret of webhook "${endpoint.name}"`,
+    targetType: "webhook",
+    targetId: id,
+    request,
   });
 
   return NextResponse.json({ endpoint: serializeEndpoint(endpoint), secret });

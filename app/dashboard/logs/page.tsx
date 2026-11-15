@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { LogsWorkspace } from "@/src/components/dashboard/logs-workspace";
 import { ActionLogsWorkspace } from "@/src/components/dashboard/tools/action-logs-workspace";
+import { AuditLogWorkspace } from "@/src/components/dashboard/audit-log-workspace";
+import { can } from "@/src/lib/permissions";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 
@@ -31,6 +33,11 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
   // Module 2 FE-5: the AI's reasoning runs and actions have their own tab.
   if (firstParam(params.tab) === "actions") {
     return <ActionLogsWorkspace />;
+  }
+
+  // Module 11 FE-5: the security & audit log.
+  if (firstParam(params.tab) === "audit") {
+    return <AuditLogWorkspace canView={can(session.user, "audit.view")} canExport={can(session.user, "data.export")} />;
   }
 
   const workspaceId = session.user.workspaceId;

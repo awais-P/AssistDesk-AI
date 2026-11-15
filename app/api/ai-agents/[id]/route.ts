@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -10,7 +11,7 @@ type AgentRouteContext = {
 };
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: AgentRouteContext,
 ) {
   const session = await getCurrentSession();
@@ -66,6 +67,15 @@ export async function DELETE(
     where: {
       id,
     },
+  });
+
+  await auditUser(session.user, {
+    action: "agent.deleted",
+    category: "ai",
+    summary: `${session.user.fullName} deleted an AI agent`,
+    targetType: "agent",
+    targetId: id,
+    request,
   });
 
   return NextResponse.json({ success: true });

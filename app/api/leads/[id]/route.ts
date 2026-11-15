@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auditUser } from "@/src/lib/audit";
 import type { LeadStatus } from "@/app/generated/prisma/client";
 import { getCurrentSession } from "@/src/lib/auth";
 import { normalizeEmail, normalizePhone } from "@/src/lib/identity";
@@ -129,7 +130,7 @@ export async function PATCH(request: Request, context: LeadRouteContext) {
 }
 
 /** Deletes a lead (privacy request or spam). Manager role or higher. */
-export async function DELETE(_request: Request, context: LeadRouteContext) {
+export async function DELETE(request: Request, context: LeadRouteContext) {
   const session = await getCurrentSession();
 
   if (!session) {
@@ -169,6 +170,15 @@ export async function DELETE(_request: Request, context: LeadRouteContext) {
       deletedBy: session.user.fullName,
       deletedAt: new Date().toISOString(),
     },
+  });
+
+  await auditUser(session.user, {
+    action: "lead.deleted",
+    category: "data",
+    summary: `${session.user.fullName} deleted a lead`,
+    targetType: "lead",
+    targetId: id,
+    request,
   });
 
   return NextResponse.json({ success: true });

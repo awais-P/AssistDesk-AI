@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { AnalyticsOverviewWorkspace } from "@/src/components/dashboard/analytics-overview-workspace";
 import { loadAnalyticsDashboard, parseAnalyticsRange, workspaceTimeZone } from "@/src/lib/analytics";
 import { getCurrentSession } from "@/src/lib/auth";
-import { hasRole } from "@/src/lib/rbac";
+import { can } from "@/src/lib/permissions";
 import AnalyticsLoading from "./loading";
 
 type AnalyticsPageProps = {
@@ -27,16 +27,16 @@ function toSearchParams(params: Record<string, string | string[] | undefined>) {
 async function AsyncAnalyticsContent({
   workspaceId,
   params,
-  role,
+  canExport,
 }: {
   workspaceId: string;
   params: Record<string, string | string[] | undefined>;
-  role: string;
+  canExport: boolean;
 }) {
   const range = parseAnalyticsRange(toSearchParams(params), await workspaceTimeZone(workspaceId));
   const data = await loadAnalyticsDashboard(workspaceId, range);
 
-  return <AnalyticsOverviewWorkspace data={data} canExport={hasRole(role, "MANAGER")} />;
+  return <AnalyticsOverviewWorkspace data={data} canExport={canExport} />;
 }
 
 /** Module 4 analytics overview (SRS FE-3, mock-up M-11, FR-11.1–11.7). */
@@ -52,7 +52,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       <AsyncAnalyticsContent
         workspaceId={session.user.workspaceId}
         params={params}
-        role={session.user.role}
+        canExport={can(session.user, "data.export")}
       />
     </Suspense>
   );

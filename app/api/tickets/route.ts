@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@/app/generated/prisma/client";
 import { getCurrentSession, isValidEmail } from "@/src/lib/auth";
-import { findOrCreateContactByEmail } from "@/src/lib/contacts";
 import { prisma } from "@/src/lib/prisma";
+import { TicketNumberConflictError, createTicketWithMessage } from "@/src/lib/ticket-create";
 import { processIncomingTicket } from "@/src/lib/ticket-workflow";
 import {
   TicketPriority,
@@ -24,18 +23,10 @@ const priorityValues = new Set<string>(Object.values(TicketPriority));
 const statusValues = new Set<string>(Object.values(TicketStatus));
 const sourceValues = new Set<string>(Object.values(TicketSource));
 
-const FIRST_TICKET_NUMBER = 458103;
-const MAX_CREATE_ATTEMPTS = 3;
-
 function optionalText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function isTicketNumberConflict(error: unknown) {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
-  );
-}
 
 export async function POST(request: Request) {
   const session = await getCurrentSession();
@@ -84,88 +75,30 @@ export async function POST(request: Request) {
     }
   }
 
-  const inbox = await prisma.inbox.findFirst({
-    where: {
-      workspaceId: session.user.workspaceId,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-    select: {
-      id: true,
-    },
-  });
-
+  const initialRequest = [subject, previewText].filter(Boolean).join("\n\n");
   let ticketId = "";
 
-  // ticketNumber is max+1 per workspace; two creates at the same moment can pick the
-  // same number, so retry on the unique-constraint error instead of failing (BUG-07).
-  // Module 5: the requester's Contact links this ticket to their chats on other channels.
-  const contact = requesterEmail
-    ? await findOrCreateContactByEmail(session.user.workspaceId, requesterEmail, requesterName)
-    : null;
-
-  for (let attempt = 1; attempt <= MAX_CREATE_ATTEMPTS && !ticketId; attempt += 1) {
-    const lastTicket = await prisma.ticket.findFirst({
-      where: {
-        workspaceId: session.user.workspaceId,
-      },
-      orderBy: {
-        ticketNumber: "desc",
-      },
-      select: {
-        ticketNumber: true,
-      },
-    });
-
-    try {
-      const ticket = await prisma.ticket.create({
-        data: {
-          workspaceId: session.user.workspaceId,
-          inboxId: inbox?.id,
-          assigneeId: session.user.id,
-          createdById: session.user.id,
-          ticketNumber: lastTicket ? lastTicket.ticketNumber + 1 : FIRST_TICKET_NUMBER,
-          subject,
-          previewText: previewText || null,
-          requesterName: requesterName || null,
-          requesterEmail: requesterEmail || null,
-          contactId: contact?.id ?? null,
-          priority: (body.priority as TicketPriority | undefined) ?? "MEDIUM",
-          status: (body.status as TicketStatus | undefined) ?? "OPEN",
-          source: (body.source as TicketSource | undefined) ?? "WEB",
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      ticketId = ticket.id;
-    } catch (error) {
-      if (!isTicketNumberConflict(error)) {
-        throw error;
-      }
-
-      if (attempt === MAX_CREATE_ATTEMPTS) {
-        return NextResponse.json(
-          { error: "Several tickets were created at once. Please try again." },
-          { status: 409 },
-        );
-      }
-    }
-  }
-
-  const initialRequest = [subject, previewText].filter(Boolean).join("\n\n");
-
-  await prisma.ticketMessage.create({
-    data: {
+  try {
+    ticketId = await createTicketWithMessage({
       workspaceId: session.user.workspaceId,
-      ticketId,
-      sender: "USER",
-      content: initialRequest,
-      authorName: requesterName || null,
-    },
-  });
+      subject,
+      previewText: previewText || null,
+      message: initialRequest,
+      requesterName: requesterName || null,
+      requesterEmail: requesterEmail || null,
+      priority: (body.priority as TicketPriority | undefined) ?? "MEDIUM",
+      status: (body.status as TicketStatus | undefined) ?? "OPEN",
+      source: (body.source as TicketSource | undefined) ?? "WEB",
+      assigneeId: session.user.id,
+      createdById: session.user.id,
+    });
+  } catch (error) {
+    if (error instanceof TicketNumberConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+
+    throw error;
+  }
 
   // The AI reply is written in the background so the dialog closes at once (UI-45).
   await processIncomingTicket(ticketId, { deferAiReply: true });

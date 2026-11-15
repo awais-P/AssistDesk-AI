@@ -144,7 +144,7 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 | M2 Agentic tools | 90% | **≈ 88%** | All FEs, LangGraph, confirmation, action logs. Order tracking and invoices are HTTP templates against a demo store, not built-ins. No refund or payment tool. |
 | M6 LLM management (bonus) | 35% | ≈ 37% | Multi-provider support, fallback chain, retired-model memory, feedback loop. No streaming or voice. |
 | M9 Escalation | 15% → 88% *(15 Nov)* | ≈ 32% (10 Oct) → **≈ 85%** (15 Nov, §4.8) | 10 Oct: human takeover, plus the AI `escalate_to_human` action and auto hand-over on failure. 15 Nov: the full module (triggers, brief, queue, SLA, log); see §4.8. |
-| M11 Integrations & RBAC (bonus) | 45% | ≈ 45% | RBAC with 4 roles, channels, signed webhooks. No audit log, no API keys. |
+| M11 Integrations & customization | 45% → 85% *(15 Nov)* | ≈ 45% (10 Oct) → **≈ 82%** (15 Nov, §4.9) | 10 Oct: RBAC with 4 roles, channels, signed webhooks. 15 Nov: audit log, public API + keys, HubSpot/Shopify connectors, custom roles; see §4.9. |
 | M3 Subscription & payment | 0% | 0% | Stripe is installed but unused. |
 | **Overall (equal weights)** | **≈ 66%** | **≈ 63%** | Above the 60% target. |
 
@@ -262,6 +262,22 @@ Verified after the module was built (see [M9_SUPPORT_ESCALATION.md](M9_SUPPORT_E
 | — | Queue, ownership, SLA | ✅ | Accept / take over / assign with role checks (IT-21.02–04); SLA breach flagged once with an alert (IT-19.12). |
 
 Bug found while testing: an email whose body repeats its subject had its words counted twice, so an ordinary "Delivery delayed" email was escalated. Fixed before commit (caught by IT-12.03).
+
+---
+
+### 4.9 M11: Integrations & system customization (≈ 82%, added 15 Nov 2026)
+
+See [M11_INTEGRATIONS_CUSTOMIZATION.md](M11_INTEGRATIONS_CUSTOMIZATION.md). Tests on 15 Nov: unit 290/290 (17 new, UT-54–UT-57), integration all files green (34 new, IT-22–IT-25), typecheck 0 errors, lint 0 errors. **The browser tests UI-M11-01…05 are written but were not run**: the PC had about 0.5 GB free memory, too little to start the dev server safely.
+
+| Ref | Requirement | Status | Evidence / gap |
+|---|---|---|---|
+| FE-1 | CRM, help desk and e-commerce integration | ⚠️ | HubSpot lead sync and the Shopify order action (IT-24), tested against a fake of each API, not a live account. Help desks use the API/webhooks; no Zendesk/Salesforce connector. |
+| FE-2 | APIs and connectors | ✅ | `/api/v1` with scoped keys, rate limit, expiry, revoke, OpenAPI (IT-23). No write endpoints for ticket updates. |
+| FE-3 | RBAC | ✅ | Role checks on all write APIs plus the permission matrix; refusals logged (IT-22.03/04, IT-25.04). |
+| FE-4 | Admin-defined roles | ✅ | Custom roles with added/removed permissions (IT-25). They change the nine listed permissions; other pages follow the base level. |
+| FE-5 | System logs for security and audit | ✅ | Append-only audit log, the database refuses updates (IT-22.07), hashed IPs, filters, CSV. |
+
+Found while testing: the PGlite test database returns wrong results for parallel queries after a unique-constraint error (OPS-10), so the roles API now checks names first and reads sequentially; on real PostgreSQL this never happens.
 
 ---
 

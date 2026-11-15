@@ -6,7 +6,7 @@ import {
 import { getCurrentSession } from "@/src/lib/auth";
 import { loadLeadList, parseLeadFilters } from "@/src/lib/lead-list";
 import { prisma } from "@/src/lib/prisma";
-import { hasRole } from "@/src/lib/rbac";
+import { can } from "@/src/lib/permissions";
 
 type LeadsPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -85,7 +85,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       initialList={list}
       users={users}
       currentUserId={session.user.id}
-      canExport={hasRole(session.user.role, "MANAGER")}
+      canExport={can(session.user, "data.export")}
     />
   );
 }

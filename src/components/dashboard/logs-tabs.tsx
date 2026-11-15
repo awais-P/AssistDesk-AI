@@ -1,10 +1,11 @@
 import Link from "next/link";
 
-/** Logs sections: automation jobs (Module 11) and the AI's actions (Module 2 FE-5). */
-export function LogsTabs({ active }: { active: "automation" | "actions" }) {
+/** Logs sections: automation jobs, the AI's actions (Module 2 FE-5) and the security & audit log (Module 11 FE-5). */
+export function LogsTabs({ active }: { active: "automation" | "actions" | "audit" }) {
   const tabs = [
     { key: "automation", label: "Automation", href: "/dashboard/logs" },
     { key: "actions", label: "AI actions", href: "/dashboard/logs?tab=actions" },
+    { key: "audit", label: "Security & audit", href: "/dashboard/logs?tab=audit" },
   ] as const;
 
   return (

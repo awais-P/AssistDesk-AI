@@ -130,7 +130,8 @@ Session timeline events: `HUMAN_TAKEOVER` (kept, so M4 analytics and M5 resoluti
 
 | Action | Agent | Manager | Admin |
 |---|---|---|---|
-| See the queue, export CSV | ✅ | ✅ | ✅ |
+| See the queue | ✅ | ✅ | ✅ |
+| Export CSV (`data.export`) | ✗ | ✅ | ✅ |
 | Accept a waiting escalation | ✅ | ✅ | ✅ |
 | Take one over from a colleague | ✗ | ✅ | ✅ |
 | Assign to a team member | ✗ | ✅ | ✅ |
@@ -155,7 +156,7 @@ Apply with `npx prisma migrate deploy` (the dev database needs it once).
 | Method | Path | Who | What |
 |---|---|---|---|
 | GET | `/api/escalations?view=queue\|mine\|in_progress\|resolved\|all` | any member | List + stats + team members |
-| GET | `/api/escalations?view=…&format=csv` | any member | CSV download |
+| GET | `/api/escalations?view=…&format=csv` | `data.export` (Manager) | CSV download |
 | GET | `/api/escalations/[id]` | any member | One escalation |
 | PATCH | `/api/escalations/[id]` `{action:"accept", force?}` | member; `force` Manager | Accept / take over |
 | PATCH | `/api/escalations/[id]` `{action:"assign", assigneeId}` | Manager | Assign |

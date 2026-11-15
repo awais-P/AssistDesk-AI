@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { auditUser } from "@/src/lib/audit";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
@@ -10,7 +11,7 @@ type IntegrationRouteContext = {
 };
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: IntegrationRouteContext,
 ) {
   const session = await getCurrentSession();
@@ -54,6 +55,15 @@ export async function DELETE(
     },
   });
 
+  await auditUser(session.user, {
+    action: "integration.deleted",
+    category: "integrations",
+    summary: `${session.user.fullName} removed an integration`,
+    targetType: "integration",
+    targetId: id,
+    request,
+  });
+
   return NextResponse.json({ success: true });
 }
 
@@ -90,6 +100,15 @@ export async function PATCH(request: Request, context: IntegrationRouteContext) 
   if (result.count === 0) {
     return NextResponse.json({ error: "Integration not found." }, { status: 404 });
   }
+
+  await auditUser(session.user, {
+    action: "integration.toggled",
+    category: "integrations",
+    summary: `${session.user.fullName} ${body.isActive ? "switched on" : "switched off"} an integration`,
+    targetType: "integration",
+    targetId: id,
+    request,
+  });
 
   return NextResponse.json({ success: true, isActive: body.isActive });
 }

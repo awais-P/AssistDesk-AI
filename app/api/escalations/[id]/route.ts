@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { requirePermission } from "@/src/lib/access";
 import { getCurrentSession } from "@/src/lib/auth";
 import { ESCALATION_OUTCOMES, type EscalationOutcome, EscalationError, acceptEscalation, assignEscalation, resolveEscalation } from "@/src/lib/escalation";
 import { listEscalations } from "@/src/lib/escalation-queries";
 import { generateEscalationSummary } from "@/src/lib/escalation-summary";
 import { prisma } from "@/src/lib/prisma";
-import { hasRole, requireRole } from "@/src/lib/rbac";
+import { can } from "@/src/lib/permissions";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -56,14 +57,14 @@ export async function PATCH(request: Request, context: RouteContext) {
       case "accept": {
         const force = body.force === true;
         if (force) {
-          const forbidden = requireRole(session.user, "MANAGER");
+          const forbidden = requirePermission(session.user, "escalations.assign", request);
           if (forbidden) return forbidden;
         }
         await acceptEscalation({ workspaceId, escalationId: id, actor, force });
         break;
       }
       case "assign": {
-        const forbidden = requireRole(session.user, "MANAGER");
+        const forbidden = requirePermission(session.user, "escalations.assign", request);
         if (forbidden) return forbidden;
         if (typeof body.assigneeId !== "string" || !body.assigneeId) {
           return NextResponse.json({ error: "Choose who should handle this escalation." }, { status: 400 });
@@ -77,7 +78,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         }
         const current = await prisma.escalation.findFirst({ where: { id, workspaceId }, select: { assigneeId: true } });
         // Agents resolve their own escalations; managers can resolve anyone's.
-        if (current?.assigneeId && current.assigneeId !== actor.id && !hasRole(session.user.role, "MANAGER")) {
+        if (current?.assigneeId && current.assigneeId !== actor.id && !can(session.user, "escalations.assign")) {
           return NextResponse.json({ error: "Only the team member handling this escalation or a manager can resolve it." }, { status: 403 });
         }
         await resolveEscalation({

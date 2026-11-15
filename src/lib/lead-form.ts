@@ -411,4 +411,5 @@ export const leadSourceLabels: Record<string, string> = {
   AUTO: "Detected in chat",
   MANUAL: "Added by team",
   AI_TOOL: "AI assistant",
+  API: "Public API",
 };

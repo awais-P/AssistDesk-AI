@@ -129,9 +129,14 @@ export async function loadAgentToolset(workspaceId: string, agentId: string) {
     return { tools: [] as RuntimeTool[], settings: null };
   }
 
+  const shopifyConnected = agent.toolBindings.some((binding) => binding.tool.builtInKey === "shopify_order_status")
+    ? (await prisma.connector.count({ where: { workspaceId, provider: "SHOPIFY", status: "CONNECTED" } })) > 0
+    : false;
   const tools = agent.toolBindings
     .map((binding) => binding.tool)
     .filter((tool) => tool.isEnabled)
+    // Module 11: the Shopify action only exists while a store is connected.
+    .filter((tool) => tool.builtInKey !== "shopify_order_status" || shopifyConnected)
     .map(toRuntimeTool)
     .filter((tool): tool is RuntimeTool => Boolean(tool));
 

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { requirePermission } from "@/src/lib/access";
+import { auditUser } from "@/src/lib/audit";
 import { getCurrentSession } from "@/src/lib/auth";
 import { loadEscalationSettings } from "@/src/lib/escalation";
 import { parseEscalationSettings } from "@/src/lib/escalation-queries";
 import { prisma } from "@/src/lib/prisma";
-import { requireRole } from "@/src/lib/rbac";
 
 /** Module 9 escalation rules: triggers, sentiment threshold, trigger phrases and response time. */
 export async function GET() {
@@ -23,7 +24,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const forbidden = requireRole(session.user, "ADMIN");
+  const forbidden = requirePermission(session.user, "escalations.settings", request);
 
   if (forbidden) {
     return forbidden;
@@ -37,6 +38,13 @@ export async function PATCH(request: Request) {
   }
 
   const { workspaceId } = session.user;
+  await auditUser(session.user, {
+    action: "settings.escalation_updated",
+    category: "settings",
+    summary: `${session.user.fullName} changed the escalation rules`,
+    metadata: parsed.data as Record<string, string | number | boolean | string[]>,
+    request,
+  });
   await prisma.workspaceSetting.upsert({
     where: { workspaceId },
     create: { workspaceId, ...parsed.data },

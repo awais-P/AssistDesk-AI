@@ -139,9 +139,11 @@ describe("IT-21 escalation API and permissions - Module 9 FE-4, FE-6", () => {
     await prisma.workspaceSetting.update({ where: { workspaceId }, data: { escalationSlaMinutes: 15, escalationKeywords: [] } });
   });
 
-  it("IT-21.07 the escalations download as CSV", async () => {
+  it("IT-21.07 the escalations download as CSV for roles that may export data", async () => {
     await pendingEscalation("Hina Baig");
     as("AGENT");
+    expect((await list.GET(new Request("http://localhost/api/escalations?view=all&format=csv"))).status).toBe(403);
+    as("MANAGER");
     const response = await list.GET(new Request("http://localhost/api/escalations?view=all&format=csv"));
 
     expect(response.headers.get("content-type")).toContain("text/csv");

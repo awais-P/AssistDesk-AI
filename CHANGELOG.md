@@ -18,6 +18,25 @@ Entry template:
 
 ---
 
+## 2026-11-15 — Module 11 Integrations & System Customization: audit log, public API, connectors, custom roles
+**Module:** M11 – Integrations & System Customization   **Author:** Claude (with Muhammad Awais)
+**Files:**
+- New: `src/lib/{audit,audit-queries,access,permissions,custom-roles,api-keys,api-keys-public,public-api,public-api-spec,ticket-create,connectors}.ts`, `app/api/audit-logs/`, `app/api/api-keys/**`, `app/api/v1/**`, `app/api/connectors/**`, `app/api/roles/**`, `app/dashboard/{api-keys,connectors,roles}/page.tsx`, `src/components/dashboard/{audit-log,api-keys,connectors,roles}-workspace.tsx`, `prisma/migrations/20261115120000_module11_integrations/`, `M11_INTEGRATIONS_CUSTOMIZATION.md`
+- Changed: `prisma/schema.prisma`, `src/lib/auth.ts`, `src/lib/rbac.ts`, `instrumentation.ts`, `src/lib/leads.ts`, `src/lib/lead-form.ts`, `src/lib/tools/{builtin-tools,registry}.ts`, `app/api/tickets/route.ts`, audit hooks in auth/users/profile/settings/integrations/webhooks/agents/chatbots/inboxes/knowledge/tools/leads/escalations routes, permission checks in exports/knowledge/escalations, `app/dashboard/{logs,leads,analytics,escalations/settings}`, `logs-tabs.tsx`, `escalations-workspace.tsx`, `dashboard-config.ts`, `dashboard-sidebar.tsx`
+- Tests: `tests/unit/audit-and-permissions.test.ts` (UT-54–UT-57), `tests/integration/{audit-log,public-api,connectors,custom-roles}.int.ts` (IT-22–IT-25), `tests/ui/integrations-admin.spec.ts` (UI-M11-01…05, not yet run), IT-01.01 / IT-08.01 (9 built-in actions), IT-21.07 (CSV needs export permission)
+
+**Added:**
+- **Security & audit log (FE-5).** Sign-ins (and failed ones), sign-outs, password changes, team/role/custom-role changes, settings, integrations, webhooks, connectors, API keys, deletions, data exports, API writes and **refused access**. Secrets redacted, IPs hashed, append-only (database trigger refuses UPDATE). Logs → Security & audit with filters, 7-day tiles and CSV.
+- **Public REST API (FE-2).** `/api/v1` for tickets, contacts, leads, conversations and escalations, with cursor pages and an OpenAPI 3.1 description. **API Keys page** (replaces the placeholder): keys shown once, HMAC-stored, scoped, expiring, revocable, 120 requests/min, usage tracked.
+- **Connectors (FE-1).** HubSpot: leads sync to contacts automatically or with Sync now. Shopify: the AI action *Shopify order status*, shown only to the order's customer; `*.myshopify.com` only. Tokens encrypted; failures flag the connector and alert the team.
+- **Permissions and custom roles (FE-3, FE-4).** Nine named permissions; custom roles add or remove them on top of a base level; Roles page with the matrix and assignment. Exports, the knowledge base, escalation rules/assignment, audit, API keys, connectors and roles now follow permissions.
+
+**Updated:** ticket creation shared by the dashboard and the API (`ticket-create.ts`); the escalations CSV now needs *Export data* (Manager by default) like the other exports; lead source "Public API".
+
+**Notes / follow-ups:** run `npx prisma migrate deploy` once on the dev database. Run `npx playwright test -g "UI-M11"` when the PC has memory for the dev server.
+
+---
+
 ## 2026-11-15 — Module 9 Support Escalation: triggers, hand-over brief, queue, SLA
 **Module:** M9 – Support Escalation   **Author:** Claude (with Muhammad Awais)
 **Files:**

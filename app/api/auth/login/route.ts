@@ -9,6 +9,7 @@ import {
   sessionCookieOptions,
   verifyPassword,
 } from "@/src/lib/auth";
+import { recordAudit } from "@/src/lib/audit";
 import { ensureDemoData } from "@/src/lib/demo-data";
 import { prisma } from "@/src/lib/prisma";
 import { getWorkspaceSetupRedirect, getWorkspaceSetupState } from "@/src/lib/setup";
@@ -58,6 +59,21 @@ export async function POST(request: Request) {
   if (!user || !verification.valid) {
     await recordFailedLogin(identifier, request);
 
+    // Module 11 FE-5: a wrong password for a real account is logged in its workspace.
+    if (user) {
+      await recordAudit({
+        workspaceId: user.workspaceId,
+        actor: { type: "USER", id: user.id, name: user.fullName },
+        action: "auth.login_failed",
+        category: "auth",
+        outcome: "FAILED",
+        summary: `Failed sign-in for ${user.email} (wrong password)`,
+        targetType: "user",
+        targetId: user.id,
+        request,
+      });
+    }
+
     return NextResponse.json(
       { error: "Invalid email/username or password." },
       { status: 401 },
@@ -90,6 +106,16 @@ export async function POST(request: Request) {
     ? "/dashboard/profile?changePassword=1"
     : getWorkspaceSetupRedirect(workspaceState);
   const session = await createSession(user.id);
+  await recordAudit({
+    workspaceId: user.workspaceId,
+    actor: { type: "USER", id: user.id, name: user.fullName },
+    action: "auth.login",
+    category: "auth",
+    summary: `${user.fullName} signed in`,
+    targetType: "user",
+    targetId: user.id,
+    request,
+  });
   const response = NextResponse.json({ success: true, redirectTo });
 
   response.cookies.set(AUTH_COOKIE_NAME, session.token, sessionCookieOptions(session.expiresAt));

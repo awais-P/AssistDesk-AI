@@ -105,7 +105,7 @@ describe("IT-08 tools API", () => {
     const response = await tools.GET();
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body.tools.filter((tool: { type: string }) => tool.type === "BUILT_IN")).toHaveLength(8);
+    expect(body.tools.filter((tool: { type: string }) => tool.type === "BUILT_IN")).toHaveLength(9);
     expect(body.canManageHttp).toBe(false);
     expect(body.templates.map((template: { id: string }) => template.id)).toEqual(["order_tracking", "invoice", "crm_lookup"]);
   });

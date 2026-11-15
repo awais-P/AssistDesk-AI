@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { AUTH_COOKIE_NAME, clearCurrentSession, sessionCookieOptions } from "@/src/lib/auth";
+import { auditUser } from "@/src/lib/audit";
+import { AUTH_COOKIE_NAME, clearCurrentSession, getCurrentSession, sessionCookieOptions } from "@/src/lib/auth";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const current = await getCurrentSession();
+
+  if (current) {
+    await auditUser(current.user, { action: "auth.logout", category: "auth", summary: `${current.user.fullName} signed out`, request });
+  }
+
   await clearCurrentSession();
   const response = NextResponse.json({ success: true });
 

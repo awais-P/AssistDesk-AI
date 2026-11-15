@@ -6,6 +6,7 @@ import {
   hashPassword,
   isValidEmail,
 } from "@/src/lib/auth";
+import { auditUser } from "@/src/lib/audit";
 import { createNotification } from "@/src/lib/notifications";
 import { prisma } from "@/src/lib/prisma";
 import { canAssignRole, requireRole } from "@/src/lib/rbac";
@@ -127,6 +128,18 @@ export async function POST(request: Request) {
     body: created.map((user) => user.email).join(", "),
     link: "/dashboard/users",
   });
+
+  for (const user of created) {
+    await auditUser(session.user, {
+      action: "user.created",
+      category: "users",
+      summary: `${session.user.fullName} added ${user.email} as ${String(user.role).toLowerCase()}`,
+      targetType: "user",
+      targetId: user.id,
+      metadata: { email: user.email, role: user.role },
+      request,
+    });
+  }
 
   return NextResponse.json({
     users: created,

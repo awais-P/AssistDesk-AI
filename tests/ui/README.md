@@ -21,8 +21,9 @@ to the feature areas below:
 | `agentic-tools.spec.ts` | UI-M2-01…05 | Module 2 tools, test runner, action logs, appointments |
 | `leads.spec.ts` | UI-LED-01…04 | Module 8 leads, detail, CSV, settings |
 | `escalations.spec.ts` | UI-ESC-01…04 | Module 9 escalation queue, accept and hand back, settings, CSV |
+| `integrations-admin.spec.ts` | UI-M11-01…05 | Module 11 audit log, API keys, custom roles, connectors, OpenAPI |
 
-Unit groups `UT-01`–`UT-53`, integration groups `IT-01`–`IT-21`, and HTTP
+Unit groups `UT-01`–`UT-57`, integration groups `IT-01`–`IT-25`, and HTTP
 end-to-end groups `API-01`–`API-09` cover the same requirements at different
 boundaries. Their full coverage map and commands are in
 [TESTING_INSTRUCTIONS.md](../../TESTING_INSTRUCTIONS.md).

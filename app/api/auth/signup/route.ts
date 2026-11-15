@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAudit } from "@/src/lib/audit";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
   AUTH_COOKIE_NAME,
@@ -115,7 +116,7 @@ export async function POST(request: Request) {
           emailVerificationToken: verificationToken,
           emailVerificationExpiresAt: verificationExpiresAt,
         },
-        select: { id: true },
+        select: { id: true, workspaceId: true, fullName: true },
       });
     });
   } catch (error) {
@@ -139,6 +140,16 @@ export async function POST(request: Request) {
   });
 
   const session = await createSession(user.id);
+  await recordAudit({
+    workspaceId: user.workspaceId,
+    actor: { type: "USER", id: user.id, name: user.fullName },
+    action: "workspace.created",
+    category: "auth",
+    summary: `${user.fullName} created the workspace and its owner account`,
+    targetType: "user",
+    targetId: user.id,
+    request,
+  });
   const response = NextResponse.json({
     success: true,
     redirectTo: "/setup",

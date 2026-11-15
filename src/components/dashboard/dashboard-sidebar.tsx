@@ -105,6 +105,18 @@ const iconPaths: Record<string, ReactNode> = {
       <path d="M8 8h.01" />
     </>
   ),
+  connectors: (
+    <>
+      <path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0Z" />
+      <path d="M12 16v5" />
+    </>
+  ),
+  roles: (
+    <>
+      <path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6Z" />
+      <path d="m9 12 2 2 4-4" />
+    </>
+  ),
   "api-keys": (
     <>
       <circle cx="8" cy="15" r="4" />

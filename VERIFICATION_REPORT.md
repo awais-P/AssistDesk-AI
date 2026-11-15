@@ -274,7 +274,7 @@ See [M11_INTEGRATIONS_CUSTOMIZATION.md](M11_INTEGRATIONS_CUSTOMIZATION.md). Test
 | FE-1 | CRM, help desk and e-commerce integration | ⚠️ | HubSpot lead sync and the Shopify order action (IT-24), tested against a fake of each API, not a live account. Help desks use the API/webhooks; no Zendesk/Salesforce connector. |
 | FE-2 | APIs and connectors | ✅ | `/api/v1` with scoped keys, rate limit, expiry, revoke, OpenAPI (IT-23). No write endpoints for ticket updates. |
 | FE-3 | RBAC | ✅ | Role checks on all write APIs plus the permission matrix; refusals logged (IT-22.03/04, IT-25.04). |
-| FE-4 | Admin-defined roles | ✅ | Custom roles with added/removed permissions (IT-25). They change the nine listed permissions; other pages follow the base level. |
+| FE-4 | Admin-defined roles | ✅ | Custom roles with added/removed permissions (IT-25). They change the ten listed permissions (incl. `billing.manage` from M3); other pages follow the base level. |
 | FE-5 | System logs for security and audit | ✅ | Append-only audit log, the database refuses updates (IT-22.07), hashed IPs, filters, CSV. |
 
 Found while testing: the PGlite test database returns wrong results for parallel queries after a unique-constraint error (OPS-10), so the roles API now checks names first and reads sequentially; on real PostgreSQL this never happens.

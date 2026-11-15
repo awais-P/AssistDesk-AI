@@ -18,6 +18,16 @@ Entry template:
 
 ---
 
+## 2026-11-16 — Remaining-work list for M1–M11
+**Module:** all   **Author:** Claude (with Muhammad Awais)
+**Files:** new `REMAINING_WORK.md`; updated `ROADMAP.md` (pointer), `M11_INTEGRATIONS_CUSTOMIZATION.md` and `VERIFICATION_REPORT.md` (custom roles now cover ten permissions, incl. `billing.manage`)
+
+**Added:** a module-by-module list of everything still missing, re-checked against the code on 16 Nov: Priority 1 fixes before the demo (webhook secret visible to every role, block-list domain rules, auto-assign when switched off, settings that do nothing, unscheduled cron jobs, Playground limits, raw error messages, security headers, dev DB migrations, lint), the biggest score gains (token streaming, a voice channel that lifts M6/M5/M9/M1, Chats attachments, knowledge-base table, live third-party runs, SDS rewrite) and the polish backlog. Overall verified completion ≈ 79%.
+
+**Updated:** items fixed since the 10 Oct verification are listed in REMAINING_WORK.md §6 (API Keys page, lead API access, logged refusals, email cross-tenant fix).
+
+---
+
 ## 2026-11-16 — Module 3 Subscription & Payment: plans, Stripe, renewals, invoices
 **Module:** M3 – Subscription & Payment Management   **Author:** Claude (with Muhammad Awais)
 **Files:**

@@ -138,7 +138,7 @@ HubSpot and Shopify are replaced in IT-24 by an in-memory fake behind `fetch`; t
 - **Connectors:** HubSpot and Shopify only (no Salesforce, Zendesk or WooCommerce yet); other systems use the API and webhooks. The connectors were tested against a fake of each vendor API, not a live HubSpot portal or Shopify store.
 - **HubSpot sync** is one-way (AssistDesk → HubSpot) and runs in the server process. A failed automatic sync is retried by "Sync now", not on a schedule.
 - **Public API gaps:** no endpoints for updating or closing tickets, knowledge-base content, or webhook management (the dashboard does these).
-- **Permission scope:** custom roles change only the nine listed permissions; other pages follow the base level.
+- **Permission scope:** custom roles change only the ten listed permissions (nine from M11, plus `billing.manage` from M3); other pages follow the base level.
 - **Audit retention:** the log is kept forever; there is no retention setting.
 - **PGlite test database:** it mixes up parallel queries after a constraint error (OPS-10). The roles API checks names first and reads sequentially for that reason; real PostgreSQL is unaffected.
 

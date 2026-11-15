@@ -4,6 +4,8 @@
 **Written:** 2026-09-28 · **Deadline:** **Thursday 15 Oct 2026** (17 days)
 **Companion files:** [NON_FUNCTIONAL_REQUIREMENTS.md](NON_FUNCTIONAL_REQUIREMENTS.md) (NFR specifications) · [VULNERABILITIES.md](VULNERABILITIES.md) (issue register) · [CHANGELOG.md](CHANGELOG.md) (work log, updated after each big chunk)
 
+> **Final phase (16 Nov 2026):** M9, M11 and M3 are done; overall ≈ 79% verified. Everything still missing in M1–M11, in priority order: [REMAINING_WORK.md](REMAINING_WORK.md).
+
 ---
 
 ## 1. Where we are (30% milestone as submitted in the SDS)

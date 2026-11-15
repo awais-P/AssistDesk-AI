@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
-  AUTH_COOKIE_NAME,
-  createSession,
   createSlug,
   createUniqueUsername,
   createUniqueWorkspaceSlug,
+  generateEmailVerificationToken,
   hashPassword,
   isValidEmail,
-  sessionCookieOptions,
   validateNewPassword,
 } from "@/src/lib/auth";
+import { sendVerificationEmail } from "@/src/lib/mailer";
 import { prisma } from "@/src/lib/prisma";
 import {
   RATE_LIMITS,
@@ -81,6 +80,9 @@ export async function POST(request: Request) {
   const username = await createUniqueUsername(createSlug(email.split("@")[0] || fullName));
   const passwordHash = await hashPassword(password);
 
+  const verificationToken = generateEmailVerificationToken();
+  const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
   let user;
 
   try {
@@ -105,6 +107,10 @@ export async function POST(request: Request) {
           email,
           passwordHash,
           role: "OWNER",
+          isEmailVerified: false,
+          emailVerified: null,
+          emailVerificationToken: verificationToken,
+          emailVerificationExpiresAt: verificationExpiresAt,
         },
         select: { id: true },
       });
@@ -120,13 +126,19 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const session = await createSession(user.id);
-  const response = NextResponse.json({
-    success: true,
-    redirectTo: "/setup",
+  // Send email confirmation link
+  await sendVerificationEmail({
+    email,
+    fullName,
+    verificationToken,
+  }).catch((err) => {
+    console.error("[signup] Failed to send confirmation email:", err);
   });
 
-  response.cookies.set(AUTH_COOKIE_NAME, session.token, sessionCookieOptions(session.expiresAt));
-
-  return response;
+  return NextResponse.json({
+    success: true,
+    requiresVerification: true,
+    redirectTo: `/verify-email?pending=true&email=${encodeURIComponent(email)}`,
+    message: "A confirmation email has been sent. Please verify your email before onboarding.",
+  });
 }

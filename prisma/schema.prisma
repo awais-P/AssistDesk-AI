@@ -156,6 +156,10 @@ model User {
   passwordHash       String?
   role               UserRole  @default(ADMIN)
   isActive           Boolean   @default(true)
+  isEmailVerified    Boolean   @default(false)
+  emailVerified      DateTime?
+  emailVerificationToken String? @unique
+  emailVerificationExpiresAt DateTime?
   lastSeenAt         DateTime?
   mustChangePassword Boolean   @default(false)
   createdAt          DateTime  @default(now())

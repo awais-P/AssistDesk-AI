@@ -133,6 +133,72 @@ export function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+export function generateEmailVerificationToken() {
+  return randomBytes(32).toString("hex");
+}
+
+export async function createEmailVerificationForUser(userId: string) {
+  const token = generateEmailVerificationToken();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      emailVerificationToken: token,
+      emailVerificationExpiresAt: expiresAt,
+    },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      emailVerificationToken: true,
+      emailVerificationExpiresAt: true,
+    },
+  });
+
+  return { token, expiresAt, user };
+}
+
+export async function verifyEmailToken(token: string) {
+  if (!token || typeof token !== "string") {
+    return { success: false, error: "Verification token is required." };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      emailVerificationToken: token,
+    },
+  });
+
+  if (!user) {
+    return {
+      success: false,
+      error: "Invalid or expired verification link. Please request a new confirmation email.",
+    };
+  }
+
+  if (user.emailVerificationExpiresAt && user.emailVerificationExpiresAt < new Date()) {
+    return {
+      success: false,
+      error: "This verification link has expired. Please request a new confirmation email.",
+      expired: true,
+      email: user.email,
+    };
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      isEmailVerified: true,
+      emailVerified: new Date(),
+      emailVerificationToken: null,
+      emailVerificationExpiresAt: null,
+    },
+  });
+
+  return { success: true, user: updatedUser };
+}
+
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);

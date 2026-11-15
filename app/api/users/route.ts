@@ -109,6 +109,8 @@ export async function POST(request: Request) {
         passwordHash: await hashPassword(temporaryPassword),
         role: role as "ADMIN" | "MANAGER" | "AGENT",
         isActive: true,
+        isEmailVerified: true,
+        emailVerified: new Date(),
         mustChangePassword: true,
       },
       select: publicUserSelect,

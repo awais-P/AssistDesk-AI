@@ -26,7 +26,7 @@
     "@stripe/stripe-js": "^9.4.0",
     "@tanstack/react-query": "^5.100.9",
     "bcryptjs": "^3.0.3",
-    "imapflow": "^2.5.5",
+    "imapflow": "^2.11.0",
     "mailparser": "^3.9.46",
     "mammoth": "^1.13.0",
     "next": "^15.0.0",

@@ -17,7 +17,8 @@ export type PermissionKey =
   | "audit.view"
   | "apikeys.manage"
   | "connectors.manage"
-  | "roles.manage";
+  | "roles.manage"
+  | "billing.manage";
 
 export type PermissionDefinition = {
   key: PermissionKey;
@@ -37,13 +38,14 @@ export const PERMISSIONS: PermissionDefinition[] = [
   { key: "apikeys.manage", label: "Manage API keys", description: "Create and revoke keys for the public API.", group: "Administration", minRole: "ADMIN" },
   { key: "connectors.manage", label: "Manage connectors", description: "Connect HubSpot and Shopify.", group: "Administration", minRole: "ADMIN" },
   { key: "roles.manage", label: "Manage custom roles", description: "Create roles and give them to team members.", group: "Administration", minRole: "ADMIN" },
+  { key: "billing.manage", label: "Manage the subscription", description: "Choose, change or cancel the plan and see invoices.", group: "Administration", minRole: "ADMIN" },
 ];
 
 export const PERMISSION_KEYS = PERMISSIONS.map((permission) => permission.key);
 export const PERMISSION_BY_KEY = new Map(PERMISSIONS.map((permission) => [permission.key, permission]));
 
 /** Permissions that a custom role can never be given below Admin. */
-export const ADMIN_ONLY_PERMISSIONS: PermissionKey[] = ["roles.manage", "apikeys.manage"];
+export const ADMIN_ONLY_PERMISSIONS: PermissionKey[] = ["roles.manage", "apikeys.manage", "billing.manage"];
 
 export type PermissionSubject = {
   role: string;
@@ -82,7 +84,7 @@ export function validateCustomRole(input: { baseRole: string; permissions: strin
     return "A permission cannot be both added and removed.";
   }
   if (input.baseRole !== "ADMIN" && input.permissions.some((key) => ADMIN_ONLY_PERMISSIONS.includes(key as PermissionKey))) {
-    return "Managing roles and API keys stays with admins.";
+    return "Managing roles, API keys and billing stays with admins.";
   }
   return null;
 }

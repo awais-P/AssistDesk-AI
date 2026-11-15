@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { aiReplyAllowed } from "./billing";
 import { checkTicketEscalation, findOpenEscalation } from "./escalation";
 import { createNotification } from "./notifications";
 import { ensureAgentAutomationDefaults } from "./agent-automations";
@@ -250,6 +251,19 @@ const TICKET_HISTORY_WINDOW = 12;
  */
 async function generateTicketAiReply(ticket: ReplyTicket, agent: TicketAgent) {
   const startedAt = Date.now();
+
+  // Module 3: the plan's monthly AI replies.
+  if (!(await aiReplyAllowed(ticket.workspaceId))) {
+    await createAutomationLog({
+      workspaceId: ticket.workspaceId,
+      ticketId: ticket.id,
+      agentId: agent.id,
+      action: "AI_RESPONSE",
+      status: "SKIPPED",
+      summary: "The plan's AI replies for this month are used up, so the team answers this ticket.",
+    });
+    return;
+  }
   // SYSTEM messages are internal notes and low-confidence drafts: never shown to the model.
   const thread = await prisma.ticketMessage.findMany({
     where: { ticketId: ticket.id, sender: { not: "SYSTEM" } },

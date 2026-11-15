@@ -1,4 +1,5 @@
 import { requirePermission } from "@/src/lib/access";
+import { checkLimit, limitMessage } from "@/src/lib/billing";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -146,6 +147,13 @@ export async function POST(request: Request) {
 
     return forbidden;
 
+  }
+
+  // Module 3: plan limit.
+  const planCheck = await checkLimit(session.user.workspaceId, "knowledgeSources");
+
+  if (!planCheck.allowed) {
+    return NextResponse.json({ error: limitMessage("knowledgeSources", planCheck), code: "plan_limit" }, { status: 402 });
   }
 
   try {

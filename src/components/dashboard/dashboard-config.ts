@@ -218,6 +218,14 @@ export const dashboardItems: DashboardItem[] = [
     group: "Settings",
   },
   {
+    href: "/dashboard/billing",
+    title: "Billing",
+    section: "billing",
+    description: "Your plan, usage against its limits, invoices and payment history.",
+    moduleLabel: "Module 3 - Subscription & Payment",
+    group: "Settings",
+  },
+  {
     href: "/dashboard/roles",
     title: "Roles",
     section: "roles",

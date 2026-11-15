@@ -7,6 +7,7 @@ import {
   isValidEmail,
 } from "@/src/lib/auth";
 import { auditUser } from "@/src/lib/audit";
+import { checkLimit, limitMessage } from "@/src/lib/billing";
 import { createNotification } from "@/src/lib/notifications";
 import { prisma } from "@/src/lib/prisma";
 import { canAssignRole, requireRole } from "@/src/lib/rbac";
@@ -95,6 +96,13 @@ export async function POST(request: Request) {
       { error: "All provided email addresses already have an AssistDesk account." },
       { status: 409 },
     );
+  }
+
+  // Module 3: the plan's team size.
+  const planCheck = await checkLimit(session.user.workspaceId, "seats", newEmails.length);
+
+  if (!planCheck.allowed) {
+    return NextResponse.json({ error: limitMessage("seats", planCheck), code: "plan_limit" }, { status: 402 });
   }
 
   const created = [];

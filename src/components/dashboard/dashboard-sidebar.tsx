@@ -111,6 +111,12 @@ const iconPaths: Record<string, ReactNode> = {
       <path d="M12 16v5" />
     </>
   ),
+  billing: (
+    <>
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="M3 10h18M7 15h4" />
+    </>
+  ),
   roles: (
     <>
       <path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6Z" />

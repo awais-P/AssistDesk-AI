@@ -163,7 +163,7 @@ export function RolesWorkspace({ canManage }: { canManage: boolean }) {
               {permissions.map((permission) => {
                 const fromBase = roleHas(draft.baseRole, permission.key);
                 const checked = draft.granted.has(permission.key);
-                const locked = draft.baseRole !== "ADMIN" && (permission.key === "roles.manage" || permission.key === "apikeys.manage");
+                const locked = draft.baseRole !== "ADMIN" && (permission.key === "roles.manage" || permission.key === "apikeys.manage" || permission.key === "billing.manage");
                 return (
                   <label key={permission.key} className={`flex items-start gap-2.5 text-sm ${locked ? "text-slate-500" : "text-slate-200"}`}>
                     <input

@@ -18,12 +18,34 @@ Entry template:
 
 ---
 
+## 2026-11-16 — Module 3 Subscription & Payment: plans, Stripe, renewals, invoices
+**Module:** M3 – Subscription & Payment Management   **Author:** Claude (with Muhammad Awais)
+**Files:**
+- New: `src/lib/billing-plans.ts`, `src/lib/billing.ts`, `app/api/billing/route.ts`, `app/api/billing/[action]/route.ts`, `app/api/billing/webhook/route.ts`, `app/api/billing/invoices/[id]/route.ts`, `app/dashboard/billing/page.tsx`, `src/components/dashboard/billing-workspace.tsx`, `prisma/migrations/20261116090000_module3_billing/`, `M3_SUBSCRIPTION_PAYMENT.md`
+- Changed: `prisma/schema.prisma`, `src/lib/permissions.ts` (`billing.manage`), `app/api/auth/signup/route.ts` (trial), `app/api/{ai-agents,chatbots,knowledge-sources,users}/route.ts` (limits), `src/lib/conversation-runtime.ts`, `src/lib/ticket-workflow.ts` (AI-reply limit), `instrumentation.ts`, `app/api/cron/sessions/route.ts`, `dashboard-config.ts`, `dashboard-sidebar.tsx`, `roles-workspace.tsx`, `.env.example`, `.env.demo.example`
+- Tests: `tests/unit/billing.test.ts` (UT-58), `tests/integration/billing.int.ts` (IT-26), `tests/integration/billing-stripe.int.ts` (IT-27), `tests/ui/billing.spec.ts` (UI-BIL-01…03); Module 11 unit groups renumbered UT-55→UT-59, UT-56→UT-60 (the partner's new files use UT-55/UT-56)
+
+**Added:**
+- **Plans (FE-1):** Free, Starter, Growth, Business, monthly or yearly, with enforced limits on AI replies per month, agents, chatbots, team members and knowledge sources (402 with an upgrade message; the AI hands over when replies run out). New workspaces get a 14-day Growth trial; workspaces from before billing stay unlimited until they choose a plan.
+- **Stripe (FE-2, FE-3):** Checkout with `price_data` (no dashboard setup), signed and idempotent webhooks, automatic renewal, failed payments (past due keeps the plan while Stripe retries), customer portal.
+- **Changes (FE-4):** upgrade/downgrade with proration, downgrade refused while over the smaller plan's limits, cancel at period end and undo.
+- **Invoices and history (FE-5):** Stripe invoices with hosted/PDF links, printable invoice page, billing history, audit entries, alerts on payment, failure and trial end.
+- **Billing page** (Settings) with usage meters, plan cards, invoices and history; development TEST mode clearly labelled.
+
+**Fixed:** a trial that can't start no longer blocks a sign-up.
+
+**Updated:** Module 11 browser tests UI-M11-01…05 ran (5/5).
+
+**Notes / follow-ups:** run `npx prisma migrate deploy` on the dev database; add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` (test keys) to try real Checkout.
+
+---
+
 ## 2026-11-15 — Module 11 Integrations & System Customization: audit log, public API, connectors, custom roles
 **Module:** M11 – Integrations & System Customization   **Author:** Claude (with Muhammad Awais)
 **Files:**
 - New: `src/lib/{audit,audit-queries,access,permissions,custom-roles,api-keys,api-keys-public,public-api,public-api-spec,ticket-create,connectors}.ts`, `app/api/audit-logs/`, `app/api/api-keys/**`, `app/api/v1/**`, `app/api/connectors/**`, `app/api/roles/**`, `app/dashboard/{api-keys,connectors,roles}/page.tsx`, `src/components/dashboard/{audit-log,api-keys,connectors,roles}-workspace.tsx`, `prisma/migrations/20261115120000_module11_integrations/`, `M11_INTEGRATIONS_CUSTOMIZATION.md`
 - Changed: `prisma/schema.prisma`, `src/lib/auth.ts`, `src/lib/rbac.ts`, `instrumentation.ts`, `src/lib/leads.ts`, `src/lib/lead-form.ts`, `src/lib/tools/{builtin-tools,registry}.ts`, `app/api/tickets/route.ts`, audit hooks in auth/users/profile/settings/integrations/webhooks/agents/chatbots/inboxes/knowledge/tools/leads/escalations routes, permission checks in exports/knowledge/escalations, `app/dashboard/{logs,leads,analytics,escalations/settings}`, `logs-tabs.tsx`, `escalations-workspace.tsx`, `dashboard-config.ts`, `dashboard-sidebar.tsx`
-- Tests: `tests/unit/audit-and-permissions.test.ts` (UT-54–UT-57), `tests/integration/{audit-log,public-api,connectors,custom-roles}.int.ts` (IT-22–IT-25), `tests/ui/integrations-admin.spec.ts` (UI-M11-01…05, not yet run), IT-01.01 / IT-08.01 (9 built-in actions), IT-21.07 (CSV needs export permission)
+- Tests: `tests/unit/audit-and-permissions.test.ts` (UT-54, UT-57, UT-59, UT-60), `tests/integration/{audit-log,public-api,connectors,custom-roles}.int.ts` (IT-22–IT-25), `tests/ui/integrations-admin.spec.ts` (UI-M11-01…05, not yet run), IT-01.01 / IT-08.01 (9 built-in actions), IT-21.07 (CSV needs export permission)
 
 **Added:**
 - **Security & audit log (FE-5).** Sign-ins (and failed ones), sign-outs, password changes, team/role/custom-role changes, settings, integrations, webhooks, connectors, API keys, deletions, data exports, API writes and **refused access**. Secrets redacted, IPs hashed, append-only (database trigger refuses UPDATE). Logs → Security & audit with filters, 7-day tiles and CSV.

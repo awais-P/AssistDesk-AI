@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { runBillingMaintenance } from "@/src/lib/billing";
 import { checkEscalationSla } from "@/src/lib/escalation";
 import { prisma } from "@/src/lib/prisma";
 import { safeEqual } from "@/src/lib/secrets";
@@ -50,11 +51,15 @@ async function run(request: Request) {
   // Module 9: escalations nobody accepted within the response time.
   const escalationSla = await checkEscalationSla();
 
+  // Module 3: trial ends and test-mode renewals.
+  const billing = await runBillingMaintenance();
+
   return NextResponse.json({
     success: true,
     expiredSessions: closed,
     expiredConfirmations,
     escalationSlaBreaches: escalationSla.breached,
+    billing,
     removedRateLimitBuckets: buckets.count,
     durationMs: Date.now() - startedAt,
   });

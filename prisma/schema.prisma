@@ -149,6 +149,8 @@ model Workspace {
   apiKeys           ApiKey[]
   connectors        Connector[]
   customRoles       CustomRole[]
+  subscription      Subscription?
+  invoices          Invoice[]
 }
 
 model User {
@@ -1244,4 +1246,81 @@ model CustomRole {
   users             User[]
 
   @@unique([workspaceId, name])
+}
+
+// ----------------------------------------------------------------- Module 3
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+/// Module 3: the workspace's plan. One per workspace; a workspace without a row
+/// predates billing and is not limited until it chooses a plan.
+model Subscription {
+  id                     String             @id @default(cuid())
+  workspaceId            String             @unique
+  /// FREE | STARTER | GROWTH | BUSINESS (see src/lib/billing-plans.ts)
+  plan                   String
+  /// MONTH | YEAR
+  interval               String             @default("MONTH")
+  status                 SubscriptionStatus @default(TRIALING)
+  /// STRIPE, or TEST (development without a payment provider)
+  provider               String             @default("STRIPE")
+  customerId             String?
+  providerSubscriptionId String?            @unique
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  trialEndsAt            DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  canceledAt             DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoices               Invoice[]
+
+  @@index([customerId])
+}
+
+/// Module 3 FE-5: invoices and payment history (amounts in the smallest currency unit).
+model Invoice {
+  id                String        @id @default(cuid())
+  workspaceId       String
+  subscriptionId    String?
+  number            String
+  provider          String
+  providerInvoiceId String?       @unique
+  /// PAID | OPEN | FAILED | VOID
+  status            String
+  currency          String        @default("usd")
+  amountDue         Int
+  amountPaid        Int           @default(0)
+  plan              String
+  interval          String
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  hostedUrl         String?
+  pdfUrl            String?
+  paidAt            DateTime?
+  createdAt         DateTime      @default(now())
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+/// Module 3: payment-provider events already handled (idempotency) and the billing history.
+model BillingEvent {
+  id          String   @id @default(cuid())
+  provider    String
+  eventId     String   @unique
+  type        String
+  workspaceId String?
+  summary     String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
 }

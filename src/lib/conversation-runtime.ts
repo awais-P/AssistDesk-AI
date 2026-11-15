@@ -1,4 +1,5 @@
 import { runAgentReply } from "./agent-engine/run-agent";
+import { AI_LIMIT_NOTICE, aiReplyAllowed } from "./billing";
 import { safeTimeZone } from "./analytics-math";
 import { hydrateKnowledgeSources } from "./knowledge-runtime";
 import {
@@ -86,6 +87,15 @@ export async function generateSessionReply({
   const latestCustomerIndex = chronological.map((message) => message.sender).lastIndexOf("USER");
 
   if (latestCustomerIndex === -1) {
+    return null;
+  }
+
+  // Module 3: the plan's monthly AI replies.
+  if (!(await aiReplyAllowed(workspaceId))) {
+    const noticed = await prisma.chatMessage.count({ where: { sessionId, sender: "SYSTEM", content: AI_LIMIT_NOTICE } });
+    if (noticed === 0) {
+      await appendSessionMessage({ sessionId, workspaceId, sender: "SYSTEM", content: AI_LIMIT_NOTICE });
+    }
     return null;
   }
 

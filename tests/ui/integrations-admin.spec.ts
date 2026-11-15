@@ -56,7 +56,7 @@ test.describe("Integrations & system customization (M11)", () => {
     await page.getByLabel("Store address").fill("evil.example.com");
     await page.getByLabel("Admin API access token").fill("fake-shopify-token-for-tests");
     await page.getByRole("button", { name: "Connect Shopify" }).click();
-    await expect(page.getByRole("alert")).toContainText("myshopify.com");
+    await expect(page.getByRole("alert").filter({ hasText: "myshopify.com" })).toBeVisible();
   });
 
   test("UI-M11-05 the public API description is served - M11 FE-2", async ({ page }) => {

@@ -11,5 +11,8 @@ export async function register() {
     await import("./src/lib/access");
     const { startEscalationSlaChecks } = await import("./src/lib/escalation");
     startEscalationSlaChecks();
+    // Module 3: trial ends and test-mode renewals (Stripe renews real subscriptions).
+    const { startBillingMaintenance } = await import("./src/lib/billing");
+    startBillingMaintenance();
   }
 }

@@ -115,12 +115,12 @@ Tokens are encrypted (AES-256-GCM), never returned to the browser, and deleted o
 
 | Level | File | IDs | What |
 |---|---|---|---|
-| Unit | `tests/unit/audit-and-permissions.test.ts` | UT-54 (5), UT-55 (4), UT-56 (4), UT-57 (4) | Permission matrix, custom-role validation, owner lock-out guard; secret redaction, changed fields, audit filters; key generation and hashing, key form, cursor pages, OpenAPI coverage; Shopify domain check, order ownership, order summary, HubSpot mapping |
+| Unit | `tests/unit/audit-and-permissions.test.ts` | UT-54 (5), UT-59 (4), UT-60 (4), UT-57 (4) | Permission matrix, custom-role validation, owner lock-out guard; secret redaction, changed fields, audit filters; key generation and hashing, key form, cursor pages, OpenAPI coverage; Shopify domain check, order ownership, order summary, HubSpot mapping |
 | Integration | `tests/integration/audit-log.int.ts` | IT-22 (7) | Sign-in and wrong password logged with hashed IP; role change and removal; refused role and permission logged; filters and workspace isolation; CSV needs export; **UPDATE refused by the database** |
 | Integration | `tests/integration/public-api.int.ts` | IT-23 (11) | Key shown once and hashed; 401 without or with a bad key; usage counted; missing scope 403 + audited; ticket created with contact and audit; internal notes hidden; filters and cursor pages; contacts and leads; conversations and escalations; other workspace 404; expiry and revoke; rate limit 429; public OpenAPI |
 | Integration | `tests/integration/connectors.int.ts` | IT-24 (10) | Admin-only; wrong token refused and nothing saved; token encrypted and never returned; automatic lead → HubSpot; status update; Sync now skips unchanged leads; revoked token → needs attention + alert; only `*.myshopify.com`; action appears when connected; order shown only to its customer; disconnect deletes the token |
 | Integration | `tests/integration/custom-roles.int.ts` | IT-25 (6) | Admin-only and validated; assignment sets level and is audited; added permission (export) works; removed permission (knowledge) refused and logged; base-level change and delete; no role above your own level |
-| Browser | `tests/ui/integrations-admin.spec.ts` | UI-M11-01…05 | Audit tab and filter, API key once → works → revoked, custom role in the matrix, Shopify address check, OpenAPI. **Written, not yet run**: the PC had too little free memory to start the dev server (see VERIFICATION_REPORT §4.9). |
+| Browser | `tests/ui/integrations-admin.spec.ts` | UI-M11-01…05 | Audit tab and filter, API key once → works → revoked, custom role in the matrix, Shopify address check, OpenAPI. **5/5 passed on 16 Nov.** |
 
 HubSpot and Shopify are replaced in IT-24 by an in-memory fake behind `fetch`; the routes, database, encryption, sync and AI action are real. Results on 15 Nov: unit 290/290; integration all files green (34 new); typecheck 0 errors; lint 0 errors.
 

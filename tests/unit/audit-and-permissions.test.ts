@@ -24,7 +24,7 @@ describe("UT-54 permission matrix and custom roles - Module 11 FE-3, FE-4", () =
 
   it("UT-54.03 the owner keeps every permission so a workspace cannot lock itself out", () => {
     const owner = { role: "OWNER", customRole: { permissions: [], deniedPermissions: ["roles.manage", "audit.view"] } };
-    expect(effectivePermissions(owner)).toHaveLength(9);
+    expect(effectivePermissions(owner)).toHaveLength(10);
   });
 
   it("UT-54.04 validates custom roles", () => {
@@ -45,8 +45,8 @@ describe("UT-54 permission matrix and custom roles - Module 11 FE-3, FE-4", () =
   });
 });
 
-describe("UT-55 audit log helpers - Module 11 FE-5", () => {
-  it("UT-55.01 secrets never reach the audit log", () => {
+describe("UT-59 audit log helpers - Module 11 FE-5", () => {
+  it("UT-59.01 secrets never reach the audit log", () => {
     expect(redactMetadata({ email: "a@b.co", password: "hunter2", nested: { apiKey: "ak_123", token: "x" }, list: [{ secret: "s" }] })).toEqual({
       email: "a@b.co",
       password: "[redacted]",
@@ -55,20 +55,20 @@ describe("UT-55 audit log helpers - Module 11 FE-5", () => {
     });
   });
 
-  it("UT-55.02 long values are shortened and odd values made safe", () => {
+  it("UT-59.02 long values are shortened and odd values made safe", () => {
     const long = redactMetadata({ note: "x".repeat(800) }) as { note: string };
     expect(long.note.length).toBeLessThanOrEqual(501);
     expect(redactMetadata(undefined)).toBeUndefined();
   });
 
-  it("UT-55.03 lists only the fields that changed, hiding secret values", () => {
+  it("UT-59.03 lists only the fields that changed, hiding secret values", () => {
     expect(changedFields({ name: "Old", role: "AGENT", password: "a" }, { name: "New", role: "AGENT", password: "b", untouched: undefined })).toEqual({
       name: { from: "Old", to: "New" },
       password: { from: "[redacted]", to: "[redacted]" },
     });
   });
 
-  it("UT-55.04 reads audit filters and ignores unknown values", () => {
+  it("UT-59.04 reads audit filters and ignores unknown values", () => {
     const filters = parseAuditFilters(new URLSearchParams("category=access&outcome=DENIED&q=%20role%20&from=2026-11-01&to=2026-11-15&page=3"));
     expect(filters).toMatchObject({ category: "access", outcome: "DENIED", query: "role", page: 3 });
     expect(filters.from?.toISOString()).toBe("2026-11-01T00:00:00.000Z");
@@ -77,11 +77,11 @@ describe("UT-55 audit log helpers - Module 11 FE-5", () => {
   });
 });
 
-describe("UT-56 API keys and the public API description - Module 11 FE-2", async () => {
+describe("UT-60 API keys and the public API description - Module 11 FE-2", async () => {
   const { API_SCOPE_KEYS, generateApiKey, hashApiKey, pageResult, parseApiKeyInput } = await import("@/src/lib/api-keys");
   const { OPENAPI_SPEC } = await import("@/src/lib/public-api-spec");
 
-  it("UT-56.01 a new key is long and random; only its hash and a short prefix are kept", () => {
+  it("UT-60.01 a new key is long and random; only its hash and a short prefix are kept", () => {
     const first = generateApiKey();
     const second = generateApiKey();
     expect(first.key).toMatch(/^ad_live_[\w-]{40}$/);
@@ -91,7 +91,7 @@ describe("UT-56 API keys and the public API description - Module 11 FE-2", async
     expect(first.keyHash).not.toContain(first.key.slice(8));
   });
 
-  it("UT-56.02 checks the name, permissions and expiry of a new key", () => {
+  it("UT-60.02 checks the name, permissions and expiry of a new key", () => {
     expect(parseApiKeyInput({ name: "  HubSpot   sync ", scopes: ["tickets:read", "tickets:read"], expiresInDays: 30 })).toMatchObject({ value: { name: "HubSpot sync", scopes: ["tickets:read"] } });
     expect(parseApiKeyInput({ name: "x", scopes: ["tickets:read"] })).toHaveProperty("error");
     expect(parseApiKeyInput({ name: "Store", scopes: [] })).toHaveProperty("error");
@@ -100,13 +100,13 @@ describe("UT-56 API keys and the public API description - Module 11 FE-2", async
     expect(parseApiKeyInput({ name: "Store", scopes: ["leads:read"] })).toMatchObject({ value: { expiresAt: null } });
   });
 
-  it("UT-56.03 pages lists with a cursor", () => {
+  it("UT-60.03 pages lists with a cursor", () => {
     const rows = [{ id: "a" }, { id: "b" }, { id: "c" }];
     expect(pageResult(rows, 2)).toEqual({ data: [{ id: "a" }, { id: "b" }], nextCursor: "b" });
     expect(pageResult(rows, 5)).toEqual({ data: rows, nextCursor: null });
   });
 
-  it("UT-56.04 the OpenAPI description lists every endpoint and scope", () => {
+  it("UT-60.04 the OpenAPI description lists every endpoint and scope", () => {
     expect(Object.keys(OPENAPI_SPEC.paths)).toEqual(["/", "/tickets", "/tickets/{id}", "/contacts", "/leads", "/conversations", "/conversations/{id}", "/escalations"]);
     for (const scope of API_SCOPE_KEYS) {
       expect(OPENAPI_SPEC.components.securitySchemes.apiKey.description).toContain(scope);

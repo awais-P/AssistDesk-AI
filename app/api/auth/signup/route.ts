@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { recordAudit } from "@/src/lib/audit";
+import { startTrial } from "@/src/lib/billing";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
   AUTH_COOKIE_NAME,
@@ -138,6 +139,10 @@ export async function POST(request: Request) {
   }).catch((err) => {
     console.error("[signup] Failed to send confirmation email:", err);
   });
+
+  // Module 3: every new workspace starts with a free trial of the Growth plan. A failure
+  // here must not block the sign-up; the workspace then simply has no plan yet.
+  await startTrial(user.workspaceId).catch((error) => console.error("[billing] Could not start the trial:", error));
 
   const session = await createSession(user.id);
   await recordAudit({

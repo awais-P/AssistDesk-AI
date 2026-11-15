@@ -145,7 +145,7 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 | M6 LLM management (bonus) | 35% | ≈ 37% | Multi-provider support, fallback chain, retired-model memory, feedback loop. No streaming or voice. |
 | M9 Escalation | 15% → 88% *(15 Nov)* | ≈ 32% (10 Oct) → **≈ 85%** (15 Nov, §4.8) | 10 Oct: human takeover, plus the AI `escalate_to_human` action and auto hand-over on failure. 15 Nov: the full module (triggers, brief, queue, SLA, log); see §4.8. |
 | M11 Integrations & customization | 45% → 85% *(15 Nov)* | ≈ 45% (10 Oct) → **≈ 82%** (15 Nov, §4.9) | 10 Oct: RBAC with 4 roles, channels, signed webhooks. 15 Nov: audit log, public API + keys, HubSpot/Shopify connectors, custom roles; see §4.9. |
-| M3 Subscription & payment | 0% | 0% | Stripe is installed but unused. |
+| M3 Subscription & payment | 0% → 85% *(16 Nov)* | 0% (10 Oct) → **≈ 82%** (16 Nov, §4.10) | Plans with enforced limits, Stripe Checkout and webhooks, renewal, upgrade/downgrade/cancel, invoices; see §4.10. |
 | **Overall (equal weights)** | **≈ 66%** | **≈ 63%** | Above the 60% target. |
 
 ### 4.1 M1: Assistant creation & omnichannel (≈ 80%)
@@ -267,7 +267,7 @@ Bug found while testing: an email whose body repeats its subject had its words c
 
 ### 4.9 M11: Integrations & system customization (≈ 82%, added 15 Nov 2026)
 
-See [M11_INTEGRATIONS_CUSTOMIZATION.md](M11_INTEGRATIONS_CUSTOMIZATION.md). Tests on 15 Nov: unit 290/290 (17 new, UT-54–UT-57), integration all files green (34 new, IT-22–IT-25), typecheck 0 errors, lint 0 errors. **The browser tests UI-M11-01…05 are written but were not run**: the PC had about 0.5 GB free memory, too little to start the dev server safely.
+See [M11_INTEGRATIONS_CUSTOMIZATION.md](M11_INTEGRATIONS_CUSTOMIZATION.md). Tests on 15 Nov: unit 290/290 (17 new, UT-54, UT-57, UT-59, UT-60), integration all files green (34 new, IT-22–IT-25), typecheck 0 errors, lint 0 errors. Browser tests UI-M11-01…05: 5/5 on 16 Nov (first run on 15 Nov was blocked by low memory).
 
 | Ref | Requirement | Status | Evidence / gap |
 |---|---|---|---|
@@ -278,6 +278,22 @@ See [M11_INTEGRATIONS_CUSTOMIZATION.md](M11_INTEGRATIONS_CUSTOMIZATION.md). Test
 | FE-5 | System logs for security and audit | ✅ | Append-only audit log, the database refuses updates (IT-22.07), hashed IPs, filters, CSV. |
 
 Found while testing: the PGlite test database returns wrong results for parallel queries after a unique-constraint error (OPS-10), so the roles API now checks names first and reads sequentially; on real PostgreSQL this never happens.
+
+---
+
+### 4.10 M3: Subscription & payment (≈ 82%, added 16 Nov 2026)
+
+See [M3_SUBSCRIPTION_PAYMENT.md](M3_SUBSCRIPTION_PAYMENT.md). Tests on 16 Nov: unit 325/325 (8 new, UT-58), integration 155 incl. IT-26 (10) and IT-27 (8), browser UI-BIL-01…03 3/3 plus the tickets, leads, analytics and escalations suites 22/22, typecheck 0 errors.
+
+| Ref | Requirement | Status | Evidence / gap |
+|---|---|---|---|
+| FE-1 | Tiered plans | ✅ | Four plans, monthly/yearly, limits enforced on create routes and AI replies (IT-26.02, IT-26.08). |
+| FE-2 | Secure payment through a gateway | ⚠️ | Stripe Checkout (card never on our server), signed and idempotent webhooks (IT-27.01–03). Tested with a fake Stripe client and signed test events, not a live Stripe account. |
+| FE-3 | Recurring billing, automatic renewal | ✅ | Stripe renewals and retries via webhooks (IT-27.05); trial end and test-mode renewals in the hourly job (IT-26.03, IT-26.07). |
+| FE-4 | Upgrade, downgrade, cancel | ✅ | Proration on Stripe (IT-27.06) and in test mode (IT-26.05); downgrade blocked when over the limit; cancel at period end and undo (IT-26.06, IT-27.07). |
+| FE-5 | Invoices and payment history | ✅ | Stripe invoices with hosted/PDF links, failed payments, printable invoice page, billing history (IT-26.09/10, IT-27.04). No tax calculation. |
+
+Found while testing: the partner's sign-up unit test (UT-55.13) stubs the database, and the new trial start was not stubbed; a trial that cannot start must not block a sign-up, so it is now logged and skipped. Their new test files reused the IDs UT-55/UT-56, so the Module 11 groups were renumbered to UT-59/UT-60.
 
 ---
 

@@ -1,4 +1,5 @@
 import { requireRole } from "@/src/lib/rbac";
+import { checkLimit, limitMessage } from "@/src/lib/billing";
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/src/lib/auth";
 import {
@@ -75,6 +76,13 @@ export async function POST(request: Request) {
   const forbidden = requireRole(session.user, "MANAGER");
   if (forbidden) {
     return forbidden;
+  }
+
+  // Module 3: plan limit.
+  const planCheck = await checkLimit(session.user.workspaceId, "agents");
+
+  if (!planCheck.allowed) {
+    return NextResponse.json({ error: limitMessage("agents", planCheck), code: "plan_limit" }, { status: 402 });
   }
 
   const limit = await consumeRateLimit(

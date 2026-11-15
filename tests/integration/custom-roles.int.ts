@@ -67,7 +67,7 @@ describe("IT-25 custom roles and permissions - Module 11 FE-3, FE-4", () => {
     expect((await roles.POST(json({ name: "Senior agent", baseRole: "AGENT" }))).status).toBe(409);
 
     const listed = await (await roles.GET(new Request("http://localhost/api/roles"))).json();
-    expect(listed.permissions).toHaveLength(9);
+    expect(listed.permissions).toHaveLength(10);
     expect(listed.roles[0]).toMatchObject({ name: "Senior agent", permissions: ["data.export", "escalations.assign"] });
   });
 

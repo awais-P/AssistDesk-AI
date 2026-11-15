@@ -112,10 +112,7 @@ export default function SignupPage() {
         return;
       }
 
-      window.location.assign(
-        data.redirectTo ??
-          `/verify-email?pending=true&email=${encodeURIComponent(email)}`,
-      );
+      window.location.assign(data.redirectTo ?? "/setup");
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
       setIsLoading(false);

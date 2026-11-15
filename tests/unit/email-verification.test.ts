@@ -335,7 +335,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
       expect(unverifiedBody.success).toBe(true);
     });
 
-    it("UT-55.13 signup requires verification before onboarding and redirects to /verify-email", async () => {
+    it("UT-55.13 signup logs in user and redirects directly to /setup for AI agent onboarding", async () => {
       const { POST: signupPost } = await import("@/app/api/auth/signup/route");
 
       vi.spyOn(prisma.user, "findFirst").mockResolvedValue(null as any);
@@ -353,6 +353,13 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         });
       });
 
+      vi.spyOn(prisma.session, "create").mockResolvedValue({
+        id: "sess_new",
+        token: "session_tok",
+        userId: "usr_new",
+        expiresAt: new Date(Date.now() + 86400000),
+      } as any);
+
       const request = new Request("http://localhost/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -367,10 +374,9 @@ describe("UT-55 email verification on signup & login restrictions", () => {
       expect(response.status).toBe(200);
 
       const body = await response.json();
-      expect(body.requiresVerification).toBe(true);
-      expect(body.redirectTo).toContain("/verify-email?pending=true");
-      // Ensures no auth cookie is issued upon signup before verification
-      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(body.success).toBe(true);
+      expect(body.redirectTo).toBe("/setup");
+      expect(response.headers.get("set-cookie")).toContain("assistdesk_session=");
     });
   });
 });

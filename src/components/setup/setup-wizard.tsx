@@ -611,7 +611,7 @@ export function SetupWizard({ user, initialState }: SetupWizardProps) {
                     Connected Inbox
                   </p>
                   <p className="mt-2 text-sm text-white">
-                    {inboxName} @{emailPrefix}.assistdesk.ai
+                    {inboxName} ({emailPrefix}@assistdesk.ai)
                   </p>
                 </div>
 

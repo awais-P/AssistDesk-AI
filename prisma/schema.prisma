@@ -252,6 +252,8 @@ model AIAgent {
 
   @@index([workspaceId])
   @@index([inboxId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status])
 }
 
 model AgentAutomation {
@@ -342,6 +344,8 @@ model KnowledgeSource {
 
   @@index([workspaceId])
   @@index([agentId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status])
 }
 
 model KnowledgeChunk {
@@ -399,6 +403,9 @@ model Ticket {
   @@index([assigneeId])
   @@index([contactId])
   @@index([workspaceId, requesterEmail])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status, createdAt])
+  @@index([workspaceId, priority, createdAt])
 }
 
 model TicketMessage {
@@ -553,6 +560,8 @@ model ChatSession {
   @@index([integrationId, externalId])
   @@index([contactId])
   @@index([workspaceId, status, lastActivityAt])
+  @@index([workspaceId, startedAt])
+  @@index([workspaceId, status, updatedAt])
 }
 
 model ChatMessage {
@@ -592,6 +601,8 @@ model AutomationLog {
   @@index([ticketId])
   @@index([agentId])
   @@index([createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action, createdAt])
 }
 
 model Integration {

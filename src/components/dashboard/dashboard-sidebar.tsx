@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import { dashboardItems, isDashboardItemActive } from "./dashboard-config";
 import { NotificationsBell } from "./notifications-bell";
 import { BrandIcon } from "../ui/brand-logo";
+import { useDashboardNavigation } from "./dashboard-navigation";
 
 const groups = ["Main", "AI", "Setup", "Settings"];
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -186,6 +187,7 @@ type DashboardSidebarProps = {
 export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { targetHref, isPending, navigate } = useDashboardNavigation();
   const isDesktop = useSyncExternalStore(
     subscribeToDesktop,
     getDesktopSnapshot,
@@ -371,7 +373,11 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                 {dashboardItems
                   .filter((item) => item.group === group)
                   .map((item) => {
-                    const isActive = isDashboardItemActive(item, pathname);
+                    const isTarget = targetHref === item.href;
+                    const isActive = targetHref
+                      ? isTarget
+                      : isDashboardItemActive(item, pathname);
+                    const isPendingThis = isTarget && isPending && item.href !== pathname;
 
                     return (
                       <Link
@@ -379,7 +385,19 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                         href={item.href}
                         prefetch={true}
                         aria-current={isActive ? "page" : undefined}
-                        onClick={() => setDrawerOpenedOn(null)}
+                        onClick={(event) => {
+                          setDrawerOpenedOn(null);
+                          if (
+                            event.ctrlKey ||
+                            event.metaKey ||
+                            event.shiftKey ||
+                            event.button !== 0
+                          ) {
+                            return;
+                          }
+                          event.preventDefault();
+                          navigate(item.href);
+                        }}
                         className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.85rem] transition ${
                           isActive
                             ? "bg-[#2a2a2a] font-semibold text-white"
@@ -390,6 +408,12 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                           <NavIcon section={item.section} />
                         </span>
                         <span className="truncate">{item.title}</span>
+                        {isPendingThis ? (
+                          <span className="ml-auto flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                          </span>
+                        ) : null}
                       </Link>
                     );
                   })}
@@ -404,7 +428,19 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
               href="/dashboard/profile"
               prefetch={true}
               title={user.email}
-              onClick={() => setDrawerOpenedOn(null)}
+              onClick={(event) => {
+                setDrawerOpenedOn(null);
+                if (
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.shiftKey ||
+                  event.button !== 0
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                navigate("/dashboard/profile");
+              }}
               className="pressable flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/5"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#222222] text-xs font-semibold text-white">

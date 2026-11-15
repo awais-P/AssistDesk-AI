@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { dashboardItems, isDashboardItemActive } from "./dashboard-config";
 import { NotificationsBell } from "./notifications-bell";
+import { BrandIcon } from "../ui/brand-logo";
 
 const groups = ["Main", "AI", "Setup", "Settings"];
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -278,10 +279,8 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   return (
     <>
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/10 bg-[#111111]/95 px-4 py-2.5 backdrop-blur lg:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white text-xs font-semibold text-black">
-            A
-          </span>
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <BrandIcon size={32} className="rounded-lg border border-white/10" />
           <span className="text-sm font-semibold text-white">assistdesk.ai</span>
         </Link>
 
@@ -330,10 +329,8 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
         }`}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white text-xs font-semibold text-black">
-              A
-            </span>
+          <div className="flex items-center gap-2.5">
+            <BrandIcon size={32} className="rounded-lg border border-white/10" />
             <div>
               <p className="text-sm font-semibold text-white">assistdesk.ai</p>
               <p className="text-[10px] text-slate-400">Support workspace</p>
@@ -380,6 +377,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                       <Link
                         key={item.href}
                         href={item.href}
+                        prefetch={true}
                         aria-current={isActive ? "page" : undefined}
                         onClick={() => setDrawerOpenedOn(null)}
                         className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[0.85rem] transition ${
@@ -404,6 +402,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
           <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-2.5 py-2">
             <Link
               href="/dashboard/profile"
+              prefetch={true}
               title={user.email}
               onClick={() => setDrawerOpenedOn(null)}
               className="pressable flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-white/5"

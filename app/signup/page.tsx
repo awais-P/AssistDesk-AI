@@ -93,7 +93,10 @@ export default function SignupPage() {
         return;
       }
 
-      window.location.assign(data.redirectTo ?? "/setup");
+      window.location.assign(
+        data.redirectTo ??
+          `/verify-email?pending=true&email=${encodeURIComponent(email)}`,
+      );
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
       setIsLoading(false);

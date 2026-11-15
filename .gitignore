@@ -46,6 +46,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# editor
+.vscode/
+
 /app/generated/prisma
 
 # uploaded knowledge files and chat attachments (local storage fallback)

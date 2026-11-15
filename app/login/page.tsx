@@ -8,7 +8,34 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [unverified, setUnverified] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  async function handleResendVerification() {
+    if (resending || !email) return;
+    setResending(true);
+    setResendStatus("");
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string; error?: string };
+      if (response.ok) {
+        setResendStatus(data.message || "Confirmation email sent! Check your inbox.");
+      } else {
+        setResendStatus(data.error || "Failed to resend confirmation email.");
+      }
+    } catch {
+      setResendStatus("Failed to send request. Check your connection.");
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -23,6 +50,9 @@ export default function LoginPage() {
     }
 
     setError("");
+    setSuccessMessage("");
+    setUnverified(false);
+    setResendStatus("");
     setIsLoading(true);
 
     try {
@@ -38,10 +68,17 @@ export default function LoginPage() {
       const data = (await response.json().catch(() => ({}))) as {
         error?: string;
         redirectTo?: string;
+        unverified?: boolean;
+        email?: string;
       };
 
       if (!response.ok) {
-        if (response.status === 401) {
+        if (response.status === 403 && data.unverified) {
+          setUnverified(true);
+          setError(
+            data.error ?? "Your email is not verified. Please check your inbox for the confirmation email before logging in.",
+          );
+        } else if (response.status === 401) {
           setError(
             "That email/username and password don't match. Check for typos and try again.",
           );
@@ -144,13 +181,37 @@ export default function LoginPage() {
                   />
                 </div>
 
-                {error ? (
+                {successMessage ? (
                   <p
+                    role="status"
+                    className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
+                  >
+                    {successMessage}
+                  </p>
+                ) : null}
+
+                {error ? (
+                  <div
                     role="alert"
                     className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
                   >
-                    {error}
-                  </p>
+                    <p>{error}</p>
+                    {unverified ? (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={handleResendVerification}
+                          disabled={resending}
+                          className="font-medium underline hover:text-white disabled:opacity-50"
+                        >
+                          {resending ? "Sending..." : "Resend confirmation email"}
+                        </button>
+                        {resendStatus ? (
+                          <p className="mt-1 text-xs text-amber-200">{resendStatus}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 <button

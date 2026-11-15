@@ -15,6 +15,10 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  if (!session.user.isEmailVerified && !session.user.emailVerified) {
+    redirect(`/verify-email?pending=true&email=${encodeURIComponent(session.user.email)}`);
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       <PresenceHeartbeat />

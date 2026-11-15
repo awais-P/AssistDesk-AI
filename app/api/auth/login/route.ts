@@ -64,6 +64,17 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!user.isEmailVerified && !user.emailVerified) {
+    return NextResponse.json(
+      {
+        error: "Your email is not verified. Please check your inbox for the confirmation email before logging in.",
+        unverified: true,
+        email: user.email,
+      },
+      { status: 403 },
+    );
+  }
+
   await clearFailedLogins(identifier, request);
 
   if (verification.needsRehash) {

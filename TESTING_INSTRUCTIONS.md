@@ -202,6 +202,7 @@ The test IDs in the final report map to the repository as follows:
 |---|---|---|---|
 | `UT-01`–`UT-49` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, tool logic, Gmail mailbox parsing, and business rules BR-4 and BR-7 (`business-rules.test.ts`) |
 | `UT-64` | Unit | `tests/unit/deployment.test.ts` | Production: health check, no unpayable trial when payments are off, build works without `DATABASE_URL` |
+| `IT-29` | Integration | `tests/integration/sample-workspace.int.ts` | Sample workspace for a deployed site: only with `CRON_SECRET`, one of everything, verified logins that work, new passwords on a second run, delete removes everything |
 | `UT-65` | Unit | `tests/unit/brevo-email.test.ts` | Platform email over Brevo's HTTPS API when SMTP is blocked: verification and reset emails, team alerts, refused sends, nothing configured |
 | `UT-61`–`UT-63` | Unit | `tests/unit/ticket-rules.test.ts`, `middleware.test.ts` | Priority-1 fixes: block-list rules and inactivity delays, safe error messages, cross-site check and security headers |
 | `UT-58` | Unit | `tests/unit/billing.test.ts` | Module 3: plans and prices, trials and the effective plan, upgrade/downgrade detection, downgrade blockers, limit messages |

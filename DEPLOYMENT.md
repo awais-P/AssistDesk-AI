@@ -55,7 +55,21 @@ Production runs from the **`main`** branch on [Railway](https://railway.com): on
 3. Create an agent and a chatbot, open the widget snippet on a test page, and ask a question.
 4. Railway → app service → **Logs**: no `[secrets]`, `[jobs]` or `[mailer]` errors. The background jobs (session expiry, webhook retries, ticket follow-ups, Gmail checks, escalation SLA, billing) run inside the server, so no scheduler is needed.
 
-## 5. After going live
+## 5. Sample workspace for testing (optional)
+
+To try the live site without building everything by hand, open Railway → app service → **Console** and run:
+
+```
+node scripts/sample-workspace.mjs
+```
+
+It creates the workspace "Northwind Gadgets (sample)" with one of everything: an active AI agent with its automations and tools, a website chatbot, a knowledge-base text, a forwarded-email channel, a customer with a website chat and a WhatsApp chat, a ticket, a lead, an escalation, an appointment, a custom role, a canned response, a tag, a prompt template and a (switched-off) webhook. It prints two logins, an **Owner** (`owner@assistdesk.test`) and an **Agent** (`agent@assistdesk.test`), both already verified. The passwords are shown only in the console.
+
+- Run it again to get new passwords (the data stays).
+- `node scripts/sample-workspace.mjs --delete` removes the sample workspace and all its data.
+- It uses `CRON_SECRET` from the service's variables; the route (`/api/admin/sample-workspace`) refuses any caller without it.
+
+## 6. After going live
 
 - **Channels:** WhatsApp callback `https://<your address>/api/integrations/whatsapp/webhook/<id>` (shown on the Integrations page), Slack events URL, email forwarding to `/api/integrations/email/inbound`.
 - **Stripe:** webhook endpoint as above.

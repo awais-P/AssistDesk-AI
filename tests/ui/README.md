@@ -25,7 +25,7 @@ to the feature areas below:
 | `billing.spec.ts` | UI-BIL-01…03 | Module 3 billing page, yearly prices, webhook signature |
 | `p1-fixes.spec.ts` | UI-P1-01…03 | Inbox auto-reply, automation help, security headers |
 
-Unit groups `UT-01`–`UT-65`, integration groups `IT-01`–`IT-28`, and HTTP
+Unit groups `UT-01`–`UT-65`, integration groups `IT-01`–`IT-29`, and HTTP
 end-to-end groups `API-01`–`API-09` cover the same requirements at different
 boundaries. Their full coverage map and commands are in
 [TESTING_INSTRUCTIONS.md](../../TESTING_INSTRUCTIONS.md).

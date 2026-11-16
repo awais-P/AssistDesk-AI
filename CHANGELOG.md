@@ -18,6 +18,14 @@ Entry template:
 
 ---
 
+## 2026-11-16 — Sample workspace with test logins for the live site
+**Module:** operations (touches M1–M11 data)   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/lib/sample-workspace.ts`, `app/api/admin/sample-workspace/route.ts`, `scripts/sample-workspace.mjs`, `tests/integration/sample-workspace.int.ts` (IT-29); `DEPLOYMENT.md`
+
+**Added:** `node scripts/sample-workspace.mjs` (run in the host's console) creates "Northwind Gadgets (sample)" with one of everything (agent with automations and tools, chatbot, knowledge text, email channel, contact with a website chat and a WhatsApp chat, ticket, lead, escalation, appointment, custom role, canned response, tag, prompt template, disabled webhook, analytics rows) and two verified logins (Owner and Agent on the reserved `.test` domain). The passwords are generated on the server and printed only in the console. Running it again gives new passwords; `--delete` removes everything. The route requires `CRON_SECRET`.
+
+---
+
 ## 2026-11-16 — Emails on Railway through Brevo (SMTP is blocked)
 **Module:** M1, M8, operations   **Author:** Claude (with Muhammad Awais)
 **Files:** `src/lib/mailer.ts`, `app/api/leads/settings/route.ts`, `src/components/dashboard/lead-settings-workspace.tsx`, `.env.example`, `DEPLOYMENT.md`, new `tests/unit/brevo-email.test.ts` (UT-65); `tests/unit/email-verification.test.ts` (UT-55.08 message)

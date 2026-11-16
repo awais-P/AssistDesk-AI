@@ -30,4 +30,16 @@ describe("UT-64 production deployment - Railway", () => {
     expect(await startTrial("ws_production")).toBeNull();
     expect(upsert).not.toHaveBeenCalled();
   });
+
+  it("UT-64.03 the build loads without DATABASE_URL, but the running server still requires it", async () => {
+    vi.stubEnv("DATABASE_URL", "");
+    vi.stubEnv("NEXT_PHASE", "phase-production-build");
+    vi.resetModules();
+    await expect(import("@/src/lib/prisma")).resolves.toHaveProperty("prisma");
+
+    vi.stubEnv("NEXT_PHASE", "");
+    vi.resetModules();
+    await expect(import("@/src/lib/prisma")).rejects.toThrow("DATABASE_URL is not configured.");
+    vi.resetModules();
+  });
 });

@@ -18,6 +18,18 @@ Entry template:
 
 ---
 
+## 2026-11-16 — Live on Railway; build no longer needs the database address
+**Module:** operations   **Author:** Claude (with Muhammad Awais)
+**Files:** `src/lib/prisma.ts`, `tests/unit/deployment.test.ts` (UT-64.03), `DEPLOYMENT.md`
+
+**Fixed:** the first Railway build stopped with "DATABASE_URL is not configured" because `next build` loads every API route and the variable wasn't set yet. During the build (`NEXT_PHASE=phase-production-build`) the database module now uses a placeholder address; no connection is made while building, and the running server still refuses to start without `DATABASE_URL`.
+
+**Updated:** `DEPLOYMENT.md` warns that `npx prisma migrate deploy` belongs in the pre-deploy command: as the start command it runs the migrations and exits, so the server never starts and the health check fails.
+
+**Notes / follow-ups:** the app is live at https://assistdesk-ai-production.up.railway.app (main branch). Production has no Stripe keys yet, so billing is off.
+
+---
+
 ## 2026-11-16 — Ready for production on Railway
 **Module:** operations   **Author:** Claude (with Muhammad Awais)
 **Files:** new `DEPLOYMENT.md`, `app/api/health/route.ts`, `tests/unit/deployment.test.ts` (UT-64); changed `package.json` (`build` runs `prisma generate` first; Node 24), `src/lib/billing.ts`

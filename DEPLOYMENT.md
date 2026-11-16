@@ -41,7 +41,7 @@ Production runs from the **`main`** branch on [Railway](https://railway.com): on
 | Source → Branch | `main` |
 | Build → Custom build command | leave empty (`npm run build` runs `prisma generate && next build`) |
 | Deploy → Pre-deploy command | `npx prisma migrate deploy` |
-| Deploy → Custom start command | `npm run start` |
+| Deploy → Custom start command | `npm run start` (not the migrate command: as the start command it runs the migrations and exits, so the health check fails) |
 | Deploy → Healthcheck path | `/api/health` |
 | Networking → Public networking | **Generate domain** (then put it in `NEXT_PUBLIC_APP_URL`) |
 

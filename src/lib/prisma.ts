@@ -1,7 +1,12 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../app/generated/prisma/client";
 
-const connectionString = process.env.DATABASE_URL;
+// `next build` loads every route module to collect page data but never queries the
+// database, and hosts such as Railway don't expose the private database address while
+// building. A placeholder lets the build finish; no connection is opened until a query runs.
+const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+const connectionString =
+  process.env.DATABASE_URL || (isBuild ? "postgresql://build:build@localhost:5432/build" : undefined);
 
 if (!connectionString) {
   throw new Error("DATABASE_URL is not configured.");

@@ -136,7 +136,7 @@ describe("UT-55 email verification on signup & login restrictions", () => {
         }),
       ).resolves.toMatchObject({
         status: "NOT_CONFIGURED",
-        error: expect.stringMatching(/no platform smtp/i),
+        error: expect.stringMatching(/no platform email sender/i),
       });
 
       if (origSmtp) process.env.ASSISTDESK_SMTP_HOST = origSmtp;

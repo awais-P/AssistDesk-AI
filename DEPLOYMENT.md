@@ -21,6 +21,7 @@ Production runs from the **`main`** branch on [Railway](https://railway.com): on
 | `NEXT_PUBLIC_APP_URL` | The public address from step 3, e.g. `https://assistdesk-production.up.railway.app` (used in emails and the widget snippet; it is built into the app, so redeploy after changing it) |
 | `CRON_SECRET` | Another random secret (protects `/api/cron/*`) |
 | `ASSISTDESK_SMTP_HOST`, `ASSISTDESK_SMTP_PORT`, `ASSISTDESK_SMTP_SECURE`, `ASSISTDESK_SMTP_USER`, `ASSISTDESK_SMTP_PASSWORD`, `ASSISTDESK_SMTP_FROM` | The account that sends verification, password-reset and notification emails. **Sign-in needs a verified email**, so without this nobody can log in a second time. Gmail: `smtp.gmail.com`, `465`, `true`, your address, an [app password](https://myaccount.google.com/apppasswords), your address. |
+| `BREVO_API_KEY` | **Needed on Railway Trial and Hobby**, which block outgoing SMTP (emails fail with "Connection timeout"). Free Brevo account (300 emails a day) → Senders → add the `ASSISTDESK_SMTP_FROM` address and verify it → SMTP & API → API keys → create. With this set, all platform emails go through Brevo's HTTPS API; the `ASSISTDESK_SMTP_*` values are then only used for the sender address. If Brevo answers "unrecognised IP address", turn off Security → Authorised IPs. |
 | At least one AI key: `ASSISTDESK_DEFAULT_GROQ_API_KEY` (fastest, free), `ASSISTDESK_DEFAULT_OPENROUTER_API_KEY`, `ASSISTDESK_DEFAULT_GOOGLE_API_KEY` | The managed models used by agents on the "Default" provider |
 
 **Optional**

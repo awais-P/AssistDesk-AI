@@ -51,6 +51,92 @@ function createTransport(settings: SmtpSettings) {
   });
 }
 
+const BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email";
+
+type PlatformEmail = {
+  to: string[];
+  subject: string;
+  text: string;
+  html?: string;
+  fromName?: string;
+  fromAddress?: string;
+  replyTo?: string;
+  headers?: Record<string, string>;
+};
+
+function platformFromAddress() {
+  return process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`;
+}
+
+function brevoApiKey() {
+  return process.env.BREVO_API_KEY?.trim() || null;
+}
+
+/**
+ * The platform sender is configured when either the Brevo HTTPS API key or the SMTP
+ * host is set. Hosts such as Railway (Trial/Hobby) block outgoing SMTP, so production
+ * sends through Brevo's HTTPS API; local development keeps using SMTP.
+ */
+export function isPlatformEmailConfigured() {
+  return Boolean(brevoApiKey() || getDefaultSmtp());
+}
+
+/**
+ * Sends one email from the platform account: Brevo's HTTPS API when `BREVO_API_KEY` is
+ * set, otherwise the platform SMTP account. Returns false when neither is configured
+ * and throws when the send fails.
+ */
+async function sendPlatformEmail(message: PlatformEmail): Promise<boolean> {
+  const fromName = message.fromName || "AssistDesk";
+  const fromAddress = message.fromAddress || platformFromAddress();
+  const apiKey = brevoApiKey();
+
+  if (apiKey) {
+    const response = await fetch(BREVO_SEND_URL, {
+      method: "POST",
+      headers: { "api-key": apiKey, "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        sender: { name: fromName, email: fromAddress },
+        to: message.to.map((email) => ({ email })),
+        subject: message.subject,
+        textContent: message.text,
+        ...(message.html ? { htmlContent: message.html } : {}),
+        ...(message.replyTo ? { replyTo: { email: message.replyTo } } : {}),
+        ...(message.headers ? { headers: message.headers } : {}),
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(`Brevo refused the email (${response.status}): ${body?.message ?? response.statusText}`);
+    }
+
+    return true;
+  }
+
+  const smtp = getDefaultSmtp();
+
+  if (!smtp) {
+    return false;
+  }
+
+  await createTransport(smtp).sendMail({
+    from: { name: fromName, address: fromAddress },
+    to: message.to,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+    replyTo: message.replyTo,
+    headers: message.headers,
+  });
+
+  return true;
+}
+
+const NOT_CONFIGURED_ERROR =
+  "No platform email sender is configured (BREVO_API_KEY or ASSISTDESK_SMTP_HOST).";
+
 /**
  * Internal notification email to the team (e.g. "New lead", Module 8 FE-3), sent
  * through the platform SMTP account. Returns the delivery status instead of throwing.
@@ -70,27 +156,9 @@ export async function sendTeamEmail({
     return { status: "NO_RECIPIENT", error: "No recipients." };
   }
 
-  const smtp = getDefaultSmtp();
-
-  if (!smtp) {
-    return {
-      status: "NOT_CONFIGURED",
-      error: "No platform SMTP sender is configured (ASSISTDESK_SMTP_HOST).",
-    };
-  }
-
   try {
-    await createTransport(smtp).sendMail({
-      from: {
-        name: "AssistDesk",
-        address: process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`,
-      },
-      to: recipients,
-      subject: subject.slice(0, 200),
-      text,
-    });
-
-    return { status: "SENT", error: null };
+    const sent = await sendPlatformEmail({ to: recipients, subject: subject.slice(0, 200), text });
+    return sent ? { status: "SENT", error: null } : { status: "NOT_CONFIGURED", error: NOT_CONFIGURED_ERROR };
   } catch (error) {
     return { status: "FAILED", error: error instanceof Error ? error.message.slice(0, 300) : "Send failed." };
   }
@@ -111,23 +179,9 @@ export async function sendVerificationEmail({
 }): Promise<{ status: EmailDeliveryStatus; error: string | null; verifyUrl: string }> {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
   const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verificationToken)}`;
-  const smtp = getDefaultSmtp();
-
-  if (!smtp) {
-    return {
-      status: "NOT_CONFIGURED",
-      error: "No platform SMTP sender is configured (ASSISTDESK_SMTP_HOST).",
-      verifyUrl,
-    };
-  }
-
   try {
-    await createTransport(smtp).sendMail({
-      from: {
-        name: "AssistDesk",
-        address: process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`,
-      },
-      to: email.trim(),
+    const sent = await sendPlatformEmail({
+      to: [email.trim()],
       subject: "Verify your AssistDesk account",
       text: `Hi ${fullName},\n\nWelcome to AssistDesk! Please verify your email address by opening the following link in your browser:\n\n${verifyUrl}\n\nThis verification link expires in 24 hours.\n\nIf you did not sign up for AssistDesk, you can safely ignore this email.`,
       html: `
@@ -144,6 +198,10 @@ export async function sendVerificationEmail({
         </div>
       `,
     });
+
+    if (!sent) {
+      return { status: "NOT_CONFIGURED", error: NOT_CONFIGURED_ERROR, verifyUrl };
+    }
 
     return { status: "SENT", error: null, verifyUrl };
   } catch (error) {
@@ -167,23 +225,9 @@ export async function sendPasswordResetEmail({
 }): Promise<{ status: EmailDeliveryStatus; error: string | null; resetUrl: string }> {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
   const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
-  const smtp = getDefaultSmtp();
-
-  if (!smtp) {
-    return {
-      status: "NOT_CONFIGURED",
-      error: "No platform SMTP sender is configured (ASSISTDESK_SMTP_HOST).",
-      resetUrl,
-    };
-  }
-
   try {
-    await createTransport(smtp).sendMail({
-      from: {
-        name: "AssistDesk",
-        address: process.env.ASSISTDESK_SMTP_FROM?.trim() || `notifications@${getEmailDomain()}`,
-      },
-      to: email.trim(),
+    const sent = await sendPlatformEmail({
+      to: [email.trim()],
       subject: "Reset your AssistDesk password",
       text: `Hi ${fullName},\n\nWe received a request to reset your AssistDesk password. Click the link below to choose a new password:\n\n${resetUrl}\n\nThis password reset link will expire in 1 hour.\n\nIf you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.`,
       html: `
@@ -200,6 +244,10 @@ export async function sendPasswordResetEmail({
         </div>
       `,
     });
+
+    if (!sent) {
+      return { status: "NOT_CONFIGURED", error: NOT_CONFIGURED_ERROR, resetUrl };
+    }
 
     return { status: "SENT", error: null, resetUrl };
   } catch (error) {
@@ -263,7 +311,9 @@ export async function sendTicketReplyEmail({
     const mailbox = connection
       ? mailboxSettings(connection.provider, readIntegrationConfig("EMAIL", connection.config))
       : null;
-    const smtp: SmtpSettings | null = inbox?.smtpHost
+    // An inbox's own SMTP account or Gmail connection sends itself; otherwise the
+    // platform sender (Brevo or SMTP) is used.
+    const ownSmtp: SmtpSettings | null = inbox?.smtpHost
       ? {
           host: inbox.smtpHost,
           port: inbox.smtpPort || 587,
@@ -273,13 +323,13 @@ export async function sendTicketReplyEmail({
         }
       : mailbox
         ? { host: mailbox.smtpHost, port: mailbox.smtpPort, secure: true, user: mailbox.user, password: mailbox.password }
-        : getDefaultSmtp();
+        : null;
 
-    if (!smtp) {
+    if (!ownSmtp && !isPlatformEmailConfigured()) {
       result = {
         status: "NOT_CONFIGURED",
         error:
-          "No SMTP sender is configured. Add one under Inboxes → Email sender, or set ASSISTDESK_SMTP_HOST.",
+          "No email sender is configured. Add one under Inboxes → Email sender, or set BREVO_API_KEY or ASSISTDESK_SMTP_HOST.",
       };
     } else {
       const inboxAddress = `${inbox?.emailPrefix ?? "support"}@${getEmailDomain()}`;
@@ -307,14 +357,29 @@ export async function sendTicketReplyEmail({
         .join("\n\n");
 
       try {
-        await createTransport(smtp).sendMail({
-          from: { name: fromName, address: fromAddress },
-          to: ticket.requesterEmail,
-          replyTo: replyToAddress,
-          subject: `Re: ${ticket.subject} [${reference}]`,
-          text,
-          headers: { "X-AssistDesk-Ticket": reference },
-        });
+        const subject = `Re: ${ticket.subject} [${reference}]`;
+        const headers = { "X-AssistDesk-Ticket": reference };
+
+        if (ownSmtp) {
+          await createTransport(ownSmtp).sendMail({
+            from: { name: fromName, address: fromAddress },
+            to: ticket.requesterEmail,
+            replyTo: replyToAddress,
+            subject,
+            text,
+            headers,
+          });
+        } else {
+          await sendPlatformEmail({
+            to: [ticket.requesterEmail],
+            subject,
+            text,
+            fromName,
+            fromAddress,
+            replyTo: replyToAddress,
+            headers,
+          });
+        }
         result = { status: "SENT", error: null };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

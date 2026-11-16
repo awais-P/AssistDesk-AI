@@ -546,7 +546,7 @@ function NotificationsSection({ canManage }: { canManage: boolean }) {
               <EmailChipsInput emails={emails} onChange={setEmails} disabled={!canManage || isSaving} />
               {!settings.emailConfigured ? (
                 <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                  Email notifications need a platform SMTP sender (ASSISTDESK_SMTP_HOST).
+                  Email notifications need a platform email sender (BREVO_API_KEY or ASSISTDESK_SMTP_HOST).
                   Recipients are saved, but no email is sent until it is configured.
                 </p>
               ) : null}

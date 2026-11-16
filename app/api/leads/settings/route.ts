@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auditUser } from "@/src/lib/audit";
+import { isPlatformEmailConfigured } from "@/src/lib/mailer";
 import { getCurrentSession } from "@/src/lib/auth";
 import { normalizeEmail } from "@/src/lib/identity";
 import { prisma } from "@/src/lib/prisma";
@@ -25,7 +26,7 @@ async function readSettings(workspaceId: string) {
     slackWebhookUrl: maskSlackUrl(settings?.leadSlackWebhookUrl ?? null),
     slackConfigured: Boolean(settings?.leadSlackWebhookUrl),
     autoCaptureLeads: settings?.autoCaptureLeads !== false,
-    emailConfigured: Boolean(process.env.ASSISTDESK_SMTP_HOST?.trim()),
+    emailConfigured: isPlatformEmailConfigured(),
   };
 }
 

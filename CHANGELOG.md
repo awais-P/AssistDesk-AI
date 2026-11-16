@@ -18,6 +18,18 @@ Entry template:
 
 ---
 
+## 2026-11-16 — Emails on Railway through Brevo (SMTP is blocked)
+**Module:** M1, M8, operations   **Author:** Claude (with Muhammad Awais)
+**Files:** `src/lib/mailer.ts`, `app/api/leads/settings/route.ts`, `src/components/dashboard/lead-settings-workspace.tsx`, `.env.example`, `DEPLOYMENT.md`, new `tests/unit/brevo-email.test.ts` (UT-65); `tests/unit/email-verification.test.ts` (UT-55.08 message)
+
+**Fixed:** on Railway no verification email arrived ("[mailer] Failed to send verification email: Connection timeout"). Railway's Trial and Hobby plans block outgoing SMTP. With `BREVO_API_KEY` set, the platform sender (verification, password reset, team alerts, ticket replies without their own SMTP) now posts to Brevo's HTTPS API from `ASSISTDESK_SMTP_FROM`; without it, SMTP works as before. An inbox's own SMTP account or Gmail connection still sends over SMTP.
+
+**Updated:** the lead-alert settings count Brevo as a configured sender; `DEPLOYMENT.md` lists `BREVO_API_KEY` and the Brevo steps.
+
+**Notes / follow-ups:** an inbox's own SMTP sender and Gmail replies stay blocked on Railway Trial/Hobby (Pro allows SMTP).
+
+---
+
 ## 2026-11-16 — Live on Railway; build no longer needs the database address
 **Module:** operations   **Author:** Claude (with Muhammad Awais)
 **Files:** `src/lib/prisma.ts`, `tests/unit/deployment.test.ts` (UT-64.03), `DEPLOYMENT.md`

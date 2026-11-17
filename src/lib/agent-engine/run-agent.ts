@@ -19,6 +19,7 @@ import { forcedToolFor, intentRuleInstructions, matchIntentRules, parseIntentRul
 import { type ToolCallingModel, buildModelChain } from "./model-chain";
 import { type RunTraceEntry, buildRunTrace } from "./run-trace";
 import { summarizeToolResults } from "./tool-summary";
+import type { ReplyStream } from "../llm-stream";
 
 /**
  * Module 2: one agentic reply — grounded prompt (knowledge, memory, rules), pending
@@ -46,6 +47,8 @@ export type AgentReplyInput = {
   ctx: Omit<ToolContext, "runId" | "step" | "agentId">;
   /** Tests inject a scripted model; production builds the provider chain. */
   models?: ToolCallingModel[];
+  /** Receives the answer while it is written (website chat and Playground). */
+  stream?: ReplyStream;
 };
 
 export type AgentReplyResult = AgentLlmReply & {
@@ -108,27 +111,30 @@ function deterministicConfirmationReply(outcome: ConfirmationOutcome) {
 export async function runAgentReply(input: AgentReplyInput): Promise<AgentReplyResult> {
   const startedAt = Date.now();
   const { agent, workspaceId } = input;
-  const { prompt, grounded } = await buildPrompt({
-    agent,
-    question: input.question,
-    sources: input.sources,
-    history: input.history,
-    channel: input.channel,
-    memory: input.memory,
-  });
-  const run = await prisma.agentRun.create({
-    data: {
-      workspaceId,
-      agentId: agent.id,
-      sessionId: input.ctx.sessionId,
-      ticketId: input.ctx.ticketId,
-      channel: input.channel === "PLAYGROUND" ? "WEB_WIDGET" : input.channel,
-      source: input.source,
-      question: input.question.slice(0, 2000),
-      status: "RUNNING",
-    },
-    select: { id: true },
-  });
+  // Latency: the knowledge search (an embedding call) and the run record are independent.
+  const [{ prompt, grounded }, run] = await Promise.all([
+    buildPrompt({
+      agent,
+      question: input.question,
+      sources: input.sources,
+      history: input.history,
+      channel: input.channel,
+      memory: input.memory,
+    }),
+    prisma.agentRun.create({
+      data: {
+        workspaceId,
+        agentId: agent.id,
+        sessionId: input.ctx.sessionId,
+        ticketId: input.ctx.ticketId,
+        channel: input.channel === "PLAYGROUND" ? "WEB_WIDGET" : input.channel,
+        source: input.source,
+        question: input.question.slice(0, 2000),
+        status: "RUNNING",
+      },
+      select: { id: true },
+    }),
+  ]);
   const ctx: ToolContext = { ...input.ctx, agentId: agent.id, runId: run.id, step: 0 };
 
   // A pending "shall I go ahead?" is decided by this message, on the server.
@@ -174,6 +180,7 @@ export async function runAgentReply(input: AgentReplyInput): Promise<AgentReplyR
       ctx,
       maxSteps: input.settings.maxToolSteps,
       forcedTool,
+      stream: input.stream,
     });
   } catch (error) {
     graphError = error instanceof Error ? error.message : String(error);
@@ -214,6 +221,7 @@ export async function runAgentReply(input: AgentReplyInput): Promise<AgentReplyR
       history: input.history,
       channel: input.channel,
       memory: input.memory,
+      stream: input.stream,
     });
     reply = plain.reply;
     usedFallback = plain.usedFallback;

@@ -878,6 +878,8 @@ model AiInteraction {
   /// The customer message that was answered (trimmed).
   question     String
   latencyMs    Int
+  /// Time from the start of the reply until the first word reached the customer (streamed replies only).
+  firstTokenMs Int?
   tokens       Int          @default(0)
   model        String?
   provider     String?

@@ -5,6 +5,7 @@ import { type RuntimeTool, runTool } from "../tools/registry";
 import { REASON_PARAMETER, toJsonSchema } from "../tools/tool-schema";
 import { type ModelToolSpec, type ToolCallingModel, messageText } from "./model-chain";
 import { cleanModelError, recordModelFailure } from "../model-health";
+import type { ReplyStream } from "../llm-stream";
 
 /**
  * Module 2 FE-2: the multi-step reasoning chain, orchestrated with LangGraph (SRS CON-4).
@@ -79,6 +80,7 @@ export async function runAgentGraph({
   maxSteps,
   forcedTool = null,
   budgetMs = 25_000,
+  stream,
 }: {
   models: ToolCallingModel[];
   messages: BaseMessage[];
@@ -87,6 +89,11 @@ export async function runAgentGraph({
   maxSteps: number;
   forcedTool?: string | null;
   budgetMs?: number;
+  /**
+   * Receives the answer while the model writes it. Text written in a step that ends in
+   * tool calls, or by a model that then fails, is withdrawn with `onReset`.
+   */
+  stream?: ReplyStream;
 }): Promise<GraphResult> {
   const deadline = Date.now() + budgetMs;
   const toolsByKey = new Map(tools.map((tool) => [tool.key, tool]));
@@ -115,16 +122,35 @@ export async function runAgentGraph({
       }
 
       const model = models[modelIndex];
+      let streamed = false;
+      const onToken = stream
+        ? (text: string) => {
+            streamed = true;
+            stream.onToken(text);
+          }
+        : undefined;
+      const withdraw = () => {
+        if (streamed && stream) {
+          streamed = false;
+          stream.onReset();
+        }
+      };
 
       try {
         let message: AIMessage;
 
         try {
-          message = await model.invoke(state.messages, { tools: offeredTools, forcedTool: forced, timeoutMs: Math.min(15_000, remaining) });
+          message = await model.invoke(state.messages, { tools: offeredTools, forcedTool: forced, timeoutMs: Math.min(15_000, remaining), onToken });
         } catch (error) {
           // Some models reject a forced tool_choice: retry once without forcing.
           if (!forced || !isUnsupportedToolChoice(error)) throw error;
-          message = await model.invoke(state.messages, { tools: offeredTools, timeoutMs: Math.min(15_000, deadline - Date.now()) });
+          withdraw();
+          message = await model.invoke(state.messages, { tools: offeredTools, timeoutMs: Math.min(15_000, deadline - Date.now()), onToken });
+        }
+
+        // The text was a thought before acting, not the answer: the answer comes later.
+        if (message.tool_calls?.length) {
+          withdraw();
         }
 
         modelUsed = model.id;
@@ -137,6 +163,7 @@ export async function runAgentGraph({
 
         return { messages: [message], steps: step };
       } catch (error) {
+        withdraw();
         const text = cleanModelError(error instanceof Error ? error.message : String(error));
         // A retired model (404) is skipped by later chains for a while.
         recordModelFailure(model.id, text);

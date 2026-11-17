@@ -30,6 +30,8 @@ test.describe("Chats (FR-6) and live takeover (M5)", () => {
       await page.getByRole("button", { name: tab, exact: true }).click();
     }
     await page.getByLabel("Filter by channel").selectOption({ label: "Website" });
-    await expect(page.getByRole("button", { name: /Ali Raza|Hina Shah|Sara Ahmed/ }).first()).toBeVisible();
+    // Search too: newer website chats (other tests) can push the seeded ones off the first page.
+    await page.getByLabel("Search conversations").fill("Ali Raza");
+    await expect(page.getByRole("button", { name: /Ali Raza/ }).first()).toBeVisible();
   });
 });

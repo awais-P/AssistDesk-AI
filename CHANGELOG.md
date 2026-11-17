@@ -18,6 +18,33 @@ Entry template:
 
 ---
 
+## 2026-11-17 — Token streaming of AI replies, with latency work
+**Module:** M5, M6 (FE-5), M2, M7   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/lib/llm-stream.ts`, `src/lib/reply-stream-response.ts`, `src/lib/streaming-markdown.ts`, migration `20261117090000_ai_first_token_latency` (`AiInteraction.firstTokenMs`); changed `src/lib/llm-runtime.ts`, `src/lib/agent-engine/{model-chain,graph,run-agent}.ts`, `src/lib/conversation-runtime.ts`, `src/lib/widget-conversation.ts`, `src/lib/model-health.ts`, `src/lib/embeddings.ts`, `src/lib/knowledge-indexing.ts`, `src/lib/knowledge-runtime.ts`, `src/lib/agent-config.ts`, `app/api/widget/[widgetId]/messages/route.ts`, `app/api/ai-agents/[id]/playground/route.ts`, `src/components/widget/chatbot-widget-client.tsx`, `src/components/dashboard/agent-configuration-workspace.tsx`; tests `tests/unit/token-streaming.test.ts` (UT-66), `tests/integration/token-streaming.int.ts` (IT-30), `tests/ui/streaming.spec.ts` (UI-STR-01/02), `tests/unit/tools.test.ts` (UT-45.01), `tests/ui/chats.spec.ts`, `tests/ui/p1-fixes.spec.ts`
+
+**Added:**
+- **Token streaming (P2 #11).** The website chat and the Playground show the AI reply word by word while the model writes it. The words travel straight from the provider through the message request to the browser (one JSON object per line, `Accept: application/x-ndjson`); there is no detour through the database or the live-update stream. Clients that don't ask for it still get one JSON reply.
+- Real streaming for every provider: OpenAI-compatible (Groq, OpenAI, OpenRouter), Anthropic, Google, and the tool-using LangGraph engine. If a model fails half-way, or writes text and then decides to call a tool, the text shown so far is withdrawn and the next model starts clean. Moderation labels from free routers ("User Safety: …") are held back for the first 24 characters and never shown.
+- **Time to the first word** is measured for every streamed reply, stored in `AiInteraction.firstTokenMs`, written to the server log (`[latency] … first word after … ms`) and shown in the Playground ("First word … • Complete …"). Total and first-word times share one starting point.
+- The browser paints the growing reply at most once per animation frame, and unfinished Markdown (`**bold`, `` `code ``, half-written links) is closed while it streams, so no stray asterisks flicker.
+
+**Latency (measured on the demo with the real OpenRouter models):**
+- **Rate-limited and slow models cool down for 2 minutes** (429, 503, timeouts). Before, every reply first waited for Gemma 4's 429 (about 350 ms). Retired models are still skipped for 6 hours.
+- **Removed two retired free models** (Qwen 3.8 27B, Nemotron 3 Super; OpenRouter answers 404 "unavailable for free"), which cost a wasted round trip after every restart.
+- **Question embeddings are cached** (1 hour, 500 questions) and shared while in flight: a repeated question's knowledge search went from 447–832 ms to 14 ms.
+- **The embedding call starts as soon as the message is saved**, alongside lead capture, escalation and history loading, instead of after them.
+- **Independent work runs in parallel:** history, plan limit, knowledge, customer memory and tools load together; the escalation check and the reply-mode decision run together; the knowledge search and the run record run together. The new-chat notification and the offline email wait until the visitor has their reply.
+
+**Fixed:** UI-CHT-03 and UI-P1-01 depended on data left by earlier runs (seeded chats on the first page, the demo inbox's auto-reply state); both now set up what they need.
+
+**Notes / follow-ups:**
+- The biggest remaining wait is the model itself: OpenRouter's free models took 0.7–7.9 s to their first word. A Groq key (free tier) brings that to a few hundred milliseconds.
+- Each new HTTPS connection costs about 300 ms (warm embedding call ≈ 470 ms, after 6 s idle ≈ 790 ms); Node closes idle connections after 4 s. Keeping them open longer needs the `undici` package (not installed yet).
+- Production compression is skipped for the stream (`Cache-Control: no-transform`); the stream was verified on the dev server, not yet with `next start`.
+- Lead-form submissions (the AI answers after the form) still reply in one piece.
+
+---
+
 ## 2026-11-16 — Sample workspace with test logins for the live site
 **Module:** operations (touches M1–M11 data)   **Author:** Claude (with Muhammad Awais)
 **Files:** new `src/lib/sample-workspace.ts`, `app/api/admin/sample-workspace/route.ts`, `scripts/sample-workspace.mjs`, `tests/integration/sample-workspace.int.ts` (IT-29); `DEPLOYMENT.md`

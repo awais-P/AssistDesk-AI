@@ -16,8 +16,8 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | M2 | Agentic tools | ≈ 88% | Refund/payment action; invoices still a demo HTTP template |
 | M3 | Subscription & payment | ≈ 82% | One run against a live Stripe test account; tax |
 | M4 | Monitoring & analytics | ≈ 84% | KPI auto-refresh; pre-aggregation for big tenants; three SRS definitions differ |
-| M5 | Real-time context & sessions | ≈ 80% | Voice; token streaming; scheduled cron; Playground rate limit |
-| M6 | LLM management & fast inference | **≈ 37%** | **Voice agent: VAD, streaming TTS, < 500 ms (FE-6–8); token streaming** |
+| M5 | Real-time context & sessions | ≈ 84% *(token streaming 17 Nov)* | Voice; multi-instance real time |
+| M6 | LLM management & fast inference | **≈ 45%** *(FE-5 streaming + latency, 17 Nov)* | **Voice agent: VAD, streaming TTS, < 500 ms (FE-6–8)** |
 | M7 | User dashboard | ≈ 86% *(API Keys page now real)* | Attachments/emoji in the Chats reply box; presence dot; unsaved-changes prompt; inbox auto-reply |
 | M8 | Lead generation | ≈ 90% *(API access now exists)* | Scheduled webhook retries; inline validation |
 | M9 | Support escalation | ≈ 85% | Voice transcript in the brief; team/skill routing; email/Slack alerts |
@@ -54,7 +54,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 
 | # | Item | Lifts | Effort |
 |---|---|---|---|
-| 11 | **Token streaming of AI replies.** Stream LLM deltas over the existing SSE channel to the widget and Playground. It is needed by the SRS events and by voice. | M5, M6 FE-5/FE-8 | M |
+| 11 ✅ | **Token streaming of AI replies** *(done 17 Nov: widget and Playground, all providers and the LangGraph engine, first-word time recorded; see CHANGELOG)*. Stream LLM deltas over the existing SSE channel to the widget and Playground. It is needed by the SRS events and by voice. | M5, M6 FE-5/FE-8 | M |
 | 12 | **Voice channel** ⚠️ (Deepgram key, plus Cartesia or ElevenLabs): <ul><li>browser microphone → Deepgram streaming speech-to-text with VAD (FE-7);</li><li>Groq LLM with token streaming;</li><li>streaming TTS over WebSocket (FE-8);</li><li>a measured response time against the 500 ms target (FE-6, PER-1);</li><li>sessions under the same Contact (M5 FE-2) and the call transcript in the escalation brief (M9 FE-2).</li></ul> `@deepgram/sdk` is already installed. | M6, M5, M9, M1 | L |
 | 13 | **Agent attachments and emoji in Chats** (FR-6.6/6.7). The reply box is a plain textarea; reuse the widget's upload route and emoji picker. Also add the customer presence dot (FR-6.2) and avatars in the list (FR-6.1). | M7 | M |
 | 14 | **Knowledge base table:** <ul><li>bulk checkboxes with bulk delete and re-index (FR-10.6);</li><li>an upload progress bar (XHR `upload.onprogress`);</li><li>`.doc` support;</li><li>move "Knowledge base" to the AI group of the sidebar (FR-10.1).</li></ul> | M10 | M |
@@ -119,7 +119,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [x] **FE-5:** schedule the cron. (P1 #5) ✅ *16 Nov*
 - [ ] **FE-5:** the EMAIL and VOICE expiry policies (`session-lifecycle.ts:35-36`) are defined but never used. Use or remove them. (S)
 - [x] **FE-6:** Playground rate limit. (P1 #6) ✅ *16 Nov*
-- [ ] **Streaming:** replies are not streamed token by token. (P2 #11)
+- [x] **Streaming:** replies are streamed token by token to the widget and Playground. (P2 #11) ✅ *17 Nov*
 - [ ] **SRS event:** a widget request from an unauthorised origin returns 403 but is not logged. Add an audit entry (`chatbot-widget.ts:97`, `widget/[widgetId]/page.tsx:66`). (S)
 - [ ] **PER-3 / OPS-09:** real-time push is in-process; across instances it's a 2 s poll. Use Postgres LISTEN/NOTIFY or Redis to scale out. (M)
 - [ ] **SEC-31:** typed email/phone links a visitor to a Contact without verification (memory is redacted). Email OTP before linking. (M)
@@ -133,7 +133,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 | FE-2 | Business picks the model | ✅ per agent, own key | — |
 | FE-3 | Feedback loop | ✅ 👍/👎 → Improve → knowledge base | Optional: use feedback automatically (e.g. prefer the better-rated model) |
 | FE-4 | Keep knowledge updated from new training data | ◐ | Schedule the knowledge recovery job (P1 #5) |
-| FE-5 | Faster, more relevant responses | ◐ fallback chain, retired-model memory, hybrid retrieval | Token streaming (P2 #11); a response cache for repeated questions; measure and show latency |
+| FE-5 | Faster, more relevant responses | ✅ token streaming, first-word time measured and shown, busy-model cooldown, retired-model memory, cached question embeddings, hybrid retrieval | Optional: longer HTTP keep-alive (`undici`), a Groq key in production |
 | FE-6 | High-speed inference (Groq/vLLM), voice answer < 500 ms | ◐ Groq is the default managed model | Voice pipeline and a measured first-audio time (P2 #12) |
 | FE-7 | Voice Activity Detection | ✗ | Deepgram streaming with VAD/endpointing ⚠️ (P2 #12) |
 | FE-8 | WebSocket streaming TTS that starts before the LLM finishes | ✗ | Streaming TTS (Cartesia/ElevenLabs/Deepgram Aura) fed by streamed tokens ⚠️ (P2 #12) |

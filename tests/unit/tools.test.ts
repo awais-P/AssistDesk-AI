@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   computeFreeSlots,
   isBookableSlot,
@@ -317,9 +317,16 @@ describe("UT-45 retired models are skipped by the fallback chain", async () => {
 
   it("UT-45.01 treats 404 / not-available as retired, but not rate limits", () => {
     health.resetModelHealthForTests();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     expect(health.recordModelFailure("openrouter/qwen/qwen3.8-27b:free", "404 This model is unavailable for free.")).toBe(true);
-    expect(health.recordModelFailure("openrouter/google/gemma-4-31b-it:free", "429 Provider returned error")).toBe(false);
-    expect(health.recordModelFailure("x/timeout", "Request timed out after 15000 ms")).toBe(false);
+    expect(health.isModelGone("openrouter/qwen/qwen3.8-27b:free")).toBe(true);
+    // Rate limits and timeouts are not retirements (they only cool down: UT-66.11).
+    health.recordModelFailure("openrouter/google/gemma-4-31b-it:free", "429 Provider returned error");
+    health.recordModelFailure("x/timeout", "Request timed out after 15000 ms");
+    expect(health.isModelGone("openrouter/google/gemma-4-31b-it:free")).toBe(false);
+    expect(health.isModelGone("x/timeout")).toBe(false);
+    health.resetModelHealthForTests();
+    health.markModelGone("openrouter/qwen/qwen3.8-27b:free", "404");
     expect(health.withoutGoneModels(["a", "openrouter/qwen/qwen3.8-27b:free", "b"], (id) => id)).toEqual(["a", "b"]);
   });
 

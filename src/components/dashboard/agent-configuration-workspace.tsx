@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { closeOpenMarkdown } from "@/src/lib/streaming-markdown";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { AgentToolsPanel } from "@/src/components/dashboard/tools/agent-tools-panel";
 import { RunTimeline, type TimelineRun } from "@/src/components/dashboard/tools/run-timeline";
@@ -115,6 +116,8 @@ type AgentTabKey =
 type PlaygroundReplyMeta = {
   modelUsed: string;
   latencyMs: number;
+  /** Token streaming: when the first word appeared (null when it was not streamed). */
+  firstTokenMs?: number | null;
   usedFallback: boolean;
   fallbackReason: string | null;
   /** Module 2 FE-5: the reasoning run behind this reply (agents with actions). */
@@ -139,6 +142,7 @@ type PlaygroundResponse = {
   fallbackReason?: string | null;
   modelUsed?: string;
   latencyMs?: number;
+  firstTokenMs?: number | null;
   tokens?: number;
   toolsEnabled?: boolean;
   run?: TimelineRun | null;
@@ -271,6 +275,45 @@ function formatSourceStatus(status: string) {
 
 function isIndexingStatus(status: string) {
   return status === "PENDING" || status === "PROCESSING";
+}
+
+/** Reads a streamed reply (one JSON object per line) and hands over each event. */
+async function readPlaygroundStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: { type: string } & Record<string, unknown>) => void,
+) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleLine = (line: string) => {
+    if (line.trim()) {
+      try {
+        onEvent(JSON.parse(line) as { type: string } & Record<string, unknown>);
+      } catch {
+        // Skipped; the final "done" event carries the whole reply.
+      }
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+
+    while (newline !== -1) {
+      handleLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+    }
+  }
+
+  handleLine(buffer + decoder.decode());
 }
 
 function formatLatency(latencyMs: number) {
@@ -1163,11 +1206,58 @@ export function AgentConfigurationWorkspace({
     setPlaygroundInput("");
     setIsSendingMessage(true);
 
+    const replyId = `${Date.now()}-assistant`;
+    const showError = (content: string) => {
+      setPlaygroundMessages((current) => [
+        ...current.filter((message) => message.id !== replyId),
+        { id: replyId, sender: "assistant", content, isError: true },
+      ]);
+    };
+    const showReply = (data: PlaygroundResponse) => {
+      const agentReply: PlaygroundMessage = {
+        id: replyId,
+        sender: "assistant",
+        content: data.reply ?? "",
+        meta: {
+          modelUsed: data.modelUsed ?? agent.model,
+          latencyMs: data.latencyMs ?? 0,
+          firstTokenMs: data.firstTokenMs ?? null,
+          usedFallback: Boolean(data.usedFallback),
+          fallbackReason: data.fallbackReason ?? null,
+          run: data.run ?? null,
+        },
+      };
+      setPlaygroundToolsEnabled(Boolean(data.toolsEnabled));
+      setPlaygroundMessages((current) => [...current.filter((message) => message.id !== replyId), agentReply]);
+      setUsage((current) => ({
+        replies: current.replies + 1,
+        tokens: current.tokens + (data.tokens ?? 0),
+      }));
+    };
+    // Token streaming: the reply grows in place, painted at most once per frame.
+    let streamed = "";
+    let frame: number | null = null;
+    const paint = () => {
+      frame = null;
+      // While it is written, unfinished Markdown is closed so no stray "**" flickers.
+      const content = closeOpenMarkdown(streamed);
+      setPlaygroundMessages((current) => {
+        const others = current.filter((message) => message.id !== replyId);
+        return content ? [...others, { id: replyId, sender: "assistant", content }] : others;
+      });
+    };
+    const schedulePaint = () => {
+      if (frame === null) {
+        frame = window.requestAnimationFrame(paint);
+      }
+    };
+
     try {
       const response = await fetch(`/api/ai-agents/${agent.id}/playground`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/x-ndjson, application/json",
         },
         body: JSON.stringify({
           message: trimmedInput,
@@ -1176,53 +1266,52 @@ export function AgentConfigurationWorkspace({
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as PlaygroundResponse;
+      if (response.ok && response.body && (response.headers.get("Content-Type") ?? "").includes("application/x-ndjson")) {
+        let finished = false;
 
-      if (!response.ok || !data.reply) {
-        setPlaygroundMessages((current) => [
-          ...current,
-          {
-            id: `${Date.now()}-assistant`,
-            sender: "assistant",
-            content:
-              data.error ??
-              "The agent could not reply. Check the provider settings and try again.",
-            isError: true,
-          },
-        ]);
+        await readPlaygroundStream(response.body, (event) => {
+          if (event.type === "delta" && typeof event.text === "string") {
+            streamed += event.text;
+            schedulePaint();
+          } else if (event.type === "reset") {
+            streamed = "";
+            schedulePaint();
+          } else if (event.type === "done") {
+            finished = true;
+            if (frame !== null) window.cancelAnimationFrame(frame);
+            const data = event as PlaygroundResponse;
+
+            if (data.reply) {
+              showReply(data);
+            } else {
+              showError(data.error ?? "The agent could not reply. Check the provider settings and try again.");
+            }
+          } else if (event.type === "error") {
+            finished = true;
+            if (frame !== null) window.cancelAnimationFrame(frame);
+            showError(typeof event.error === "string" ? event.error : "The agent could not reply.");
+          }
+        });
+
+        if (!finished) {
+          if (frame !== null) window.cancelAnimationFrame(frame);
+          showError("The connection closed before the reply was finished. Try again.");
+        }
+
         return;
       }
 
-      const agentReply: PlaygroundMessage = {
-        id: `${Date.now()}-assistant`,
-        sender: "assistant",
-        content: data.reply,
-        meta: {
-          modelUsed: data.modelUsed ?? agent.model,
-          latencyMs: data.latencyMs ?? 0,
-          usedFallback: Boolean(data.usedFallback),
-          fallbackReason: data.fallbackReason ?? null,
-          run: data.run ?? null,
-        },
-      };
-      setPlaygroundToolsEnabled(Boolean(data.toolsEnabled));
+      const data = (await response.json().catch(() => ({}))) as PlaygroundResponse;
 
-      setPlaygroundMessages((current) => [...current, agentReply]);
-      setUsage((current) => ({
-        replies: current.replies + 1,
-        tokens: current.tokens + (data.tokens ?? 0),
-      }));
+      if (!response.ok || !data.reply) {
+        showError(data.error ?? "The agent could not reply. Check the provider settings and try again.");
+        return;
+      }
+
+      showReply(data);
     } catch {
-      setPlaygroundMessages((current) => [
-        ...current,
-        {
-          id: `${Date.now()}-assistant`,
-          sender: "assistant",
-          content:
-            "Something went wrong while testing the agent. Check your connection and try again.",
-          isError: true,
-        },
-      ]);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      showError("Something went wrong while testing the agent. Check your connection and try again.");
     } finally {
       isSendingRef.current = false;
       setIsSendingMessage(false);
@@ -2385,7 +2474,17 @@ export function AgentConfigurationWorkspace({
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-slate-500">
                         <span>{formatAgentRuntimeLabel(message.meta.modelUsed)}</span>
                         <span aria-hidden="true">•</span>
-                        <span>{formatLatency(message.meta.latencyMs)}</span>
+                        {typeof message.meta.firstTokenMs === "number" ? (
+                          <>
+                            <span title="Time until the first word appeared">
+                              First word {formatLatency(message.meta.firstTokenMs)}
+                            </span>
+                            <span aria-hidden="true">•</span>
+                            <span title="Time until the reply was complete">Complete {formatLatency(message.meta.latencyMs)}</span>
+                          </>
+                        ) : (
+                          <span>{formatLatency(message.meta.latencyMs)}</span>
+                        )}
                         {message.meta.run ? (
                           <>
                             <span aria-hidden="true">•</span>
@@ -2424,7 +2523,7 @@ export function AgentConfigurationWorkspace({
                 ),
               )}
 
-              {isSendingMessage ? (
+              {isSendingMessage && playgroundMessages.at(-1)?.sender !== "assistant" ? (
                 <div className="max-w-3xl">
                   <div className="inline-flex rounded-2xl bg-[#111111] px-4 py-3 text-sm text-slate-400">
                     Thinking...

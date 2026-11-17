@@ -11,9 +11,19 @@ test.describe("Priority-1 fixes (16 Nov 2026)", () => {
     await page.getByRole("link", { name: "Edit" }).first().click();
     await expect(page.getByRole("heading", { level: 1, name: "Inbox Configuration" })).toBeVisible();
     const toggle = page.getByRole("switch", { name: "Auto-reply" });
+
+    // An interrupted earlier run may have left it on: start from "off".
+    if ((await toggle.getAttribute("aria-checked")) === "true") {
+      await toggle.click();
+      await page.getByRole("button", { name: "Save Changes" }).first().click();
+      await expect(page.getByRole("status").filter({ hasText: /updated successfully/i })).toBeVisible();
+    }
+
     await expect(toggle).toHaveAttribute("aria-checked", "false");
 
     await toggle.click();
+    // A canned response chosen in an earlier run may still be selected: start without one.
+    await page.getByLabel("Canned response to send").selectOption("");
     await page.getByRole("button", { name: "Save Changes" }).first().click();
     await expect(page.getByRole("alert").filter({ hasText: "Choose the canned response" })).toBeVisible();
 

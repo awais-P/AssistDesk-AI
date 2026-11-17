@@ -234,6 +234,59 @@ export async function embedTexts(texts: string[], model = getConfiguredEmbedding
   return { model, vectors };
 }
 
+const QUERY_CACHE_LIMIT = 500;
+const QUERY_CACHE_TTL_MS = 60 * 60 * 1000;
+
+declare global {
+  var assistdeskQueryEmbeddings: Map<string, { until: number; vector: Promise<number[]> }> | undefined;
+}
+
+const queryEmbeddings = global.assistdeskQueryEmbeddings ?? new Map<string, { until: number; vector: Promise<number[]> }>();
+global.assistdeskQueryEmbeddings = queryEmbeddings;
+
+/**
+ * The embedding of one search question (knowledge-base retrieval). Latency: the same
+ * question is asked again and again in support ("What is your return policy?"), so
+ * recent ones are kept for an hour (500 at most) and a repeat skips the provider call;
+ * a question that is already being embedded shares that call. Failures are not kept.
+ */
+export function embedQuery(text: string, model: string): Promise<number[]> {
+  const key = `${model}\n${text}`;
+  const now = Date.now();
+  const cached = queryEmbeddings.get(key);
+
+  if (cached && cached.until > now) {
+    // Most recently used goes last, so the oldest is dropped first.
+    queryEmbeddings.delete(key);
+    queryEmbeddings.set(key, cached);
+    return cached.vector;
+  }
+
+  const vector = embedTexts([text], model).then(({ vectors }) => vectors[0]);
+  queryEmbeddings.set(key, { until: now + QUERY_CACHE_TTL_MS, vector });
+  vector.catch(() => {
+    if (queryEmbeddings.get(key)?.vector === vector) {
+      queryEmbeddings.delete(key);
+    }
+  });
+
+  while (queryEmbeddings.size > QUERY_CACHE_LIMIT) {
+    const oldest = queryEmbeddings.keys().next().value;
+
+    if (oldest === undefined) {
+      break;
+    }
+
+    queryEmbeddings.delete(oldest);
+  }
+
+  return vector;
+}
+
+export function clearQueryEmbeddingCacheForTests() {
+  queryEmbeddings.clear();
+}
+
 /**
  * Embeds document chunks with the configured semantic model, falling back to the
  * offline lexical model if the provider is unavailable so indexing never blocks.

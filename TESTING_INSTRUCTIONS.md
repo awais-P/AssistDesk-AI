@@ -203,6 +203,8 @@ The test IDs in the final report map to the repository as follows:
 | `UT-01`–`UT-49` | Unit | `tests/unit/` | Authentication, RBAC, secrets, SSRF protection, widget security, channel signatures, knowledge ingestion and retrieval, sessions and memory, leads, analytics, tool logic, Gmail mailbox parsing, and business rules BR-4 and BR-7 (`business-rules.test.ts`) |
 | `UT-64` | Unit | `tests/unit/deployment.test.ts` | Production: health check, no unpayable trial when payments are off, build works without `DATABASE_URL` |
 | `IT-29` | Integration | `tests/integration/sample-workspace.int.ts` | Sample workspace for a deployed site: only with `CRON_SECRET`, one of everything, verified logins that work, new passwords on a second run, delete removes everything |
+| `UT-66` | Unit | `tests/unit/token-streaming.test.ts` | Token streaming: SSE reading across chunks, OpenAI-compatible / Anthropic / Google streams, first-word timeout, moderation-label guard, mid-reply model failure withdrawn, LangGraph streaming, first-word timing, NDJSON response, busy-model cooldown, cached question embeddings, unfinished Markdown closed |
+| `IT-30` | Integration | `tests/integration/token-streaming.int.ts` | Streamed widget reply (start, pieces, saved message, `firstTokenMs` stored), JSON reply unchanged without streaming, fallback when every model fails, streamed Playground reply |
 | `UT-65` | Unit | `tests/unit/brevo-email.test.ts` | Platform email over Brevo's HTTPS API when SMTP is blocked: verification and reset emails, team alerts, refused sends, nothing configured |
 | `UT-61`–`UT-63` | Unit | `tests/unit/ticket-rules.test.ts`, `middleware.test.ts` | Priority-1 fixes: block-list rules and inactivity delays, safe error messages, cross-site check and security headers |
 | `UT-58` | Unit | `tests/unit/billing.test.ts` | Module 3: plans and prices, trials and the effective plan, upgrade/downgrade detection, downgrade blockers, limit messages |
@@ -226,6 +228,7 @@ The test IDs in the final report map to the repository as follows:
 | `UI-WID-*` | Browser functional | `tests/ui/widget.spec.ts` | Widget branding, grounded answers, email capture, controls, allowed domains, and live takeover |
 | `UI-M2-*` | Browser functional | `tests/ui/agentic-tools.spec.ts` | Tool listing, tool test-runner, action logs, chain of thought, filters, and appointments |
 | `UI-LED-*` | Browser functional | `tests/ui/leads.spec.ts` | Lead listing, filters, details, CSV export, and lead settings |
+| `UI-STR-*` | Browser functional | `tests/ui/streaming.spec.ts` | The widget reply grows while it is written (real AI), then becomes the saved answer; the Playground shows "First word" and "Complete" times |
 | `UI-P1-*` | Browser functional | `tests/ui/p1-fixes.spec.ts` | Priority-1 fixes: inbox auto-reply, automation help, security headers and cross-site refusal |
 | `UI-BIL-*` | Browser functional | `tests/ui/billing.spec.ts` | Module 3: billing page, yearly prices, forged webhook refused |
 | `UI-M11-*` | Browser functional | `tests/ui/integrations-admin.spec.ts` | Module 11: audit log tab, API key lifecycle, custom roles, connector checks, OpenAPI |

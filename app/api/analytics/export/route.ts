@@ -71,6 +71,7 @@ export async function GET(request: Request) {
         question: true,
         latencyMs: true,
         firstTokenMs: true,
+        firstAudioMs: true,
         tokens: true,
         model: true,
         confidence: true,
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
     const ratings = new Map(feedback.map((item) => [item.messageId, item.rating]));
 
     csv = toCsv(
-      ["Time", "Channel", "Customer", "Question", "Response time (ms)", "First word (ms)", "Answered from knowledge", "Fallback", "Confidence", "Feedback", "Agent", "Model", "Tokens", "Conversation / ticket"],
+      ["Time", "Channel", "Customer", "Question", "Response time (ms)", "First word (ms)", "First audio (ms)", "Answered from knowledge", "Fallback", "Confidence", "Feedback", "Agent", "Model", "Tokens", "Conversation / ticket"],
       rows.map((row) => [
         formatLocal(row.createdAt, timeZone),
         row.channel,
@@ -98,6 +99,7 @@ export async function GET(request: Request) {
         row.question,
         row.latencyMs,
         row.firstTokenMs ?? "",
+        row.firstAudioMs ?? "",
         row.grounded ? "yes" : "no",
         row.usedFallback ? "yes" : "no",
         row.confidence.toFixed(2),

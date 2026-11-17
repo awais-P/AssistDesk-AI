@@ -316,6 +316,8 @@ model Chatbot {
   requireEmail          Boolean          @default(true)
   requirePhone          Boolean          @default(false)
   emailNotifications    Boolean          @default(true)
+  /// Module 6 / FR-16.6: visitors can call the agent from the widget (needs DEEPGRAM_API_KEY).
+  voiceEnabled          Boolean          @default(false)
   /// Module 8: lead capture form (fields, trigger, texts). See src/lib/lead-form.ts.
   leadForm              Json?
   createdAt             DateTime         @default(now())
@@ -880,6 +882,8 @@ model AiInteraction {
   latencyMs    Int
   /// Time from the start of the reply until the first word reached the customer (streamed replies only).
   firstTokenMs Int?
+  /// Voice calls: end of the caller's speech until the first audio of the reply played (measured in the browser).
+  firstAudioMs Int?
   tokens       Int          @default(0)
   model        String?
   provider     String?

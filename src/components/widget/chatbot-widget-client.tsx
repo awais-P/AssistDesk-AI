@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { defaultChatbotWelcomeMessage } from "@/src/lib/chatbot-config";
 import type { PublicLeadForm } from "@/src/lib/lead-form";
+import { readReplyStream } from "@/src/lib/reply-stream-client";
+import { VoiceCallPanel } from "./voice-call-panel";
+import { isVoiceSupported, useVoiceCall } from "./use-voice-call";
 import { closeOpenMarkdown } from "@/src/lib/streaming-markdown";
 import {
   WIDGET_MESSAGE_TYPE,
@@ -43,6 +46,8 @@ type WidgetConfig = {
   requireEmail: boolean;
   requirePhone: boolean;
   emailNotifications: boolean;
+  /** Module 6: the call button (switched on, and a Deepgram key on the server). */
+  voiceEnabled?: boolean;
   agentName: string;
   online: boolean;
   operatorsOnline: boolean;
@@ -296,50 +301,6 @@ function AttachmentList({ attachments }: { attachments: WidgetAttachment[] }) {
   );
 }
 
-/**
- * Reads a streamed reply (one JSON object per line) and hands each event over as soon
- * as its line is complete.
- */
-async function readReplyStream(
-  body: ReadableStream<Uint8Array>,
-  onEvent: (event: { type: string } & Record<string, unknown>) => void,
-) {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  const handleLine = (line: string) => {
-    if (!line.trim()) {
-      return;
-    }
-
-    try {
-      onEvent(JSON.parse(line) as { type: string } & Record<string, unknown>);
-    } catch {
-      // A malformed line is skipped; the final "done" event carries the full reply.
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    let newline = buffer.indexOf("\n");
-
-    while (newline !== -1) {
-      handleLine(buffer.slice(0, newline));
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf("\n");
-    }
-  }
-
-  handleLine(buffer + decoder.decode());
-}
-
 type SendResult = {
   error?: string;
   retryAfterSeconds?: number;
@@ -448,6 +409,19 @@ export function ChatbotWidgetClient({
   useEffect(() => {
     sessionTokenRef.current = sessionToken;
   }, [sessionToken]);
+
+  // Module 6 voice channel: a call joins the same customer as this chat.
+  const voice = useVoiceCall({
+    widgetId,
+    widgetToken: token,
+    identity: { name: contact.name, email: contact.email, phone: contact.phone, visitorId },
+    chatSessionToken: sessionToken,
+  });
+  const [voiceSupported, setVoiceSupported] = useState(false);
+
+  useEffect(() => {
+    setVoiceSupported(isVoiceSupported());
+  }, []);
 
   const widgetFetch = useCallback(
     (path: string, init?: RequestInit) =>
@@ -1289,6 +1263,22 @@ export function ChatbotWidgetClient({
         </p>
       ) : null}
 
+      {voice.status !== "idle" ? (
+        <VoiceCallPanel
+          agentName={config.agentName}
+          primaryColor={config.primaryColor}
+          status={voice.status}
+          turns={voice.turns}
+          interim={voice.interim}
+          error={voice.error}
+          muted={voice.muted}
+          lastLatencyMs={voice.lastLatencyMs}
+          onEnd={() => void voice.end()}
+          onToggleMute={voice.toggleMute}
+          onDismiss={voice.dismiss}
+        />
+      ) : null}
+
       <main
         ref={scrollRef}
         className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4"
@@ -1814,6 +1804,20 @@ export function ChatbotWidgetClient({
                 </svg>
               )}
             </button>
+            {config.voiceEnabled && voiceSupported ? (
+              <button
+                type="button"
+                className={`${iconButtonClass} ${voice.status !== "idle" && voice.status !== "ended" && voice.status !== "error" ? "bg-emerald-50 text-emerald-600" : ""}`}
+                aria-label="Call the assistant"
+                title={`Talk to ${config.agentName}`}
+                disabled={inputDisabled || (voice.status !== "idle" && voice.status !== "ended" && voice.status !== "error")}
+                onClick={() => void voice.start()}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1Z" />
+                </svg>
+              </button>
+            ) : null}
             {speechSupported ? (
               <button
                 type="button"

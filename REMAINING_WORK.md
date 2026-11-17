@@ -12,15 +12,15 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 
 | # | Module | Verified now | Biggest thing missing |
 |---|---|---|---|
-| M1 | Assistant creation & omnichannel | ≈ 80% | Voice channel; Slack OAuth; WhatsApp media; two automations that do nothing |
+| M1 | Assistant creation & omnichannel | ≈ 84% *(voice calls 18 Nov)* | Slack OAuth; WhatsApp media |
 | M2 | Agentic tools | ≈ 88% | Refund/payment action; invoices still a demo HTTP template |
 | M3 | Subscription & payment | ≈ 82% | One run against a live Stripe test account; tax |
 | M4 | Monitoring & analytics | ≈ 84% | KPI auto-refresh; pre-aggregation for big tenants; three SRS definitions differ |
-| M5 | Real-time context & sessions | ≈ 84% *(token streaming 17 Nov)* | Voice; multi-instance real time |
-| M6 | LLM management & fast inference | **≈ 45%** *(FE-5 streaming + latency, 17 Nov)* | **Voice agent: VAD, streaming TTS, < 500 ms (FE-6–8)** |
+| M5 | Real-time context & sessions | ≈ 88% *(token streaming 17 Nov, voice under the same customer 18 Nov)* | Multi-instance real time |
+| M6 | LLM management & fast inference | **≈ 75%** *(FE-5 streaming 17 Nov; voice FE-6–8 built 18 Nov, live test pending)* | Live voice test with a Deepgram key; < 500 ms needs a fast model (Groq) |
 | M7 | User dashboard | ≈ 86% *(API Keys page now real)* | Attachments/emoji in the Chats reply box; presence dot; unsaved-changes prompt; inbox auto-reply |
 | M8 | Lead generation | ≈ 90% *(API access now exists)* | Scheduled webhook retries; inline validation |
-| M9 | Support escalation | ≈ 85% | Voice transcript in the brief; team/skill routing; email/Slack alerts |
+| M9 | Support escalation | ≈ 87% *(call transcript in the brief, 18 Nov)* | Team/skill routing; email/Slack alerts |
 | M10 | Knowledge base | ≈ 78% | Pinecone/Firecrawl not configured; bulk select; `.doc`; progress bar |
 | M11 | Integrations & customization | ≈ 82% | Live HubSpot/Shopify test; more connectors; API write endpoints |
 | | **Overall (equal weight)** | **≈ 79%** *(was ≈ 63% on 10 Oct)* | M6 is the only module far below the rest |
@@ -55,7 +55,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | # | Item | Lifts | Effort |
 |---|---|---|---|
 | 11 ✅ | **Token streaming of AI replies** *(done 17 Nov: widget and Playground, all providers and the LangGraph engine, first-word time recorded; see CHANGELOG)*. Stream LLM deltas over the existing SSE channel to the widget and Playground. It is needed by the SRS events and by voice. | M5, M6 FE-5/FE-8 | M |
-| 12 | **Voice channel** ⚠️ (Deepgram key, plus Cartesia or ElevenLabs): <ul><li>browser microphone → Deepgram streaming speech-to-text with VAD (FE-7);</li><li>Groq LLM with token streaming;</li><li>streaming TTS over WebSocket (FE-8);</li><li>a measured response time against the 500 ms target (FE-6, PER-1);</li><li>sessions under the same Contact (M5 FE-2) and the call transcript in the escalation brief (M9 FE-2).</li></ul> `@deepgram/sdk` is already installed. | M6, M5, M9, M1 | L |
+| 12 ✅ | *(built 18 Nov: Deepgram Nova-3 speech-to-text with endpointing, streamed AI, Aura-2 streaming speech, barge-in, first-audio latency measured; live test with a real key pending; see CHANGELOG)* **Voice channel** ⚠️ (Deepgram key, plus Cartesia or ElevenLabs): <ul><li>browser microphone → Deepgram streaming speech-to-text with VAD (FE-7);</li><li>Groq LLM with token streaming;</li><li>streaming TTS over WebSocket (FE-8);</li><li>a measured response time against the 500 ms target (FE-6, PER-1);</li><li>sessions under the same Contact (M5 FE-2) and the call transcript in the escalation brief (M9 FE-2).</li></ul> `@deepgram/sdk` is already installed. | M6, M5, M9, M1 | L |
 | 13 | **Agent attachments and emoji in Chats** (FR-6.6/6.7). The reply box is a plain textarea; reuse the widget's upload route and emoji picker. Also add the customer presence dot (FR-6.2) and avatars in the list (FR-6.1). | M7 | M |
 | 14 | **Knowledge base table:** <ul><li>bulk checkboxes with bulk delete and re-index (FR-10.6);</li><li>an upload progress bar (XHR `upload.onprogress`);</li><li>`.doc` support;</li><li>move "Knowledge base" to the AI group of the sidebar (FR-10.1).</li></ul> | M10 | M |
 | 15 | **Configure Pinecone and Firecrawl** ⚠️ (free keys) and record one run, so FE-1 and FR-10.3 are shown working instead of "coded but not configured". | M10 | S |
@@ -78,7 +78,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **FE-3 / FR-16.5:** Slack connects with a pasted bot token; the SRS asks for OAuth (`oauth.v2.access`). (M)
 - [ ] **FE-3:** WhatsApp handles text and buttons only; add images, documents and voice notes. (M)
 - [ ] **FE-3:** Slack, WhatsApp and SMTP have never run against real accounts ⚠️. (P2 #16)
-- [ ] **FR-16.6:** voice channel (`VOICE: []` placeholder in `integrations/config.ts`). (P2 #12)
+- [x] **FR-16.6:** voice channel: a call button in the website chat. (P2 #12) ✅ *18 Nov*
 - [ ] **FR-3.6:** the training step in the setup wizard can be skipped; the SRS says it is required. (S)
 - [ ] **FR-2/4:** the inbox-prefix availability check runs on click, not live while typing (debounced). (S)
 - [ ] **FR-8.1:** editing an agent opens a full page, not a side drawer. Build the drawer or record the deviation. (S to document)
@@ -115,7 +115,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **AI-16:** without an embedding model, FAQ and gap groups use wording only (accepted).
 
 ### M5: Real-time context & sessions (≈ 80%)
-- [ ] **FE-2:** voice in the shared Contact. (P2 #12)
+- [x] **FE-2:** voice in the shared Contact: each call is a VOICE conversation under the same customer. (P2 #12) ✅ *18 Nov*
 - [x] **FE-5:** schedule the cron. (P1 #5) ✅ *16 Nov*
 - [ ] **FE-5:** the EMAIL and VOICE expiry policies (`session-lifecycle.ts:35-36`) are defined but never used. Use or remove them. (S)
 - [x] **FE-6:** Playground rate limit. (P1 #6) ✅ *16 Nov*
@@ -135,8 +135,8 @@ The rest of the list (§3 and §4). Pick items as time allows.
 | FE-4 | Keep knowledge updated from new training data | ◐ | Schedule the knowledge recovery job (P1 #5) |
 | FE-5 | Faster, more relevant responses | ✅ token streaming (chat, Playground, after the lead form), first-word time measured and shown in Playground and Analytics, 40 s HTTPS keep-alive, busy-model cooldown, retired-model memory, cached question embeddings, hybrid retrieval | Optional: a Groq key in production (the free OpenRouter models take 0.7–10 s to the first word) |
 | FE-6 | High-speed inference (Groq/vLLM), voice answer < 500 ms | ◐ Groq is the default managed model | Voice pipeline and a measured first-audio time (P2 #12) |
-| FE-7 | Voice Activity Detection | ✗ | Deepgram streaming with VAD/endpointing ⚠️ (P2 #12) |
-| FE-8 | WebSocket streaming TTS that starts before the LLM finishes | ✗ | Streaming TTS (Cartesia/ElevenLabs/Deepgram Aura) fed by streamed tokens ⚠️ (P2 #12) |
+| FE-7 | Voice Activity Detection | ✅ Deepgram endpointing (300 ms) and utterance end (1 s), barge-in *(18 Nov)* | Deepgram streaming with VAD/endpointing ⚠️ (P2 #12) |
+| FE-8 | WebSocket streaming TTS that starts before the LLM finishes | ✅ phrases of the streamed reply go to Deepgram Aura-2 as they are written *(18 Nov)* | Streaming TTS (Cartesia/ElevenLabs/Deepgram Aura) fed by streamed tokens ⚠️ (P2 #12) |
 
 - [ ] **Groq key** ⚠️: the free Groq key is empty locally, so replies go through slow free OpenRouter models (7–12 s). Add one before the demo (AI-10).
 
@@ -161,7 +161,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **AI-14:** the buying-intent trigger is keyword-based (accepted; the AI `capture_lead` action covers the rest).
 
 ### M9: Support escalation (≈ 85%)
-- [ ] **FE-2:** voice call transcript in the hand-over brief. (P2 #12)
+- [x] **FE-2:** voice call transcript in the hand-over brief. (P2 #12) ✅ *18 Nov*
 - [ ] Team/skill routing and round-robin auto-assignment. (P2 #18)
 - [ ] Email and Slack escalation alerts. (P2 #18)
 - [ ] **AI-19:** sentiment is a lexicon scorer, not a model (accepted; tunable).

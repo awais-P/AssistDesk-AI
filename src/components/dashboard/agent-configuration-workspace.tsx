@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { readReplyStream } from "@/src/lib/reply-stream-client";
 import { closeOpenMarkdown } from "@/src/lib/streaming-markdown";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { AgentToolsPanel } from "@/src/components/dashboard/tools/agent-tools-panel";
@@ -275,45 +276,6 @@ function formatSourceStatus(status: string) {
 
 function isIndexingStatus(status: string) {
   return status === "PENDING" || status === "PROCESSING";
-}
-
-/** Reads a streamed reply (one JSON object per line) and hands over each event. */
-async function readPlaygroundStream(
-  body: ReadableStream<Uint8Array>,
-  onEvent: (event: { type: string } & Record<string, unknown>) => void,
-) {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  const handleLine = (line: string) => {
-    if (line.trim()) {
-      try {
-        onEvent(JSON.parse(line) as { type: string } & Record<string, unknown>);
-      } catch {
-        // Skipped; the final "done" event carries the whole reply.
-      }
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    let newline = buffer.indexOf("\n");
-
-    while (newline !== -1) {
-      handleLine(buffer.slice(0, newline));
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf("\n");
-    }
-  }
-
-  handleLine(buffer + decoder.decode());
 }
 
 function formatLatency(latencyMs: number) {
@@ -1269,7 +1231,7 @@ export function AgentConfigurationWorkspace({
       if (response.ok && response.body && (response.headers.get("Content-Type") ?? "").includes("application/x-ndjson")) {
         let finished = false;
 
-        await readPlaygroundStream(response.body, (event) => {
+        await readReplyStream(response.body, (event) => {
           if (event.type === "delta" && typeof event.text === "string") {
             streamed += event.text;
             schedulePaint();

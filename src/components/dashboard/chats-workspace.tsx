@@ -330,6 +330,7 @@ const eventLabels: Record<string, string> = {
   AI_RESUMED: "AI resumed",
   AI_LIMIT_REACHED: "AI reply limit reached",
   AI_FALLBACK_REPLY: "AI fallback reply",
+  VOICE_CALL_STARTED: "Voice call started",
 };
 
 function eventLabel(type: string) {
@@ -341,6 +342,7 @@ function eventDotClass(type: string) {
     case "SESSION_STARTED":
     case "SESSION_RESUMED":
     case "AI_RESUMED":
+    case "VOICE_CALL_STARTED":
       return "bg-emerald-400";
     case "HUMAN_TAKEOVER":
     case "RATE_LIMITED":

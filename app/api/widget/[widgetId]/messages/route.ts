@@ -44,6 +44,8 @@ type WidgetMessagePayload = {
   customerPhone?: unknown;
   visitorId?: unknown;
   attachments?: unknown;
+  /** A turn of a voice call (the transcript of what the caller said). */
+  voice?: unknown;
 };
 
 function text(value: unknown, maxLength: number) {
@@ -203,6 +205,7 @@ export async function POST(request: Request, context: WidgetMessagesRouteContext
       visitorId: text(body.visitorId, 64) || null,
     },
     clientIpHash,
+    channel: body.voice === true ? "VOICE" : "WEB_WIDGET",
   });
 
   if (!resolved.ok) {

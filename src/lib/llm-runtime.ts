@@ -39,7 +39,7 @@ export type ConversationTurn = {
   content: string;
 };
 
-export type ReplyChannel = "WEB_WIDGET" | "SLACK" | "WHATSAPP" | "EMAIL" | "PLAYGROUND";
+export type ReplyChannel = "WEB_WIDGET" | "SLACK" | "WHATSAPP" | "EMAIL" | "VOICE" | "PLAYGROUND";
 
 export type AgentLlmReply = {
   reply: string;
@@ -73,6 +73,8 @@ const channelFormatting: Record<ReplyChannel, string> = {
   SLACK: "You are replying in Slack. Use Slack formatting: *bold*, _italic_, bullet lists with •. Do not use Markdown headings.",
   WHATSAPP: "You are replying on WhatsApp. Use plain text with *bold* sparingly. No Markdown links, headings or tables.",
   EMAIL: "You are writing an email reply. Use plain text paragraphs, no Markdown.",
+  VOICE:
+    "You are speaking on a voice call; your words are read aloud. Answer in one to three short, natural spoken sentences. No Markdown, lists, links, emojis or symbols. Say numbers, prices and times the way a person would say them. If the answer is long, give the key point and offer more detail.",
 };
 
 /** Context from Module 5's memory: what we know about the customer and this chat. */

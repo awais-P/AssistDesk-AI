@@ -72,7 +72,12 @@ export function serializeWidgetMessage(message: {
   };
 }
 
-export async function replyWithAgent(chatbot: WidgetChatbot, sessionId: string, stream?: ReplyStream) {
+export async function replyWithAgent(
+  chatbot: WidgetChatbot,
+  sessionId: string,
+  stream?: ReplyStream,
+  channel: "WEB_WIDGET" | "VOICE" = "WEB_WIDGET",
+) {
   const agent = await loadAgentForReplies(chatbot.agentId);
 
   if (!agent) {
@@ -83,9 +88,9 @@ export async function replyWithAgent(chatbot: WidgetChatbot, sessionId: string, 
     sessionId,
     workspaceId: chatbot.workspaceId,
     agent,
-    channel: "WEB_WIDGET",
+    channel,
     extraSystemPrompt: chatbot.additionalPrompt,
-    logSummary: `Widget reply generated for ${chatbot.name}.`,
+    logSummary: channel === "VOICE" ? `Voice call reply generated for ${chatbot.name}.` : `Widget reply generated for ${chatbot.name}.`,
     stream,
   });
 
@@ -145,6 +150,7 @@ export async function respondToVisitor(
     select: {
       id: true,
       status: true,
+      channel: true,
       aiMessageCount: true,
       contactId: true,
       customerName: true,
@@ -171,7 +177,7 @@ export async function respondToVisitor(
   }
 
   if (decision.action === "AI_NOW") {
-    const reply = await replyWithAgent(chatbot, sessionId, stream);
+    const reply = await replyWithAgent(chatbot, sessionId, stream, session.channel === "VOICE" ? "VOICE" : "WEB_WIDGET");
 
     if (reply) {
       messages.push(reply.message);

@@ -36,6 +36,7 @@ type ChatbotPayload = {
   requireEmail?: boolean;
   requirePhone?: boolean;
   emailNotifications?: boolean;
+  voiceEnabled?: boolean;
   avatarUrl?: string | null;
   conversationStarters?: string[];
   fallbackDelaySeconds?: number;
@@ -229,6 +230,7 @@ export async function POST(request: Request) {
       typeof body.emailNotifications === "boolean"
         ? body.emailNotifications
         : defaultChatbotSettings.emailNotifications,
+    ...(typeof body.voiceEnabled === "boolean" ? { voiceEnabled: body.voiceEnabled } : {}),
     avatarUrl,
     conversationStarters,
     fallbackDelaySeconds:

@@ -172,7 +172,7 @@ export async function loadAnalyticsDashboard(workspaceId: string, range: Analyti
   ] = await Promise.all([
     prisma.aiInteraction.findMany({
       where: interactionWhere,
-      select: { latencyMs: true, firstTokenMs: true, createdAt: true, grounded: true, usedFallback: true, agentId: true, channel: true, messageId: true, tokens: true },
+      select: { latencyMs: true, firstTokenMs: true, firstAudioMs: true, createdAt: true, grounded: true, usedFallback: true, agentId: true, channel: true, messageId: true, tokens: true },
       orderBy: { createdAt: "desc" },
       take: MAX_ROWS,
     }),
@@ -257,6 +257,8 @@ export async function loadAnalyticsDashboard(workspaceId: string, range: Analyti
   const latencies = interactions.map((item) => item.latencyMs);
   // Token streaming (M6 FE-5): how long customers waited for the first word of a streamed reply.
   const firstWords = interactions.map((item) => item.firstTokenMs).filter((value): value is number => value !== null);
+  // Voice calls (M6 FE-6): end of the caller's speech to the first audio of the reply.
+  const firstAudio = interactions.map((item) => item.firstAudioMs).filter((value): value is number => value !== null);
   const engaged = customerCounts.filter((group) => group._count._all >= 2).length;
   const resolutionCounts = { AI_RESOLVED: 0, HUMAN_HANDLED: 0, UNANSWERED: 0 };
   for (const session of finishedSessions) {
@@ -275,6 +277,9 @@ export async function loadAnalyticsDashboard(workspaceId: string, range: Analyti
     medianFirstWordMs: percentile(firstWords, 50),
     p95FirstWordMs: percentile(firstWords, 95),
     streamedReplies: firstWords.length,
+    medianFirstAudioMs: percentile(firstAudio, 50),
+    p95FirstAudioMs: percentile(firstAudio, 95),
+    voiceReplies: firstAudio.length,
     aiReplies: interactions.length,
     // FR-11.2
     automationRate: ratio(resolutionCounts.AI_RESOLVED, finishedCount),

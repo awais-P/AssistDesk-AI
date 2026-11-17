@@ -18,6 +18,28 @@ Entry template:
 
 ---
 
+## 2026-11-18 — Voice calls in the website widget (Deepgram speech in and out)
+**Module:** M6 (FE-6, FE-7, FE-8), M1 (FR-16.6), M5 (FE-2), M9 (FE-2), M4   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/lib/voice.ts`, `src/lib/voice-text.ts`, `src/lib/reply-stream-client.ts`, `app/api/widget/[widgetId]/voice/route.ts`, `src/components/widget/use-voice-call.ts`, `src/components/widget/voice-call-panel.tsx`, migration `20261118090000_voice_calls` (`Chatbot.voiceEnabled`, `AiInteraction.firstAudioMs`); changed `src/lib/llm-runtime.ts`, `src/lib/widget-conversation.ts`, `src/lib/widget-session.ts`, `src/lib/rate-limit.ts`, `src/lib/escalation-summary.ts`, `src/lib/analytics.ts`, `app/api/widget/[widgetId]/route.ts`, `app/api/widget/[widgetId]/messages/route.ts`, `app/api/chatbots/route.ts`, `app/api/analytics/export/route.ts`, `app/dashboard/chatbots/[id]/page.tsx`, `src/components/widget/chatbot-widget-client.tsx`, `src/components/dashboard/{chatbot-configuration-workspace,agent-configuration-workspace,analytics-overview-workspace,chats-workspace}.tsx`, `.env.example`, `DEPLOYMENT.md`; tests `tests/unit/voice.test.ts` (UT-67), `tests/integration/voice.int.ts` (IT-31), `tests/ui/voice.spec.ts` (UI-VOI-01), `tests/ui/streaming.spec.ts`
+
+**Added:**
+- **A call button in the website chat** (chatbot setting "Voice calls", needs `DEEPGRAM_API_KEY`). The visitor talks; the agent answers out loud; the call panel shows the live transcript, "answered in … ms", mute and end.
+- **Speech in (FE-7):** the browser streams the microphone to Deepgram Nova-3 directly; a 300 ms pause (endpointing) or 1 s of silence (utterance end) ends the caller's turn. Talking over the agent stops it at once (barge-in).
+- **The answer** goes through the same streamed AI pipeline as the chat, told to reply in one to three short spoken sentences.
+- **Speech out (FE-8):** each finished phrase of the streamed reply is sent to Deepgram Aura-2 straight away, so the agent starts talking before the reply is complete; the raw audio is played back to back with Web Audio. Markdown, links and emojis are not read aloud.
+- **Latency (FE-6):** the time from the end of the caller's speech to the first audio is measured in the browser, stored (`AiInteraction.firstAudioMs`), shown in the call panel and in Analytics ("Voice: first audio … median · p95"), and exported in the CSV.
+- **Security:** the browser gets a 60-second Deepgram token from `POST /api/widget/{id}/voice`; the API key never leaves the server and no audio passes through AssistDesk. Starting calls (10 an hour per visitor) and renewing tokens are rate limited; latency reports are accepted only for replies in the caller's own call, once.
+- **Conversations:** every call is its own **VOICE** conversation under the same customer as their chat (M5 FE-2), shown in Chats with the voice icon and a "Voice call started" event; the escalation brief says it was a call and uses its transcript (M9 FE-2). An abandoned call closes after 10 minutes.
+
+**Fixed:** the streaming browser tests now check the stream itself (pieces sent by the server); the growing bubble is only expected when the model really sent several pieces (free models sometimes answer in one).
+
+**Notes / follow-ups:**
+- Needs a Deepgram account (free $200 credit, no card) and a key with Member permission, locally and on Railway. Tested so far with Deepgram simulated (unit, integration, and a browser test with simulated WebSockets and a generated microphone); a live test with the real key is next.
+- The < 500 ms target depends on the model: the free OpenRouter models took 0.9–6 s to their first word on calls. With a Groq key the first audio should come in well under a second.
+- OpenRouter's free daily quota ran out during testing (local and production share the key): add a Groq key or OpenRouter credits.
+
+---
+
 ## 2026-11-17 — Streaming follow-ups: keep-alive, first word in Analytics, lead form; cooldown fix
 **Module:** M5, M6 (FE-5), M4, M8   **Author:** Claude (with Muhammad Awais)
 **Files:** new `src/lib/http-keep-alive.ts`; dependency `undici@7`; changed `instrumentation.ts`, `src/lib/llm-runtime.ts`, `src/lib/agent-engine/model-chain.ts`, `src/lib/model-health.ts`, `src/lib/analytics.ts`, `src/components/dashboard/analytics-overview-workspace.tsx`, `app/api/analytics/export/route.ts`, `app/api/widget/[widgetId]/lead/route.ts`, `src/components/widget/chatbot-widget-client.tsx`; tests UT-66.14–66.15, IT-30.05–30.06, UI-STR-03–04

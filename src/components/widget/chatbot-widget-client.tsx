@@ -942,26 +942,16 @@ export function ChatbotWidgetClient({
     setLeadErrors({});
     setError("");
 
-    try {
-      const response = await widgetFetch(`/api/widget/${widgetId}/lead`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(skip ? { skip: true } : { values: leadFieldValues, consent: leadConsent }),
-      });
-      const data = (await response.json()) as {
-        error?: string;
-        fieldErrors?: Record<string, string>;
-        session?: WidgetSessionState | null;
-        messages?: WidgetMessage[];
-        contact?: { name: string | null; email: string | null; phone: string | null };
-      };
+    type LeadResult = {
+      error?: string;
+      fieldErrors?: Record<string, string>;
+      session?: WidgetSessionState | null;
+      messages?: WidgetMessage[];
+      contact?: { name: string | null; email: string | null; phone: string | null };
+    };
 
-      if (!response.ok) {
-        setLeadErrors(data.fieldErrors ?? {});
-        setError(data.error ?? "The form could not be sent. Please try again.");
-        return;
-      }
-
+    // The form was accepted: close it, remember the visitor's details, show the messages.
+    const applyLeadResult = (data: LeadResult) => {
       setLeadPrompt(null);
       setLeadValues({});
 
@@ -979,7 +969,60 @@ export function ChatbotWidgetClient({
       }
 
       setMessages((current) => mergeMessages(current, data.messages ?? []));
+    };
+
+    try {
+      const response = await widgetFetch(`/api/widget/${widgetId}/lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Token streaming: the answer to the question asked before the form streams in.
+          Accept: "application/x-ndjson, application/json",
+        },
+        body: JSON.stringify(skip ? { skip: true } : { values: leadFieldValues, consent: leadConsent }),
+      });
+
+      if (response.ok && response.body && (response.headers.get("Content-Type") ?? "").includes("application/x-ndjson")) {
+        let finished = false;
+        streamingRef.current = true;
+
+        await readReplyStream(response.body, (event) => {
+          if (event.type === "start") {
+            applyLeadResult(event as LeadResult);
+          } else if (event.type === "delta" && typeof event.text === "string") {
+            appendStreamText(event.text);
+          } else if (event.type === "reset") {
+            resetStreamText();
+          } else if (event.type === "done") {
+            finished = true;
+            stopStreaming();
+            applyLeadResult(event as LeadResult);
+          } else if (event.type === "error") {
+            stopStreaming();
+            setError(typeof event.error === "string" ? event.error : "The reply could not be finished.");
+          }
+        });
+
+        stopStreaming();
+
+        if (!finished) {
+          void loadHistory(); // The answer is still saved on the server.
+        }
+
+        return;
+      }
+
+      const data = (await response.json()) as LeadResult;
+
+      if (!response.ok) {
+        setLeadErrors(data.fieldErrors ?? {});
+        setError(data.error ?? "The form could not be sent. Please try again.");
+        return;
+      }
+
+      applyLeadResult(data);
     } catch {
+      stopStreaming();
       setError("The form could not be sent. Check your connection and try again.");
     } finally {
       setIsSubmittingLead(false);
@@ -1560,7 +1603,7 @@ export function ChatbotWidgetClient({
           </section>
         ) : null}
 
-        {isSubmittingLead ? (
+        {isSubmittingLead && !streamingReply ? (
           <div className="flex justify-start" aria-label={`${config.agentName} is typing`}>
             <div className="flex gap-1 rounded-[22px] bg-[#eef4ff] px-5 py-4">
               {[0, 150, 300].map((delay) => (

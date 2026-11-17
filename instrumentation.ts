@@ -6,6 +6,9 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Latency: reuse HTTPS connections to the AI and embedding providers between messages.
+    const { enableLongKeepAlive } = await import("./src/lib/http-keep-alive");
+    enableLongKeepAlive();
     const { startEmailPolling } = await import("./src/lib/email-mailbox");
     startEmailPolling();
     // Module 11: refused role checks are written to the audit log.

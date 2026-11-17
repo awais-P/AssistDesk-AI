@@ -133,7 +133,7 @@ The rest of the list (§3 and §4). Pick items as time allows.
 | FE-2 | Business picks the model | ✅ per agent, own key | — |
 | FE-3 | Feedback loop | ✅ 👍/👎 → Improve → knowledge base | Optional: use feedback automatically (e.g. prefer the better-rated model) |
 | FE-4 | Keep knowledge updated from new training data | ◐ | Schedule the knowledge recovery job (P1 #5) |
-| FE-5 | Faster, more relevant responses | ✅ token streaming, first-word time measured and shown, busy-model cooldown, retired-model memory, cached question embeddings, hybrid retrieval | Optional: longer HTTP keep-alive (`undici`), a Groq key in production |
+| FE-5 | Faster, more relevant responses | ✅ token streaming (chat, Playground, after the lead form), first-word time measured and shown in Playground and Analytics, 40 s HTTPS keep-alive, busy-model cooldown, retired-model memory, cached question embeddings, hybrid retrieval | Optional: a Groq key in production (the free OpenRouter models take 0.7–10 s to the first word) |
 | FE-6 | High-speed inference (Groq/vLLM), voice answer < 500 ms | ◐ Groq is the default managed model | Voice pipeline and a measured first-audio time (P2 #12) |
 | FE-7 | Voice Activity Detection | ✗ | Deepgram streaming with VAD/endpointing ⚠️ (P2 #12) |
 | FE-8 | WebSocket streaming TTS that starts before the LLM finishes | ✗ | Streaming TTS (Cartesia/ElevenLabs/Deepgram Aura) fed by streamed tokens ⚠️ (P2 #12) |

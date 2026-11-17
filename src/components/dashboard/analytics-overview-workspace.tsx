@@ -660,6 +660,14 @@ export function AnalyticsOverviewWorkspace({ data, canExport }: AnalyticsOvervie
             kpis.aiReplies > 0 ? (
               <>
                 p95 {formatMs(kpis.p95ResponseMs)} · {formatNumber(kpis.aiReplies)} AI {kpis.aiReplies === 1 ? "reply" : "replies"}
+                {kpis.medianFirstWordMs !== null ? (
+                  <span
+                    className="mt-1 block"
+                    title={`Time until the first word of a streamed reply appeared (${formatNumber(kpis.streamedReplies)} streamed ${kpis.streamedReplies === 1 ? "reply" : "replies"})`}
+                  >
+                    First word {formatMs(kpis.medianFirstWordMs)} median · p95 {formatMs(kpis.p95FirstWordMs)}
+                  </span>
+                ) : null}
               </>
             ) : (
               "No AI replies in this period."
@@ -927,6 +935,9 @@ export function AnalyticsOverviewWorkspace({ data, canExport }: AnalyticsOvervie
                   <th scope="col" className="px-3 py-2 text-right font-medium">Replies</th>
                   <th scope="col" className="px-3 py-2 text-right font-medium">Avg response</th>
                   <th scope="col" className="px-3 py-2 text-right font-medium">p95</th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium" title="Median time until the first word of a streamed reply">
+                    First word
+                  </th>
                   <th scope="col" className="px-3 py-2 text-right font-medium">From knowledge</th>
                   <th scope="col" className="px-3 py-2 text-right font-medium">Fallback</th>
                   <th scope="col" className="px-3 py-2 text-right font-medium">Helpful</th>
@@ -954,6 +965,7 @@ export function AnalyticsOverviewWorkspace({ data, canExport }: AnalyticsOvervie
                     <td className="px-3 py-2.5 text-right text-slate-200">{formatNumber(agent.replies)}</td>
                     <td className="px-3 py-2.5 text-right text-slate-200">{formatMs(agent.avgResponseMs)}</td>
                     <td className="px-3 py-2.5 text-right text-slate-200">{formatMs(agent.p95ResponseMs)}</td>
+                    <td className="px-3 py-2.5 text-right text-slate-200">{formatMs(agent.medianFirstWordMs)}</td>
                     <td className="px-3 py-2.5 text-right text-slate-200">{formatPercent(agent.groundedRate)}</td>
                     <td className="px-3 py-2.5 text-right text-slate-200">{formatPercent(agent.fallbackRate)}</td>
                     <td className="px-3 py-2.5 text-right text-slate-200">{formatPercent(agent.helpfulRate)}</td>

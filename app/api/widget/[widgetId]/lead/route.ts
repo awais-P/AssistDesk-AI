@@ -10,6 +10,7 @@ import {
   hashClientIp,
   tooManyRequests,
 } from "@/src/lib/rate-limit";
+import { forwardReply, replyStreamResponse, wantsReplyStream } from "@/src/lib/reply-stream-response";
 import { appendSessionMessage, recordSessionEvent } from "@/src/lib/session-lifecycle";
 import { respondToVisitor, serializeWidgetMessage } from "@/src/lib/widget-conversation";
 import { loadWidgetSession, readWidgetSessionToken, serializeWidgetSession } from "@/src/lib/widget-session";
@@ -77,6 +78,36 @@ export async function POST(request: Request, context: WidgetLeadRouteContext) {
   const pendingQuestion = lastMessages[0]?.sender === "USER" ? lastMessages[0].content : null;
   const wasPrompted = session.leadState === "PROMPTED";
 
+  /**
+   * Answers the question the visitor asked before the form appeared (if any) and returns
+   * the result. Token streaming: a widget that asks for it gets the answer piece by piece.
+   */
+  const finish = async (
+    shown: Array<Parameters<typeof serializeWidgetMessage>[0]>,
+    extra: Record<string, unknown>,
+  ) => {
+    const question = wasPrompted ? pendingQuestion : null;
+    const result = async (reply: Awaited<ReturnType<typeof respondToVisitor>> | null) => {
+      const fresh = await loadWidgetSession(chatbot, readWidgetSessionToken(request));
+      return {
+        session: fresh ? serializeWidgetSession(fresh) : null,
+        messages: [...shown, ...(reply?.messages ?? [])].map(serializeWidgetMessage),
+        waitingForHuman: reply?.waitingForHuman ?? false,
+        ...extra,
+      };
+    };
+
+    if (question && wantsReplyStream(request)) {
+      return replyStreamResponse(async (send) => {
+        send({ type: "start", messages: shown.map(serializeWidgetMessage), ...extra });
+        const reply = await respondToVisitor(chatbot, session.id, question, forwardReply(send));
+        send({ type: "done", ...(await result(reply)) });
+      }, "The assistant could not finish its reply. Please ask your question again.");
+    }
+
+    return NextResponse.json(await result(question ? await respondToVisitor(chatbot, session.id, question) : null));
+  };
+
   if (body.skip === true) {
     if (!form.allowSkip) {
       return NextResponse.json({ error: "Please fill in the form to continue." }, { status: 400 });
@@ -91,15 +122,7 @@ export async function POST(request: Request, context: WidgetLeadRouteContext) {
       detail: "The visitor skipped the lead form.",
     });
 
-    const reply = wasPrompted && pendingQuestion ? await respondToVisitor(chatbot, session.id, pendingQuestion) : null;
-    const fresh = await loadWidgetSession(chatbot, readWidgetSessionToken(request));
-
-    return NextResponse.json({
-      session: fresh ? serializeWidgetSession(fresh) : null,
-      messages: (reply?.messages ?? []).map(serializeWidgetMessage),
-      waitingForHuman: reply?.waitingForHuman ?? false,
-      lead: null,
-    });
+    return finish([], { lead: null });
   }
 
   const rawValues =
@@ -134,13 +157,7 @@ export async function POST(request: Request, context: WidgetLeadRouteContext) {
     sender: "SYSTEM",
     content: formatSuccessMessage(form, validation.values.name),
   });
-  const reply = wasPrompted && pendingQuestion ? await respondToVisitor(chatbot, session.id, pendingQuestion) : null;
-  const fresh = await loadWidgetSession(chatbot, readWidgetSessionToken(request));
-
-  return NextResponse.json({
-    session: fresh ? serializeWidgetSession(fresh) : null,
-    messages: [thanks, ...(reply?.messages ?? [])].map(serializeWidgetMessage),
-    waitingForHuman: reply?.waitingForHuman ?? false,
+  return finish([thanks], {
     lead: { id: lead.id, created },
     // What the widget should remember locally for the visitor's contact card.
     contact: { name: validation.values.name, email: validation.values.email, phone: validation.values.phone },

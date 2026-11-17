@@ -18,6 +18,21 @@ Entry template:
 
 ---
 
+## 2026-11-17 — Streaming follow-ups: keep-alive, first word in Analytics, lead form; cooldown fix
+**Module:** M5, M6 (FE-5), M4, M8   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/lib/http-keep-alive.ts`; dependency `undici@7`; changed `instrumentation.ts`, `src/lib/llm-runtime.ts`, `src/lib/agent-engine/model-chain.ts`, `src/lib/model-health.ts`, `src/lib/analytics.ts`, `src/components/dashboard/analytics-overview-workspace.tsx`, `app/api/analytics/export/route.ts`, `app/api/widget/[widgetId]/lead/route.ts`, `src/components/widget/chatbot-widget-client.tsx`; tests UT-66.14–66.15, IT-30.05–30.06, UI-STR-03–04
+
+**Added:**
+- **Longer HTTPS keep-alive (40 s)** for the calls to the AI and embedding providers, set once at server start. Node closed idle connections after 4 s, so after a normal pause between messages every call paid a new TLS handshake. Measured against OpenRouter: after 6 / 20 / 45 s idle, 780 / 916 / 777 ms before and 457 / 460 / 447 ms after (no failed reuse).
+- **Analytics shows the time to the first word:** median and p95 under "Avg. response time", a "First word" column per agent, and a "First word (ms)" column in the interactions CSV. Only streamed replies count; WhatsApp, Slack and email replies have no first word.
+- **The answer after the lead form streams too:** when the visitor submits or skips the form, the answer to the question they asked before it appeared arrives word by word.
+
+**Fixed:**
+- **No AI replies while every keyed model was cooling down.** If all models the server has a key for were rate-limited at the same time, the "never empty the chain" rule kept only the keyless ones (Groq and Google on Railway), so nothing was called and visitors got the knowledge-base fallback for up to 2 minutes. Keyless models are now dropped first (UT-66.15 fails without the fix).
+- The busy and retired model lists are shared by every route in the server process; before, each route could keep its own copy and re-discover the same 429.
+
+---
+
 ## 2026-11-17 — Token streaming of AI replies, with latency work
 **Module:** M5, M6 (FE-5), M2, M7   **Author:** Claude (with Muhammad Awais)
 **Files:** new `src/lib/llm-stream.ts`, `src/lib/reply-stream-response.ts`, `src/lib/streaming-markdown.ts`, migration `20261117090000_ai_first_token_latency` (`AiInteraction.firstTokenMs`); changed `src/lib/llm-runtime.ts`, `src/lib/agent-engine/{model-chain,graph,run-agent}.ts`, `src/lib/conversation-runtime.ts`, `src/lib/widget-conversation.ts`, `src/lib/model-health.ts`, `src/lib/embeddings.ts`, `src/lib/knowledge-indexing.ts`, `src/lib/knowledge-runtime.ts`, `src/lib/agent-config.ts`, `app/api/widget/[widgetId]/messages/route.ts`, `app/api/ai-agents/[id]/playground/route.ts`, `src/components/widget/chatbot-widget-client.tsx`, `src/components/dashboard/agent-configuration-workspace.tsx`; tests `tests/unit/token-streaming.test.ts` (UT-66), `tests/integration/token-streaming.int.ts` (IT-30), `tests/ui/streaming.spec.ts` (UI-STR-01/02), `tests/unit/tools.test.ts` (UT-45.01), `tests/ui/chats.spec.ts`, `tests/ui/p1-fixes.spec.ts`

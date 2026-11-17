@@ -245,7 +245,7 @@ The widget shows the server's "please wait N seconds" message and disables Send 
 - Every stream **also polls the database every 2 s**, so on a multi-instance deployment (where the event bus is per instance) updates still arrive within about 2 s. Streams end after 55 s and EventSource reconnects automatically (serverless-friendly). After repeated failures the widget falls back to polling every 4 s and the dashboard every 15 s.
 - Measured: a team reply appeared in the widget **2 ms** (API test) and **52 ms** (browser test) after it was posted.
 - **AI replies stream word by word (17 Nov 2026).** The widget sends its message with `Accept: application/x-ndjson`; `POST /api/widget/{id}/messages` then answers with one JSON object per line: `start` (message saved, session token), `delta` (the next piece of the reply), `reset` (discard the pieces: the next model starts again), and `done` (the saved messages, the same fields as the JSON reply, plus `firstTokenMs`). The pieces come straight from the provider, not through the event bus, so nothing waits for a database write or a poll. The finished message is still saved and published as usual, so the team sees it and a visitor who reloads gets it.
-- Time to the first word is stored per reply (`AiInteraction.firstTokenMs`) and logged (`[latency]`).
+- Time to the first word is stored per reply (`AiInteraction.firstTokenMs`), logged (`[latency]`) and shown in Analytics (median and p95, per agent, CSV). The answer after the lead form (`POST /api/widget/{id}/lead`) streams the same way.
 
 ---
 
@@ -365,7 +365,6 @@ The widget shows the server's "please wait N seconds" message and disables Send 
 ## 14. Limitations and future work
 
 - **Voice** channel (Module 3): only the policy exists. It needs a Deepgram/Vapi adapter calling the same pipeline.
-- **Streaming after the lead form:** when the visitor submits or skips the lead form, the AI's answer still arrives in one piece.
 - **Multi-instance real time:** the event bus is per instance, and other instances fall back to 2 s polling. Swap `realtime.ts` for Redis or Postgres `LISTEN/NOTIFY` when scaling out.
 - **Unverified web identity:** mitigated by redaction and labelling. Stronger verification (email OTP before linking) is future work.
 - Email sender addresses are trusted as-is (no SPF/DKIM check). AI replies still go only to the real address.

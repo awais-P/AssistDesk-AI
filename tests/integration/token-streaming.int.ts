@@ -18,6 +18,8 @@ vi.mock("@/src/lib/auth", async (original) => ({
 }));
 
 const messagesRoute = await import("@/app/api/widget/[widgetId]/messages/route");
+const leadRoute = await import("@/app/api/widget/[widgetId]/lead/route");
+const { loadAnalyticsDashboard, parseAnalyticsRange } = await import("@/src/lib/analytics");
 const playgroundRoute = await import("@/app/api/ai-agents/[id]/playground/route");
 
 const suffix = Date.now().toString(36);
@@ -174,6 +176,65 @@ describe("IT-30 token streaming of AI replies (M5 / M6 FE-5)", () => {
     const reply = (done.messages as Array<{ sender: string; content: string }>).find((message) => message.sender === "AI");
     expect(reply?.content.length).toBeGreaterThan(0);
     expect(done.firstTokenMs).toBeNull();
+  });
+
+  it("IT-30.05 after the lead form, the answer to the visitor's earlier question streams too", async () => {
+    provider.pieces = ["Yes, bulk orders ", "get a 10% discount."];
+    // The visitor asked, the lead form appeared and the AI waited (leadState PROMPTED).
+    await prisma.chatbot.update({ where: { widgetId }, data: { leadForm: { enabled: true, allowSkip: true, fields: [{ key: "email", label: "Email", type: "email", required: true }] } } });
+    const first = await readEvents(await sendToWidget(widgetRequest("Do you give discounts on bulk orders?")));
+    const sessionToken = first[0].sessionToken as string;
+    const sessionId = (first[0].session as { id: string }).id;
+    await prisma.chatMessage.deleteMany({ where: { sessionId, sender: { not: "USER" } } });
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { leadState: "PROMPTED" } });
+
+    const response = await leadRoute.POST(
+      new Request(`http://localhost/api/widget/${widgetId}/lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/x-ndjson, application/json",
+          [WIDGET_TOKEN_HEADER]: createWidgetToken(widgetId, "shop.example.com"),
+          "x-assistdesk-session-token": sessionToken,
+        },
+        body: JSON.stringify({ skip: true }),
+      }),
+      { params: Promise.resolve({ widgetId }) },
+    );
+
+    expect(response.headers.get("Content-Type")).toContain("application/x-ndjson");
+    const events = await readEvents(response);
+    expect(events[0]).toMatchObject({ type: "start", lead: null });
+    expect(events.filter((event) => event.type === "delta").map((event) => event.text).join("")).toBe("Yes, bulk orders get a 10% discount.");
+    const done = events.at(-1)!;
+    expect(done.type).toBe("done");
+    expect((done.messages as Array<{ sender: string; content: string }>).map((message) => message.content)).toEqual(["Yes, bulk orders get a 10% discount."]);
+    expect(await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { leadState: true } })).toEqual({ leadState: "SKIPPED" });
+    await prisma.chatbot.update({ where: { widgetId }, data: { leadForm: { enabled: false } } });
+  });
+
+  it("IT-30.06 Analytics reports the median and p95 time to the first word, per workspace and per agent", async () => {
+    const now = new Date();
+    const range = parseAnalyticsRange(new URLSearchParams("range=24h"), "UTC", now);
+    await prisma.aiInteraction.deleteMany({ where: { workspaceId } });
+    await prisma.aiInteraction.createMany({
+      data: [400, 500, 600, 700, 2_000].map((firstTokenMs, index) => ({
+        workspaceId,
+        agentId,
+        channel: "WEB_WIDGET" as const,
+        question: `q${index}`,
+        latencyMs: firstTokenMs + 800,
+        firstTokenMs,
+        createdAt: new Date(now.getTime() - (index + 1) * 60_000),
+      })),
+    });
+    // A reply that was not streamed (WhatsApp) has no first-word time and is left out.
+    await prisma.aiInteraction.create({ data: { workspaceId, agentId, channel: "WHATSAPP", question: "wa", latencyMs: 3_000, createdAt: new Date(now.getTime() - 30_000) } });
+
+    const dashboard = await loadAnalyticsDashboard(workspaceId, range);
+    expect(dashboard.kpis).toMatchObject({ medianFirstWordMs: 600, streamedReplies: 5, aiReplies: 6 });
+    expect(dashboard.kpis.p95FirstWordMs).toBeGreaterThanOrEqual(700);
+    expect(dashboard.agents.find((agent) => agent.id === agentId)?.medianFirstWordMs).toBe(600);
   });
 
   it("IT-30.04 the Playground streams too and reports the time to the first word", async () => {

@@ -1,5 +1,16 @@
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const undici = vi.hoisted(() => ({ agents: [] as Array<Record<string, unknown>>, dispatchers: [] as unknown[] }));
+
+vi.mock("undici", () => ({
+  Agent: class {
+    constructor(options: Record<string, unknown>) {
+      undici.agents.push(options);
+    }
+  },
+  setGlobalDispatcher: (dispatcher: unknown) => undici.dispatchers.push(dispatcher),
+}));
 import { runAgentGraph } from "@/src/lib/agent-engine/graph";
 import type { ToolCallingModel } from "@/src/lib/agent-engine/model-chain";
 import { clearQueryEmbeddingCacheForTests, embedQuery } from "@/src/lib/embeddings";
@@ -14,6 +25,7 @@ import {
 } from "@/src/lib/llm-stream";
 import { replyStreamResponse } from "@/src/lib/reply-stream-response";
 import { closeOpenMarkdown } from "@/src/lib/streaming-markdown";
+import { KEEP_ALIVE_MS, enableLongKeepAlive } from "@/src/lib/http-keep-alive";
 import {
   COOLDOWN_MS,
   isModelCooling,
@@ -350,5 +362,35 @@ describe("UT-66 token streaming of AI replies (M5 / M6 FE-5)", () => {
     expect(closeOpenMarkdown("See [our policy](https://exa")).toBe("See our policy");
     expect(closeOpenMarkdown("See [our pol")).toBe("See our pol");
     expect(closeOpenMarkdown("See [our policy](https://example.com).")).toBe("See [our policy](https://example.com).");
+  });
+
+  it("UT-66.15 when every model with a key is cooling down, they are still tried (keyless ones never are)", async () => {
+    vi.stubEnv("ASSISTDESK_DEFAULT_OPENROUTER_API_KEY", "fake-openrouter-key-for-tests");
+    vi.stubEnv("ASSISTDESK_DEFAULT_GROQ_API_KEY", "");
+    vi.stubEnv("ASSISTDESK_DEFAULT_GOOGLE_API_KEY", "");
+    resetModelHealthForTests();
+    markModelCooling("openrouter/google/gemma-4-31b-it:free", "429");
+    markModelCooling("openrouter/openrouter/free", "429");
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(sse([openAiDelta("Still answering."), "data: [DONE]\n\n"]));
+    const sink = collect();
+
+    const result = await generateAgentReply({
+      agent: { provider: "Default", model: "groq/llama-3.3-70b-versatile", apiKey: null, systemPrompt: null, confidenceThreshold: 0.5 },
+      question: "Are you there?",
+      sources: [],
+      stream: sink.stream,
+    });
+
+    expect(fetch).toHaveBeenCalled();
+    expect(result).toMatchObject({ reply: "Still answering.", usedFallback: false });
+    resetModelHealthForTests();
+  });
+
+  it("UT-66.14 outgoing HTTPS connections are kept for 40 s, so the next message skips a new handshake", () => {
+    enableLongKeepAlive();
+
+    expect(KEEP_ALIVE_MS).toBe(40_000);
+    expect(undici.agents.at(-1)).toMatchObject({ keepAliveTimeout: 40_000 });
+    expect(undici.dispatchers).toHaveLength(1);
   });
 });

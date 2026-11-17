@@ -511,7 +511,11 @@ async function callManagedChain(model: string, prompt: ChatPrompt, stream?: Repl
   const deadline = Date.now() + MANAGED_CHAIN_BUDGET_MS;
   const errors: string[] = [];
 
-  for (const candidate of withoutGoneModels(getManagedFallbackModels(model), (item) => item)) {
+  // Only models this server has a key for: otherwise, when every keyed model is cooling
+  // down, the "never empty" rule would keep only keyless ones and nothing would be called.
+  const usable = getManagedFallbackModels(model).filter((candidate) => resolveManagedModel(candidate).apiKey);
+
+  for (const candidate of withoutGoneModels(usable, (item) => item)) {
     const resolved = resolveManagedModel(candidate);
     const remaining = deadline - Date.now();
 

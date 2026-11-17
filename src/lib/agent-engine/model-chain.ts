@@ -170,7 +170,10 @@ export function buildModelChain(agent: AgentRuntimeConfig): ToolCallingModel[] {
   if (agent.provider === "Default" || hasManagedProviderKey()) {
     const start = agent.provider === "Default" ? agent.model : getManagedFallbackModels("groq/llama-3.3-70b-versatile")[0];
 
-    for (const candidate of withoutGoneModels(getManagedFallbackModels(start), (model) => model)) {
+    // Keyless models are dropped first, so cooling-down filtering never leaves only them.
+    const usable = getManagedFallbackModels(start).filter((candidate) => resolveManagedModel(candidate).apiKey);
+
+    for (const candidate of withoutGoneModels(usable, (model) => model)) {
       const resolved = resolveManagedModel(candidate);
 
       if (resolved.apiKey) {

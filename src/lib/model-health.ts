@@ -10,8 +10,17 @@
 
 const RETIRED_TTL_MS = 6 * 60 * 60 * 1000;
 export const COOLDOWN_MS = 2 * 60 * 1000;
-const retired = new Map<string, { until: number; reason: string }>();
-const cooling = new Map<string, { until: number; reason: string }>();
+type HealthEntry = { until: number; reason: string };
+
+declare global {
+  var assistdeskModelHealth: { retired: Map<string, HealthEntry>; cooling: Map<string, HealthEntry> } | undefined;
+}
+
+// One shared copy per server process: every route (widget, Playground, email, channels)
+// must see the same list, also where the bundler gives each route its own module copy.
+const health = (global.assistdeskModelHealth ??= { retired: new Map(), cooling: new Map() });
+const retired = health.retired;
+const cooling = health.cooling;
 
 /** Errors that mean "this model is gone" rather than "busy right now" (429, timeouts). */
 export function isModelGoneError(message: string) {
@@ -31,7 +40,7 @@ export function markModelCooling(modelId: string, reason: string, now = Date.now
   cooling.set(modelId, { until: now + COOLDOWN_MS, reason: reason.slice(0, 200) });
 }
 
-function isListed(list: Map<string, { until: number }>, modelId: string, now: number) {
+function isListed(list: Map<string, HealthEntry>, modelId: string, now: number) {
   const entry = list.get(modelId);
 
   if (!entry) {

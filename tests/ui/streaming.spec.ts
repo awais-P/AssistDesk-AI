@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import pg from "pg";
 import { EMBEDDING_PAGE, WIDGET_ID, newVisitorContext, openDashboardPage, sendVisitorMessage, waitForHydration } from "./helpers";
 
 /**
@@ -59,5 +60,50 @@ test.describe("Token streaming (M5, M6 FE-5)", () => {
 
     await expect(page.getByText(/^First word \d/).last()).toBeVisible({ timeout: 120_000 });
     await expect(page.getByText(/^Complete \d/).last()).toBeVisible();
+  });
+
+  test("UI-STR-03 Analytics shows the median time to the first word - M6 FE-5", async ({ page }) => {
+    await openDashboardPage(page, "/dashboard/analytics", /Analytics/);
+    await expect(page.getByText(/^First word .+ median · p95 /).first()).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "First word" })).toBeVisible();
+  });
+
+  test("UI-STR-04 after the lead form is skipped, the answer to the earlier question streams in", async ({ browser }) => {
+    test.setTimeout(180_000);
+    // The demo chatbot's lead form is switched on for this test and restored afterwards.
+    const db = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
+    await db.connect();
+    const [{ leadForm: original }] = (await db.query('select "leadForm" from "Chatbot" where "widgetId" = $1', [WIDGET_ID])).rows;
+    const form = {
+      enabled: true,
+      trigger: "ON_INTENT",
+      allowSkip: true,
+      fields: [
+        { key: "company", label: "Company", type: "text", required: true },
+        { key: "email", label: "Email", type: "email", required: false },
+      ],
+    };
+    await db.query('update "Chatbot" set "leadForm" = $1 where "widgetId" = $2', [JSON.stringify(form), WIDGET_ID]);
+
+    try {
+      const context = await newVisitorContext(browser, EMBEDDING_PAGE);
+      const widget = await context.newPage();
+      await widget.goto(`/widget/${WIDGET_ID}`, { referer: EMBEDDING_PAGE });
+      await waitForHydration(widget);
+
+      // Buying intent: the form appears and the AI waits.
+      await sendVisitorMessage(widget, "Can I get a quote for a bulk order of 50 kettles?");
+      await expect(widget.getByRole("region", { name: "Contact form" }).or(widget.getByLabel("Contact form"))).toBeVisible({ timeout: 30_000 });
+
+      await watchStreamingBubble(widget);
+      await widget.getByRole("button", { name: "Skip" }).click();
+      await expect(widget.getByRole("group", { name: "Was this answer helpful?" }).first()).toBeVisible({ timeout: 120_000 });
+      await expect(widget.locator('[aria-busy="true"]')).toHaveCount(0);
+      expect((await streamedLengths(widget)).length).toBeGreaterThan(0);
+      await context.close();
+    } finally {
+      await db.query('update "Chatbot" set "leadForm" = $1 where "widgetId" = $2', [original === null ? null : JSON.stringify(original), WIDGET_ID]);
+      await db.end();
+    }
   });
 });

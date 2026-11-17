@@ -29,6 +29,7 @@ Production runs from the **`main`** branch on [Railway](https://railway.com): on
 | Variable | When |
 |---|---|
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Billing (Module 3). Use Stripe **test** keys for the FYP: payments work with Stripe's test cards. Without them payments are off and workspaces have no plan limits. Webhook endpoint: `https://<your address>/api/billing/webhook` with the events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed` and `invoice.finalized`. |
+| `DEEPGRAM_API_KEY` | Voice calls in the website chat (Module 6). deepgram.com → free account ($200 credit, no card) → API key with **Member** permission. Then switch on **Voice calls** in the chatbot's settings. |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Avatars and chat attachments in Cloudinary instead of the volume |
 | `PINECONE_API_KEY`, `PINECONE_INDEX`, `FIRECRAWL_API_KEY` | Pinecone vectors and Firecrawl crawling (Module 10) |
 | `NODE_OPTIONS` = `--max-old-space-size=4096` | Only if the build fails with "JavaScript heap out of memory" |

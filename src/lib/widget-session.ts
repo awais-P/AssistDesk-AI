@@ -101,11 +101,14 @@ export async function getSessionForMessage({
   token,
   identity,
   clientIpHash,
+  channel = "WEB_WIDGET",
 }: {
   chatbot: WidgetChatbot;
   token: string | null;
   identity: ContactIdentity;
   clientIpHash: string;
+  /** Channel of a conversation started here: the website chat or a voice call. */
+  channel?: "WEB_WIDGET" | "VOICE";
 }): Promise<SessionForMessage> {
   const existing = await loadWidgetSession(chatbot, token);
   const contact = await resolveContact(chatbot.workspaceId, identity, "WEB_WIDGET");
@@ -155,7 +158,7 @@ export async function getSessionForMessage({
 
   const { session, token: newToken } = await startSession({
     workspaceId: chatbot.workspaceId,
-    channel: "WEB_WIDGET",
+    channel,
     chatbotId: chatbot.id,
     contactId: contact?.id ?? existing?.contactId ?? null,
     customerName: identity.name ?? existing?.customerName ?? null,

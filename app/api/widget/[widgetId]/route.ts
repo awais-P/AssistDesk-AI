@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isVoiceConfigured } from "@/src/lib/voice";
 import { authorizeWidgetRequest } from "@/src/lib/chatbot-widget";
 import { parseLeadForm, publicLeadForm } from "@/src/lib/lead-form";
 import { isWorkspaceOnline } from "@/src/lib/presence";
@@ -39,6 +40,8 @@ export async function GET(request: Request, context: WidgetRouteContext) {
       requireEmail: chatbot.requireEmail,
       requirePhone: chatbot.requirePhone,
       emailNotifications: chatbot.emailNotifications,
+      // Module 6 / FR-16.6: the call button (needs the switch and a Deepgram key on the server).
+      voiceEnabled: chatbot.voiceEnabled && isVoiceConfigured(),
       // Module 5: the widget shows when an idle conversation will end.
       sessionTimeoutMinutes: clampSessionTimeoutMinutes(chatbot.sessionTimeoutMinutes),
       // Module 8: the inline lead form (fields and texts only).

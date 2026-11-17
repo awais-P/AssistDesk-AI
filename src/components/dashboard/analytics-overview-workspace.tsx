@@ -668,6 +668,14 @@ export function AnalyticsOverviewWorkspace({ data, canExport }: AnalyticsOvervie
                     First word {formatMs(kpis.medianFirstWordMs)} median · p95 {formatMs(kpis.p95FirstWordMs)}
                   </span>
                 ) : null}
+                {kpis.medianFirstAudioMs !== null ? (
+                  <span
+                    className="mt-1 block"
+                    title={`Voice calls: from the end of the caller's speech until the answer started playing (${formatNumber(kpis.voiceReplies)} measured ${kpis.voiceReplies === 1 ? "reply" : "replies"})`}
+                  >
+                    Voice: first audio {formatMs(kpis.medianFirstAudioMs)} median · p95 {formatMs(kpis.p95FirstAudioMs)}
+                  </span>
+                ) : null}
               </>
             ) : (
               "No AI replies in this period."

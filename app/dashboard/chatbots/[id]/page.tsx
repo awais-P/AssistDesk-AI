@@ -3,6 +3,7 @@ import { ChatbotConfigurationWorkspace } from "@/src/components/dashboard/chatbo
 import { getCurrentSession } from "@/src/lib/auth";
 import { parseLeadForm } from "@/src/lib/lead-form";
 import { prisma } from "@/src/lib/prisma";
+import { isVoiceConfigured } from "@/src/lib/voice";
 
 type ChatbotDetailPageProps = {
   params: Promise<{
@@ -83,8 +84,10 @@ export default async function ChatbotDetailPage({
         requireEmail: chatbot.requireEmail,
         requirePhone: chatbot.requirePhone,
         emailNotifications: chatbot.emailNotifications,
+        voiceEnabled: chatbot.voiceEnabled,
         leadForm: parseLeadForm(chatbot.leadForm),
       }}
+      voiceAvailable={isVoiceConfigured()}
       agentOptions={agents.map((agent) => ({
         id: agent.id,
         name: agent.name,

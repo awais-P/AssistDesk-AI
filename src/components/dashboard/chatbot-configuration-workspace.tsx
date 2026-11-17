@@ -74,9 +74,12 @@ type ChatbotConfigurationWorkspaceProps = {
     requireEmail: boolean;
     requirePhone: boolean;
     emailNotifications: boolean;
+    voiceEnabled: boolean;
     leadForm: LeadFormConfig;
   };
   agentOptions: AgentOption[];
+  /** The server has a Deepgram key, so voice calls can work. */
+  voiceAvailable?: boolean;
 };
 
 function AccordionSection({
@@ -161,6 +164,7 @@ function ToggleRow({
 export function ChatbotConfigurationWorkspace({
   chatbot,
   agentOptions,
+  voiceAvailable = false,
 }: ChatbotConfigurationWorkspaceProps) {
   const router = useRouter();
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -208,6 +212,7 @@ export function ChatbotConfigurationWorkspace({
   const [requireName, setRequireName] = useState(chatbot.requireName);
   const [requireEmail, setRequireEmail] = useState(chatbot.requireEmail);
   const [requirePhone, setRequirePhone] = useState(chatbot.requirePhone);
+  const [voiceEnabled, setVoiceEnabled] = useState(chatbot.voiceEnabled);
   const [emailNotifications, setEmailNotifications] = useState(
     chatbot.emailNotifications,
   );
@@ -441,6 +446,7 @@ export function ChatbotConfigurationWorkspace({
           requireEmail,
           requirePhone,
           emailNotifications,
+          voiceEnabled,
           leadForm: {
             ...leadForm,
             consentText: leadForm.consentText?.trim() || null,
@@ -1295,6 +1301,16 @@ export function ChatbotConfigurationWorkspace({
                 description="Ask visitors for their email so the team can reply later, and email your team when a customer starts a chat while no one is online."
                 checked={emailNotifications}
                 onChange={setEmailNotifications}
+              />
+              <ToggleRow
+                title="Voice calls"
+                description={
+                  voiceAvailable
+                    ? "Show a call button in the chat: visitors talk to the agent and hear its answers. Calls appear in Chats as voice conversations with a transcript."
+                    : "Show a call button in the chat. Needs a Deepgram API key on the server (DEEPGRAM_API_KEY); until it is set, the button stays hidden."
+                }
+                checked={voiceEnabled}
+                onChange={setVoiceEnabled}
               />
             </AccordionSection>
           </div>

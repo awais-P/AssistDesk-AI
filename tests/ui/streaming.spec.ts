@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Response } from "@playwright/test";
 import pg from "pg";
 import { EMBEDDING_PAGE, WIDGET_ID, newVisitorContext, openDashboardPage, sendVisitorMessage, waitForHydration } from "./helpers";
 
@@ -26,6 +26,32 @@ async function watchStreamingBubble(page: Page) {
 const streamedLengths = (page: Page) =>
   page.evaluate(() => (window as unknown as { streamedLengths: number[] }).streamedLengths);
 
+/** The pieces the server streamed in a reply (one JSON object per line). */
+async function streamedPieces(response: Response) {
+  expect(response.headers()["content-type"]).toContain("application/x-ndjson");
+  const events = (await response.text())
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as { type: string });
+  expect(events.at(-1)?.type).toBe("done");
+  return events.filter((event) => event.type === "delta").length;
+}
+
+/**
+ * What the page showed while the reply streamed. A free model sometimes sends the whole
+ * answer in one piece (nothing to animate); with several pieces the bubble must grow.
+ */
+async function expectGrowingBubble(page: Page, pieces: number) {
+  const lengths = await streamedLengths(page);
+  test.info().annotations.push({ type: "streamed", description: `${pieces} pieces; bubble lengths ${lengths.slice(0, 12).join(", ")}` });
+
+  if (pieces >= 3) {
+    expect(lengths.length).toBeGreaterThan(0);
+    // (It can shrink once if a model fails mid-reply and the next one starts again.)
+    expect(Math.max(...lengths)).toBeGreaterThanOrEqual(lengths[0]);
+  }
+}
+
 test.describe("Token streaming (M5, M6 FE-5)", () => {
   test("UI-STR-01 the website chat shows the reply while it is written, then the saved answer", async ({ browser }) => {
     test.setTimeout(180_000);
@@ -35,17 +61,14 @@ test.describe("Token streaming (M5, M6 FE-5)", () => {
     await waitForHydration(widget);
     await watchStreamingBubble(widget);
 
+    const reply = widget.waitForResponse((response) => response.url().endsWith("/messages") && response.request().method() === "POST", { timeout: 150_000 });
     await sendVisitorMessage(widget, "Please explain your delivery times and the return policy in detail.");
+    const pieces = await streamedPieces(await reply);
     // The finished answer replaces the growing bubble and gets its 👍/👎 buttons.
     await expect(widget.getByRole("group", { name: "Was this answer helpful?" }).first()).toBeVisible({ timeout: 120_000 });
     await expect(widget.locator('[aria-busy="true"]')).toHaveCount(0);
-
-    const lengths = await streamedLengths(widget);
-    // Free models occasionally answer in one piece; normally the bubble grows several times.
-    // (It can shrink once if a model fails mid-reply and the next one starts again.)
-    expect(lengths.length).toBeGreaterThan(0);
-    expect(Math.max(...lengths)).toBeGreaterThanOrEqual(lengths[0]);
-    test.info().annotations.push({ type: "streamed", description: `bubble grew ${lengths.length} times: ${lengths.slice(0, 12).join(", ")}…` });
+    expect(pieces).toBeGreaterThan(0);
+    await expectGrowingBubble(widget, pieces);
     await context.close();
   });
 
@@ -96,10 +119,13 @@ test.describe("Token streaming (M5, M6 FE-5)", () => {
       await expect(widget.getByRole("region", { name: "Contact form" }).or(widget.getByLabel("Contact form"))).toBeVisible({ timeout: 30_000 });
 
       await watchStreamingBubble(widget);
+      const reply = widget.waitForResponse((response) => response.url().endsWith("/lead") && response.request().method() === "POST", { timeout: 150_000 });
       await widget.getByRole("button", { name: "Skip" }).click();
+      const pieces = await streamedPieces(await reply);
       await expect(widget.getByRole("group", { name: "Was this answer helpful?" }).first()).toBeVisible({ timeout: 120_000 });
       await expect(widget.locator('[aria-busy="true"]')).toHaveCount(0);
-      expect((await streamedLengths(widget)).length).toBeGreaterThan(0);
+      expect(pieces).toBeGreaterThan(0);
+      await expectGrowingBubble(widget, pieces);
       await context.close();
     } finally {
       await db.query('update "Chatbot" set "leadForm" = $1 where "widgetId" = $2', [original === null ? null : JSON.stringify(original), WIDGET_ID]);

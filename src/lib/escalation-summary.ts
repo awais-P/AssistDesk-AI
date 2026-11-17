@@ -131,6 +131,8 @@ export async function generateEscalationSummary(escalationId: string) {
       prompt: [
         `This conversation was escalated. Reason: ${escalation.reason}`,
         history.text ? `<customer_history>\n${history.text}\n</customer_history>` : null,
+        // Module 9 FE-2: a voice call's brief is built from what was said on the call.
+        escalation.channel === "VOICE" ? "This was a voice call: the transcript below is what was said on the call." : null,
         `<transcript>\n${transcript}\n</transcript>`,
         "Write the hand-over brief as five short lines, each starting with its label: Issue:, Tried so far:, Mood:, Customer history:, Next step:. At most 90 words in total. Reply with only the brief inside <brief></brief> tags.",
       ]

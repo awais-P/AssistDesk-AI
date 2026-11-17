@@ -85,18 +85,8 @@ export const agentModelCatalog: AgentModelConfig[] = [
     provider: "Default",
     managed: true,
   },
-  {
-    value: "openrouter/qwen/qwen3.8-27b:free",
-    label: "OpenRouter Qwen 3.8 27B Free",
-    provider: "Default",
-    managed: true,
-  },
-  {
-    value: "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    label: "OpenRouter Nemotron 3 Super 120B Free",
-    provider: "Default",
-    managed: true,
-  },
+  // Qwen 3.8 27B and Nemotron 3 Super were withdrawn from OpenRouter's free tier
+  // (404 "unavailable for free", Nov 2026): every reply wasted a round trip on them.
   {
     // Routes to any free model (sometimes a safety classifier), so it is tried last.
     // OpenRouter retires free models often: check https://openrouter.ai/models?max_price=0.

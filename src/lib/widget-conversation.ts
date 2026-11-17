@@ -2,6 +2,7 @@ import type { Prisma } from "@/app/generated/prisma/client";
 import { type WidgetChatbot, decideWidgetReply, isFallbackReplyDue } from "./chatbot-widget";
 import { generateSessionReply, loadAgentForReplies } from "./conversation-runtime";
 import { checkInboundEscalation } from "./escalation";
+import type { ReplyStream } from "./llm-stream";
 import { createNotification } from "./notifications";
 import { prisma } from "./prisma";
 import { appendSessionMessage, recordSessionEvent } from "./session-lifecycle";
@@ -71,7 +72,7 @@ export function serializeWidgetMessage(message: {
   };
 }
 
-export async function replyWithAgent(chatbot: WidgetChatbot, sessionId: string) {
+export async function replyWithAgent(chatbot: WidgetChatbot, sessionId: string, stream?: ReplyStream) {
   const agent = await loadAgentForReplies(chatbot.agentId);
 
   if (!agent) {
@@ -85,9 +86,10 @@ export async function replyWithAgent(chatbot: WidgetChatbot, sessionId: string) 
     channel: "WEB_WIDGET",
     extraSystemPrompt: chatbot.additionalPrompt,
     logSummary: `Widget reply generated for ${chatbot.name}.`,
+    stream,
   });
 
-  return result?.message ?? null;
+  return result ? { message: result.message, firstTokenMs: result.firstTokenMs } : null;
 }
 
 declare global {
@@ -109,7 +111,7 @@ export async function runFallbackIfDue(chatbot: WidgetChatbot, sessionId: string
   fallbackLocks.add(sessionId);
 
   try {
-    const message = await replyWithAgent(chatbot, sessionId);
+    const message = (await replyWithAgent(chatbot, sessionId))?.message;
 
     if (message) {
       await recordSessionEvent({
@@ -132,7 +134,12 @@ type ReplyMessage = Awaited<ReturnType<typeof appendSessionMessage>>;
  * or a system notice explains why the AI stays quiet (AI reply limit reached).
  * Used after a new message and after the lead form is submitted or skipped.
  */
-export async function respondToVisitor(chatbot: WidgetChatbot, sessionId: string, customerText: string) {
+export async function respondToVisitor(
+  chatbot: WidgetChatbot,
+  sessionId: string,
+  customerText: string,
+  stream?: ReplyStream,
+) {
   const session = await prisma.chatSession.findUniqueOrThrow({
     where: { id: sessionId },
     select: {
@@ -148,26 +155,29 @@ export async function respondToVisitor(chatbot: WidgetChatbot, sessionId: string
 
   // Module 9 FE-1/FE-3: an upset customer, a request for a person or a sensitive topic
   // goes to the team before the AI answers; the customer is told a person will reply.
-  const trigger = await checkInboundEscalation({ workspaceId: chatbot.workspaceId, sessionId, text: customerText });
+  // Latency: the reply-mode decision only reads, so it is worked out at the same time
+  // and simply ignored when the conversation is escalated.
+  const [trigger, decision] = await Promise.all([
+    checkInboundEscalation({ workspaceId: chatbot.workspaceId, sessionId, text: customerText }),
+    decideWidgetReply({ chatbot, sessionId, sessionStatus: session.status }),
+  ]);
 
   if (trigger.escalated) {
     if (trigger.noticeMessage) {
       messages.push(trigger.noticeMessage);
     }
 
-    return { messages, waitingForHuman: true };
+    return { messages, waitingForHuman: true, firstTokenMs: null };
   }
 
-  const decision = await decideWidgetReply({ chatbot, sessionId, sessionStatus: session.status });
-
   if (decision.action === "AI_NOW") {
-    const aiMessage = await replyWithAgent(chatbot, sessionId);
+    const reply = await replyWithAgent(chatbot, sessionId, stream);
 
-    if (aiMessage) {
-      messages.push(aiMessage);
+    if (reply) {
+      messages.push(reply.message);
     }
 
-    return { messages, waitingForHuman: false };
+    return { messages, waitingForHuman: false, firstTokenMs: reply?.firstTokenMs ?? null };
   }
 
   const notice = decision.action === "SYSTEM" ? decision.content : decision.notice;
@@ -205,5 +215,5 @@ export async function respondToVisitor(chatbot: WidgetChatbot, sessionId: string
     );
   }
 
-  return { messages, waitingForHuman: decision.action === "WAIT_FOR_HUMAN" };
+  return { messages, waitingForHuman: decision.action === "WAIT_FOR_HUMAN", firstTokenMs: null };
 }

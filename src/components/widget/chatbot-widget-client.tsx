@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { defaultChatbotWelcomeMessage } from "@/src/lib/chatbot-config";
 import type { PublicLeadForm } from "@/src/lib/lead-form";
+import { closeOpenMarkdown } from "@/src/lib/streaming-markdown";
 import {
   WIDGET_MESSAGE_TYPE,
   WIDGET_SESSION_HEADER,
@@ -295,6 +296,61 @@ function AttachmentList({ attachments }: { attachments: WidgetAttachment[] }) {
   );
 }
 
+/**
+ * Reads a streamed reply (one JSON object per line) and hands each event over as soon
+ * as its line is complete.
+ */
+async function readReplyStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: { type: string } & Record<string, unknown>) => void,
+) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const handleLine = (line: string) => {
+    if (!line.trim()) {
+      return;
+    }
+
+    try {
+      onEvent(JSON.parse(line) as { type: string } & Record<string, unknown>);
+    } catch {
+      // A malformed line is skipped; the final "done" event carries the full reply.
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+
+    while (newline !== -1) {
+      handleLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+    }
+  }
+
+  handleLine(buffer + decoder.decode());
+}
+
+type SendResult = {
+  error?: string;
+  retryAfterSeconds?: number;
+  session?: WidgetSessionState;
+  sessionToken?: string | null;
+  sessionStarted?: boolean;
+  previousSession?: { id: string; closedReason: string | null } | null;
+  messages?: WidgetMessage[];
+  leadPrompt?: LeadPrompt | null;
+};
+
 export function ChatbotWidgetClient({
   widgetId,
   token,
@@ -349,6 +405,45 @@ export function ChatbotWidgetClient({
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
+  // Token streaming: the AI reply while it is being written. Pieces are collected in a
+  // ref and painted at most once per animation frame, however fast they arrive.
+  const [streamingReply, setStreamingReply] = useState<string | null>(null);
+  const streamTextRef = useRef("");
+  const streamFrameRef = useRef<number | null>(null);
+  const streamingRef = useRef(false);
+
+  // These only touch refs and the state setter, so they never change between renders.
+  const paintStreamText = useCallback(() => {
+    streamFrameRef.current = null;
+    setStreamingReply(streamTextRef.current);
+  }, []);
+
+  const appendStreamText = useCallback(
+    (text: string) => {
+      streamTextRef.current += text;
+
+      if (streamFrameRef.current === null) {
+        streamFrameRef.current = window.requestAnimationFrame(paintStreamText);
+      }
+    },
+    [paintStreamText],
+  );
+
+  const resetStreamText = useCallback(() => {
+    streamTextRef.current = "";
+
+    if (streamFrameRef.current !== null) {
+      window.cancelAnimationFrame(streamFrameRef.current);
+      streamFrameRef.current = null;
+    }
+
+    setStreamingReply(null);
+  }, []);
+
+  const stopStreaming = useCallback(() => {
+    streamingRef.current = false;
+    resetStreamText();
+  }, [resetStreamText]);
 
   useEffect(() => {
     sessionTokenRef.current = sessionToken;
@@ -532,6 +627,11 @@ export function ChatbotWidgetClient({
         try {
           const incoming = JSON.parse((event as MessageEvent<string>).data) as WidgetMessage[];
           setMessages((current) => mergeMessages(current, incoming));
+
+          // The finished reply arrived through live updates: it replaces the streamed draft.
+          if (streamingRef.current && incoming.some((message) => message.sender !== "USER")) {
+            stopStreaming();
+          }
         } catch {}
       });
       source.addEventListener("session", (event) => {
@@ -567,7 +667,7 @@ export function ChatbotWidgetClient({
       window.clearTimeout(reconnectTimer);
       source?.close();
     };
-  }, [liveUpdates, sessionOpen, sessionToken, token, widgetId]);
+  }, [liveUpdates, sessionOpen, sessionToken, stopStreaming, token, widgetId]);
 
   // Polling fallback when live updates are not available.
   useEffect(() => {
@@ -588,7 +688,7 @@ export function ChatbotWidgetClient({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isSending]);
+  }, [messages, isSending, streamingReply]);
 
   // Module 8 FE-1: the lead form is prefilled with what we already know about the visitor.
   const leadFieldValues = useMemo(() => {
@@ -681,41 +781,9 @@ export function ChatbotWidgetClient({
     setError("");
     setIsSending(true);
 
-    try {
-      const response = await widgetFetch(`/api/widget/${widgetId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: content,
-          attachments,
-          customerName: contact.name,
-          customerEmail: contact.email,
-          customerPhone: contact.phone,
-          visitorId,
-        }),
-      });
-      const data = (await response.json()) as {
-        error?: string;
-        retryAfterSeconds?: number;
-        session?: WidgetSessionState;
-        sessionToken?: string | null;
-        sessionStarted?: boolean;
-        previousSession?: { id: string; closedReason: string | null } | null;
-        messages?: WidgetMessage[];
-        leadPrompt?: LeadPrompt | null;
-      };
-
-      if (!response.ok || !data.session || !data.messages) {
-        setMessages((current) => current.filter((message) => message.id !== pendingUserMessage.id));
-        setDraft(content);
-        setPendingAttachments(attachments);
-        setError(data.error ?? "Your message was not sent. Please try again.");
-
-        if (response.status === 429) {
-          const retryAfter = Number(response.headers.get("Retry-After")) || data.retryAfterSeconds || 30;
-          setCooldownUntil(Date.now() + retryAfter * 1000);
-        }
-
+    // Applies the accepted message (and, at the end, the reply) to the conversation.
+    const applyResult = (data: SendResult) => {
+      if (!data.session || !data.messages) {
         return;
       }
 
@@ -733,19 +801,95 @@ export function ChatbotWidgetClient({
       setLiveUpdates(true);
       setMessages((current) => {
         const withoutPending = current.filter((message) => message.id !== pendingUserMessage.id);
+        const dividerId = newConversationDivider(nextSession.id, nextSession.startedAt).id;
         const divider =
-          startedAfterPrevious && withoutPending.length > 0
+          startedAfterPrevious && withoutPending.length > 0 && !withoutPending.some((message) => message.id === dividerId)
             ? [newConversationDivider(nextSession.id, nextSession.startedAt)]
             : [];
 
         return mergeMessages(withoutPending, [...divider, ...nextMessages]);
       });
-      setLeadPrompt(data.leadPrompt ?? null);
-    } catch {
-      setMessages((current) => current.filter((message) => message.id !== pendingUserMessage.id));
+    };
+
+    const restoreDraft = (message: string) => {
+      setMessages((current) => current.filter((item) => item.id !== pendingUserMessage.id));
       setDraft(content);
       setPendingAttachments(attachments);
-      setError("Your message was not sent. Check your connection and try again.");
+      setError(message);
+    };
+
+    try {
+      const response = await widgetFetch(`/api/widget/${widgetId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Token streaming: the reply arrives piece by piece while the AI writes it.
+          Accept: "application/x-ndjson, application/json",
+        },
+        body: JSON.stringify({
+          message: content,
+          attachments,
+          customerName: contact.name,
+          customerEmail: contact.email,
+          customerPhone: contact.phone,
+          visitorId,
+        }),
+      });
+
+      if (response.ok && response.body && (response.headers.get("Content-Type") ?? "").includes("application/x-ndjson")) {
+        let accepted = false;
+        let finished = false;
+        streamingRef.current = true;
+
+        await readReplyStream(response.body, (event) => {
+          if (event.type === "start") {
+            accepted = true;
+            applyResult(event as SendResult);
+          } else if (event.type === "delta" && typeof event.text === "string") {
+            appendStreamText(event.text);
+          } else if (event.type === "reset") {
+            resetStreamText();
+          } else if (event.type === "done") {
+            finished = true;
+            stopStreaming();
+            applyResult(event as SendResult);
+            setLeadPrompt((event as SendResult).leadPrompt ?? null);
+          } else if (event.type === "error") {
+            stopStreaming();
+            setError(typeof event.error === "string" ? event.error : "The reply could not be finished.");
+          }
+        });
+
+        stopStreaming();
+
+        if (!accepted) {
+          restoreDraft("Your message was not sent. Please try again.");
+        } else if (!finished) {
+          // The connection dropped mid-reply: the reply is still saved on the server.
+          void loadHistory();
+        }
+
+        return;
+      }
+
+      const data = (await response.json()) as SendResult;
+
+      if (!response.ok || !data.session || !data.messages) {
+        restoreDraft(data.error ?? "Your message was not sent. Please try again.");
+
+        if (response.status === 429) {
+          const retryAfter = Number(response.headers.get("Retry-After")) || data.retryAfterSeconds || 30;
+          setCooldownUntil(Date.now() + retryAfter * 1000);
+        }
+
+        return;
+      }
+
+      applyResult(data);
+      setLeadPrompt(data.leadPrompt ?? null);
+    } catch {
+      stopStreaming();
+      restoreDraft("Your message was not sent. Check your connection and try again.");
     } finally {
       setIsSending(false);
     }
@@ -1245,7 +1389,29 @@ export function ChatbotWidgetClient({
           );
         })}
 
-        {isSending ? (
+        {streamingReply ? (
+          <div className="flex justify-start">
+            <div className="max-w-[82%]">
+              <div
+                className="rounded-[22px] bg-[#eef4ff] px-5 py-3 text-sm leading-6 text-slate-700 shadow-sm"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <MessageBody
+                  message={{
+                    id: "streaming-reply",
+                    sender: "AI",
+                    content: closeOpenMarkdown(streamingReply),
+                    attachments: [],
+                    authorName: config.agentName,
+                    createdAt: new Date(0).toISOString(),
+                  }}
+                />
+                <span aria-hidden="true" className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-slate-400" />
+              </div>
+            </div>
+          </div>
+        ) : isSending ? (
           <div className="flex justify-start" aria-label={`${config.agentName} is typing`}>
             <div className="flex gap-1 rounded-[22px] bg-[#eef4ff] px-5 py-4">
               {[0, 150, 300].map((delay) => (

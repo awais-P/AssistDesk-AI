@@ -13,6 +13,14 @@ import {
 } from "./agent-config";
 import { decryptSecret } from "./secrets";
 import { cleanModelError, recordModelFailure, withoutGoneModels } from "./model-health";
+import {
+  FIRST_TOKEN_TIMEOUT_MS,
+  type ReplyStream,
+  guardedTokenSink,
+  streamAnthropic,
+  streamGoogle,
+  streamOpenAiCompatible,
+} from "./llm-stream";
 
 export type AgentRuntimeConfig = {
   provider: string;
@@ -336,6 +344,84 @@ const openRouterHeaders = () => ({
   "X-Title": "AssistDesk",
 });
 
+/**
+ * Streams the reply from the provider, passing each piece to `onText` as it arrives.
+ * `timeoutMs` limits the wait for the first piece; the reply itself may then take longer.
+ */
+function streamCustomProvider(
+  provider: string,
+  apiKey: string,
+  model: string,
+  prompt: ChatPrompt,
+  timeoutMs: number,
+  onText: (text: string) => void,
+): Promise<ProviderResult> {
+  const request = {
+    apiKey,
+    model,
+    system: prompt.system,
+    messages: prompt.messages,
+    temperature: prompt.temperature,
+    maxTokens: prompt.maxTokens,
+    firstTokenMs: timeoutMs,
+    onText,
+  };
+
+  switch (provider) {
+    case "Anthropic":
+      return streamAnthropic(request);
+    case "Google":
+      return streamGoogle(request);
+    case "Groq":
+      return streamOpenAiCompatible({ ...request, endpoint: "https://api.groq.com/openai/v1/chat/completions" });
+    case "OpenAI":
+      return streamOpenAiCompatible({ ...request, endpoint: "https://api.openai.com/v1/chat/completions" });
+    default:
+      return streamOpenAiCompatible({
+        ...request,
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        extraHeaders: openRouterHeaders(),
+      });
+  }
+}
+
+/**
+ * One model call. With a stream, the reply is streamed through a guard that holds back
+ * moderation labels; if the call then fails or the reply is unusable, whatever reached
+ * the customer is withdrawn (`onReset`) so the next model can start clean.
+ */
+async function callProvider(
+  provider: string,
+  apiKey: string,
+  model: string,
+  prompt: ChatPrompt,
+  timeoutMs: number,
+  stream?: ReplyStream,
+): Promise<ProviderResult> {
+  if (!stream) {
+    return callCustomProvider(provider, apiKey, model, prompt, timeoutMs);
+  }
+
+  const sink = guardedTokenSink(stream.onToken);
+
+  try {
+    const result = await streamCustomProvider(provider, apiKey, model, prompt, timeoutMs, (text) => sink.push(text));
+    sink.finish(result.reply);
+
+    if ((!result.reply || isUnusableReply(result.reply)) && sink.emitted) {
+      stream.onReset();
+    }
+
+    return result;
+  } catch (error) {
+    if (sink.emitted) {
+      stream.onReset();
+    }
+
+    throw error;
+  }
+}
+
 function callCustomProvider(
   provider: string,
   apiKey: string,
@@ -421,7 +507,7 @@ export function hasManagedProviderKey() {
   );
 }
 
-async function callManagedChain(model: string, prompt: ChatPrompt) {
+async function callManagedChain(model: string, prompt: ChatPrompt, stream?: ReplyStream) {
   const deadline = Date.now() + MANAGED_CHAIN_BUDGET_MS;
   const errors: string[] = [];
 
@@ -438,12 +524,13 @@ async function callManagedChain(model: string, prompt: ChatPrompt) {
     }
 
     try {
-      const result = await callCustomProvider(
+      const result = await callProvider(
         resolved.provider,
         resolved.apiKey,
         resolved.model,
         prompt,
-        Math.min(MANAGED_CALL_TIMEOUT_MS, remaining),
+        Math.min(stream ? FIRST_TOKEN_TIMEOUT_MS : MANAGED_CALL_TIMEOUT_MS, remaining),
+        stream,
       );
 
       if (result.reply && !isUnusableReply(result.reply)) {
@@ -474,6 +561,7 @@ export async function generateAgentReply({
   history = [],
   channel = "WEB_WIDGET",
   memory,
+  stream,
 }: {
   agent: AgentRuntimeConfig;
   question: string;
@@ -481,6 +569,8 @@ export async function generateAgentReply({
   history?: ConversationTurn[];
   channel?: ReplyChannel;
   memory?: ConversationMemory;
+  /** Receives the reply while it is written (website chat and Playground). */
+  stream?: ReplyStream;
 }): Promise<AgentLlmReply> {
   const startedAt = Date.now();
   const { prompt, grounded } = await buildPrompt({
@@ -508,7 +598,7 @@ export async function generateAgentReply({
     let result: ProviderResult & { modelUsed: string };
 
     if (agent.provider === "Default") {
-      result = await callManagedChain(agent.model, prompt);
+      result = await callManagedChain(agent.model, prompt, stream);
     } else {
       const apiKey = decryptSecret(agent.apiKey);
 
@@ -517,13 +607,7 @@ export async function generateAgentReply({
       }
 
       result = {
-        ...(await callCustomProvider(
-          agent.provider,
-          apiKey,
-          agent.model,
-          prompt,
-          CUSTOM_PROVIDER_TIMEOUT_MS,
-        )),
+        ...(await callProvider(agent.provider, apiKey, agent.model, prompt, CUSTOM_PROVIDER_TIMEOUT_MS, stream)),
         modelUsed: agent.model,
       };
     }

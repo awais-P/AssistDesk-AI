@@ -1,4 +1,5 @@
-import { tokenizeForSearch } from "./embeddings";
+import { embedQuery, isSemanticModel, tokenizeForSearch } from "./embeddings";
+import { prisma } from "./prisma";
 import {
   fetchKnowledgeSourceText,
   retrieveVectorMatches,
@@ -185,6 +186,36 @@ function detectGreeting(question: string) {
  * A message that is only a greeting ("hello", "Hi there!", "Assalam o Alaikum"), with no
  * question in it. It is answered with a greeting, never with knowledge-base passages.
  */
+/**
+ * Latency: starts embedding the customer's question for the knowledge search as soon as
+ * the message arrives, while the other checks run (lead capture, escalation, history).
+ * The search then finds the embedding ready in the cache. Only for questions searched
+ * exactly as typed: not greetings (no search) and not short follow-ups in an ongoing
+ * conversation (searched together with the previous question). Never throws.
+ */
+export function prefetchQuestionEmbedding(agentId: string, question: string, { firstMessage }: { firstMessage: boolean }) {
+  const words = question.trim().split(/\s+/).filter(Boolean).length;
+
+  if (!question.trim() || isGreetingOnly(question) || (!firstMessage && words < 8)) {
+    return;
+  }
+
+  void prisma.knowledgeSource
+    .findMany({
+      where: { agentId, status: { in: ["SYNCED", "PROCESSING"] }, chunkCount: { gt: 0 } },
+      select: { embeddingModel: true },
+      distinct: ["embeddingModel"],
+    })
+    .then((sources) => {
+      for (const model of new Set(sources.map((source) => source.embeddingModel))) {
+        if (isSemanticModel(model)) {
+          void embedQuery(question, model as string).catch(() => undefined);
+        }
+      }
+    })
+    .catch(() => undefined);
+}
+
 export function isGreetingOnly(message: string) {
   return /^(?:hi+|hello+|hey+|hiya|oi|yo|good\s+(?:morning|afternoon|evening)|(?:as+alam+u?\s*o?\s*alaikum|as+alam+|salam+|aoa))(?:\s+(?:there|team|everyone|all|sir|ji))?[\s!.,:)]*$/i.test(
     message.trim(),

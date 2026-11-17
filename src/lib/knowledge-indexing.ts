@@ -11,6 +11,7 @@ import {
   LEXICAL_EMBEDDING_MODEL,
   cosineSimilarity,
   embedDocumentChunks,
+  embedQuery,
   embedTexts,
   isSemanticModel,
   tokenizeForSearch,
@@ -518,9 +519,7 @@ export async function retrieveVectorMatches({
     const modelSources = sources.filter((source) => source.embeddingModel === model);
 
     try {
-      const {
-        vectors: [queryVector],
-      } = await embedTexts([question], model);
+      const queryVector = await embedQuery(question, model);
       const pineconeSources = modelSources.filter((source) => source.vectorStore === "pinecone");
       const postgresSources = modelSources.filter((source) => source.vectorStore !== "pinecone");
 

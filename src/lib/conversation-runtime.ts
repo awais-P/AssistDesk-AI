@@ -8,6 +8,7 @@ import {
   generateAgentReply,
   toRuntimeAgent,
 } from "./llm-runtime";
+import { type ReplyStream, measuredStream } from "./llm-stream";
 import { prisma } from "./prisma";
 import { appendSessionMessage, recordSessionEvent } from "./session-lifecycle";
 import { HISTORY_WINDOW, buildCustomerContext, isVerifiedIdentity, scheduleMemoryRefresh } from "./session-memory";
@@ -68,6 +69,7 @@ export async function generateSessionReply({
   extraSystemPrompt,
   logAction = "CHATBOT_REPLY",
   logSummary,
+  stream: rawStream,
 }: {
   sessionId: string;
   workspaceId: string;
@@ -76,39 +78,22 @@ export async function generateSessionReply({
   extraSystemPrompt?: string | null;
   logAction?: string;
   logSummary: string;
+  /** Receives the reply while it is written (website chat); the stored message is the same text. */
+  stream?: ReplyStream;
 }) {
-  const recentMessages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: "desc" },
-    take: HISTORY_MESSAGE_LIMIT + 1,
-    select: { sender: true, content: true, attachments: true },
-  });
-  const chronological = recentMessages.reverse();
-  const latestCustomerIndex = chronological.map((message) => message.sender).lastIndexOf("USER");
-
-  if (latestCustomerIndex === -1) {
-    return null;
-  }
-
-  // Module 3: the plan's monthly AI replies.
-  if (!(await aiReplyAllowed(workspaceId))) {
-    const noticed = await prisma.chatMessage.count({ where: { sessionId, sender: "SYSTEM", content: AI_LIMIT_NOTICE } });
-    if (noticed === 0) {
-      await appendSessionMessage({ sessionId, workspaceId, sender: "SYSTEM", content: AI_LIMIT_NOTICE });
-    }
-    return null;
-  }
-
-  const latest = chronological[latestCustomerIndex];
-  const history: ConversationTurn[] = chronological
-    .slice(0, latestCustomerIndex)
-    .filter((message) => message.sender !== "SYSTEM")
-    .map((message) => ({
-      role: message.sender === "USER" ? "user" : "assistant",
-      content: `${message.content}${describeAttachments(message.attachments)}`,
-    }));
-
-  const [sources, session, customerContext] = await Promise.all([
+  const startedAt = Date.now();
+  const measured = measuredStream(rawStream, startedAt);
+  const stream = measured.stream;
+  // Latency: everything the model needs is loaded at the same time, not one after another.
+  const [recentMessages, allowed, sources, session, customerContext, toolset] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: "desc" },
+      take: HISTORY_MESSAGE_LIMIT + 1,
+      select: { sender: true, content: true, attachments: true },
+    }),
+    // Module 3: the plan's monthly AI replies.
+    aiReplyAllowed(workspaceId),
     hydrateKnowledgeSources(agent.knowledgeSources),
     prisma.chatSession.findUnique({
       where: { id: sessionId },
@@ -129,7 +114,32 @@ export async function generateSessionReply({
       },
     }),
     buildCustomerContext(sessionId),
+    channel === "PLAYGROUND" ? { tools: [], settings: null } : loadAgentToolset(workspaceId, agent.id),
   ]);
+  const chronological = recentMessages.reverse();
+  const latestCustomerIndex = chronological.map((message) => message.sender).lastIndexOf("USER");
+
+  if (latestCustomerIndex === -1) {
+    return null;
+  }
+
+  if (!allowed) {
+    const noticed = await prisma.chatMessage.count({ where: { sessionId, sender: "SYSTEM", content: AI_LIMIT_NOTICE } });
+    if (noticed === 0) {
+      await appendSessionMessage({ sessionId, workspaceId, sender: "SYSTEM", content: AI_LIMIT_NOTICE });
+    }
+    return null;
+  }
+
+  const latest = chronological[latestCustomerIndex];
+  const history: ConversationTurn[] = chronological
+    .slice(0, latestCustomerIndex)
+    .filter((message) => message.sender !== "SYSTEM")
+    .map((message) => ({
+      role: message.sender === "USER" ? "user" : "assistant",
+      content: `${message.content}${describeAttachments(message.attachments)}`,
+    }));
+
   // The rolling summary only covers messages older than the history window.
   const conversationSummary =
     session?.summary && session.messageCount > HISTORY_WINDOW ? session.summary : null;
@@ -137,7 +147,6 @@ export async function generateSessionReply({
   const memory = { customerContext: customerContext.text, conversationSummary };
   const runtimeAgent = toRuntimeAgent(agent, extraSystemPrompt);
   // Module 2: agents with tools reason and act through the LangGraph engine.
-  const toolset = channel === "PLAYGROUND" ? { tools: [], settings: null } : await loadAgentToolset(workspaceId, agent.id);
   const response =
     toolset.tools.length > 0 && toolset.settings && session
       ? await runAgentReply({
@@ -163,8 +172,16 @@ export async function generateSessionReply({
             dryRun: false,
             triggeredBy: "MODEL",
           },
+          stream,
         })
-      : await generateAgentReply({ agent: runtimeAgent, question, sources, history, channel, memory });
+      : await generateAgentReply({ agent: runtimeAgent, question, sources, history, channel, memory, stream });
+  const firstTokenMs = measured.firstTokenMs;
+  // Response time as the customer feels it: from here (loading included) to the full reply.
+  const totalMs = Date.now() - startedAt;
+
+  if (firstTokenMs !== null) {
+    console.info(`[latency] ${channel} reply: first word after ${firstTokenMs} ms, complete after ${totalMs} ms (${response.modelUsed}).`);
+  }
 
   const message = await appendSessionMessage({
     sessionId,
@@ -208,7 +225,8 @@ export async function generateSessionReply({
         messageId: message.id,
         channel: channel === "PLAYGROUND" ? "WEB_WIDGET" : channel,
         question: latest.content.slice(0, 1000),
-        latencyMs: Math.max(0, Math.round(response.latencyMs)),
+        latencyMs: Math.max(0, totalMs),
+        firstTokenMs,
         tokens: response.tokens,
         model: response.modelUsed,
         provider: response.providerUsed,
@@ -226,7 +244,7 @@ export async function generateSessionReply({
         status: response.usedFallback ? "FALLBACK" : "SUCCESS",
         model: response.modelUsed,
         tokens: response.tokens,
-        durationMs: response.latencyMs,
+        durationMs: totalMs,
         summary: response.usedFallback
           ? `${logSummary} Knowledge-base fallback used: ${response.errorMessage ?? "no AI reply"}`
           : logSummary,
@@ -234,5 +252,5 @@ export async function generateSessionReply({
     }),
   ]);
 
-  return { message, response, usedMemory: Boolean(customerContext.text) };
+  return { message, response, usedMemory: Boolean(customerContext.text), firstTokenMs };
 }

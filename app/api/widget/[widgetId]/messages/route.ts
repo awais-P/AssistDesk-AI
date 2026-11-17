@@ -14,6 +14,8 @@ import {
   hashClientIp,
   tooManyRequests,
 } from "@/src/lib/rate-limit";
+import { prefetchQuestionEmbedding } from "@/src/lib/knowledge-runtime";
+import { forwardReply, replyStreamResponse, wantsReplyStream } from "@/src/lib/reply-stream-response";
 import { appendSessionMessage, recordSessionEvent } from "@/src/lib/session-lifecycle";
 import {
   MAX_WIDGET_MESSAGE_LENGTH,
@@ -46,6 +48,17 @@ type WidgetMessagePayload = {
 
 function text(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+/** Work that must not delay the reply runs after the response (or right away outside a request). */
+function afterResponse(task: () => Promise<unknown>, label: string) {
+  const run = () => task().catch((error) => console.warn(`[${label}]`, error));
+
+  try {
+    after(run);
+  } catch {
+    void run(); // outside a request scope (tests, scripts)
+  }
 }
 
 /** Current conversation for this visitor (by secret session token). */
@@ -252,23 +265,24 @@ export async function POST(request: Request, context: WidgetMessagesRouteContext
     authorName: session.customerName,
   });
 
+  // Latency: the knowledge search's embedding call starts now, alongside the checks below.
+  if (attachments.length === 0) {
+    prefetchQuestionEmbedding(chatbot.agentId, content, { firstMessage: session.messageCount === 0 });
+  }
+
   if (resolved.started) {
-    await createNotification({
+    // Latency: the team notification and the offline email (FR-13.8) wait until the
+    // visitor has their reply.
+    const notification = {
       workspaceId: chatbot.workspaceId,
       type: "NEW_CHAT",
       title: `${resolved.previous ? "Returning visitor" : "New chat"}: ${session.customerName || session.customerEmail || "a website visitor"}`,
       body: `${chatbot.name}: ${content.slice(0, 140)}`,
       link: "/dashboard/chats",
-    });
-
-    // FR-13.8: email the team when a chat starts and no one is online (after the reply).
+    };
     const alert = { customerName: session.customerName, customerEmail: session.customerEmail, firstMessage: content };
-    const sendAlert = () => notifyNewChatWhileOffline(chatbot, alert).catch((error) => console.warn("[chat-alerts]", error));
-    try {
-      after(sendAlert);
-    } catch {
-      void sendAlert(); // outside a request scope (tests, scripts)
-    }
+    afterResponse(() => createNotification(notification), "notifications");
+    afterResponse(() => notifyNewChatWhileOffline(chatbot, alert), "chat-alerts");
   }
 
   // Module 8 FE-2: contact details the visitor types in the chat are remembered and
@@ -321,33 +335,62 @@ export async function POST(request: Request, context: WidgetMessagesRouteContext
     chatbotLeadForm: chatbot.leadForm,
     pageHost: access.isPreview ? null : access.host,
   });
+  const sessionFields = {
+    // Returned only when a new conversation started; the widget stores it.
+    sessionToken: resolved.newToken,
+    sessionStarted: resolved.started,
+    previousSession: resolved.previous,
+  };
+
+  const finalPayload = async (
+    newMessages: Array<Parameters<typeof serializeWidgetMessage>[0]>,
+    waitingForHuman: boolean,
+    firstTokenMs: number | null,
+  ) => {
+    const fresh = await prisma.chatSession.findUniqueOrThrow({
+      where: { id: session.id },
+      include: { chatbot: { select: { sessionTimeoutMinutes: true } } },
+    });
+
+    return {
+      session: serializeWidgetSession(fresh),
+      ...sessionFields,
+      messages: newMessages.map(serializeWidgetMessage),
+      waitingForHuman,
+      // The AI waits until the visitor submits or skips this form.
+      leadPrompt:
+        leadDecision.action === "PROMPT"
+          ? { form: publicLeadForm(leadDecision.form), prefill: leadDecision.prefill }
+          : null,
+      leadCaptured: leadDecision.action === "CAPTURED",
+      firstTokenMs,
+    };
+  };
+
+  // Token streaming: the reply is sent piece by piece while the AI writes it.
+  if (leadDecision.action !== "PROMPT" && wantsReplyStream(request)) {
+    return replyStreamResponse(async (send) => {
+      send({
+        type: "start",
+        session: serializeWidgetSession(current),
+        ...sessionFields,
+        messages: [serializeWidgetMessage(userMessage)],
+      });
+      const reply = await respondToVisitor(chatbot, session.id, content, forwardReply(send));
+      send({ type: "done", ...(await finalPayload([userMessage, ...reply.messages], reply.waitingForHuman, reply.firstTokenMs)) });
+    }, "The assistant could not finish its reply. Please send your message again.");
+  }
+
   const newMessages = [userMessage];
   let waitingForHuman = false;
+  let firstTokenMs: number | null = null;
 
   if (leadDecision.action !== "PROMPT") {
     const reply = await respondToVisitor(chatbot, session.id, content);
     newMessages.push(...reply.messages);
     waitingForHuman = reply.waitingForHuman;
+    firstTokenMs = reply.firstTokenMs;
   }
 
-  const fresh = await prisma.chatSession.findUniqueOrThrow({
-    where: { id: session.id },
-    include: { chatbot: { select: { sessionTimeoutMinutes: true } } },
-  });
-
-  return NextResponse.json({
-    session: serializeWidgetSession(fresh),
-    // Returned only when a new conversation started; the widget stores it.
-    sessionToken: resolved.newToken,
-    sessionStarted: resolved.started,
-    previousSession: resolved.previous,
-    messages: newMessages.map(serializeWidgetMessage),
-    waitingForHuman,
-    // The AI waits until the visitor submits or skips this form.
-    leadPrompt:
-      leadDecision.action === "PROMPT"
-        ? { form: publicLeadForm(leadDecision.form), prefill: leadDecision.prefill }
-        : null,
-    leadCaptured: leadDecision.action === "CAPTURED",
-  });
+  return NextResponse.json(await finalPayload(newMessages, waitingForHuman, firstTokenMs));
 }

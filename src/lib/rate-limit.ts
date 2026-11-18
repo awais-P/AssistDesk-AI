@@ -31,6 +31,7 @@ export const RATE_LIMITS = {
   widgetMessagePerWidget: { limit: 600, windowSeconds: 60 },
   widgetNewSessionPerIp: { limit: 10, windowSeconds: 60 * 60 },
   widgetAttachmentPerIp: { limit: 10, windowSeconds: 60 },
+  chatAttachmentPerUser: { limit: 20, windowSeconds: 60 },
   widgetLeadPerIp: { limit: 10, windowSeconds: 10 * 60 },
   // Voice calls: each start and each token costs a Deepgram grant.
   widgetVoiceCallPerIp: { limit: 10, windowSeconds: 60 * 60 },

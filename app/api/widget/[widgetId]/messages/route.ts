@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { markVisitorSeen } from "@/src/lib/visitor-presence";
 import { notifyNewChatWhileOffline } from "@/src/lib/chat-alerts";
 import { authorizeWidgetRequest } from "@/src/lib/chatbot-widget";
 import { normalizeEmail, normalizePhone, resolveContact } from "@/src/lib/contacts";
@@ -81,6 +82,8 @@ export async function GET(request: Request, context: WidgetMessagesRouteContext)
   }
 
   if (session.status !== "CLOSED") {
+    // FR-6.2: polling (no live connection) also counts as having the chat open.
+    markVisitorSeen(session.id, chatbot.workspaceId);
     await runFallbackIfDue(chatbot, session.id);
   }
 
@@ -259,6 +262,7 @@ export async function POST(request: Request, context: WidgetMessagesRouteContext
     return tooManyRequests(perSession, "You're sending messages too quickly.");
   }
 
+  markVisitorSeen(session.id, chatbot.workspaceId);
   const userMessage = await appendSessionMessage({
     sessionId: session.id,
     workspaceId: chatbot.workspaceId,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { defaultChatbotWelcomeMessage } from "@/src/lib/chatbot-config";
 import type { PublicLeadForm } from "@/src/lib/lead-form";
+import { QUICK_EMOJIS } from "@/src/lib/emoji-set";
 import { readReplyStream } from "@/src/lib/reply-stream-client";
 import { VoiceCallPanel } from "./voice-call-panel";
 import { isVoiceSupported, useVoiceCall } from "./use-voice-call";
@@ -112,12 +113,7 @@ const MAX_MESSAGE_LENGTH = 2000;
 const DIVIDER_SENDER = "DIVIDER";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_PATTERN = /^[+()\d\s-]{6,20}$/;
-const emojis = [
-  "😀", "😂", "😊", "😍", "🤔", "😅", "😢", "😡",
-  "👍", "👎", "👏", "🙏", "🙌", "💪", "👋", "🤝",
-  "❤️", "🔥", "🎉", "✅", "❌", "⭐", "💡", "📦",
-  "💳", "📅", "📞", "📧", "🚚", "🛒", "⏰", "❓",
-];
+const emojis = QUICK_EMOJIS;
 
 const iconButtonClass =
   "flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40";

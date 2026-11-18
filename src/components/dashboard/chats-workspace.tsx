@@ -13,6 +13,7 @@ import {
   leadTemperature,
   type LeadStatusValue,
 } from "@/src/lib/lead-form";
+import { QUICK_EMOJIS } from "@/src/lib/emoji-set";
 import { ChatActionsSection } from "./tools/chat-actions-section";
 
 // Re-exported so existing importers of these types keep working.
@@ -227,6 +228,85 @@ function customerLabel(session: ChatSessionListItem) {
     "Visitor"
   );
 }
+
+const avatarColors = ["#2563eb", "#7c3aed", "#db2777", "#ea580c", "#16a34a", "#0891b2", "#ca8a04", "#4f46e5"];
+
+/** Initials for the avatar: "Ali Khan" → "AK", "ali@shop.com" → "A", "+92 300…" → "#". */
+function avatarInitials(label: string) {
+  const words = label.replace(/@.*/, "").split(/[\s._-]+/).filter((word) => /\p{L}/u.test(word));
+
+  if (words.length === 0) {
+    return "#";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word.match(/\p{L}/u)?.[0] ?? "")
+    .join("")
+    .toUpperCase();
+}
+
+/** The same customer always gets the same colour. */
+function avatarColor(key: string) {
+  let hash = 0;
+
+  for (const character of key) {
+    hash = (hash * 31 + (character.codePointAt(0) ?? 0)) >>> 0;
+  }
+
+  return avatarColors[hash % avatarColors.length];
+}
+
+/** Website and voice visitors can be online; for other channels it isn't known. */
+function hasPresence(channel: string) {
+  return channel === "WEB_WIDGET" || channel === "VOICE";
+}
+
+/** FR-6.1 / FR-6.2: the customer's avatar, with a dot while they have the chat open. */
+function CustomerAvatar({
+  session,
+  online,
+  size = "md",
+}: {
+  session: ChatSessionListItem;
+  online: boolean;
+  size?: "md" | "lg";
+}) {
+  const label = customerLabel(session);
+  const dimension = size === "lg" ? "h-11 w-11 text-base" : "h-9 w-9 text-sm";
+  const showDot = hasPresence(session.channel);
+
+  return (
+    <span className="relative shrink-0">
+      <span
+        className={`flex ${dimension} items-center justify-center rounded-full font-semibold text-white`}
+        style={{ backgroundColor: avatarColor(session.contact?.id ?? session.id) }}
+        aria-hidden="true"
+      >
+        {avatarInitials(label)}
+      </span>
+      {showDot ? (
+        // Screen readers hear the status after the name (see the list item), not before it.
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#050505] ${online ? "bg-emerald-400" : "bg-slate-600"}`}
+          aria-hidden="true"
+          data-presence={online ? "online" : "offline"}
+          title={online ? "Online now: the customer has the chat open" : "Offline: the chat is not open"}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function formatAttachmentSize(bytes: number | null) {
+  if (!bytes) {
+    return "";
+  }
+
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const MAX_REPLY_ATTACHMENTS = 3;
 
 function channelLabel(channel: string) {
   if (channel === "SLACK") {
@@ -1386,6 +1466,14 @@ export function ChatsWorkspace({
   const [statusOverrides, setStatusOverrides] = useState<Record<string, StatusOverride>>({});
   const [replyValue, setReplyValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  // FR-6.6 / FR-6.7: files and emoji in the reply.
+  const [replyAttachments, setReplyAttachments] = useState<ChatAttachmentItem[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const replyInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const replyFileRef = useRef<HTMLInputElement | null>(null);
+  // FR-6.2: conversations whose visitor has the chat open (sent by the live stream).
+  const [onlineSessionIds, setOnlineSessionIds] = useState<Set<string>>(() => new Set());
   const [pendingStatus, setPendingStatus] = useState<ChatStatus | null>(null);
   const [confirmCloseId, setConfirmCloseId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -1675,6 +1763,15 @@ export function ChatsWorkspace({
         scheduleRefresh();
       });
 
+      source.addEventListener("presence", (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent<string>).data) as { online?: string[] };
+          setOnlineSessionIds(new Set(data.online ?? []));
+        } catch {
+          // Ignored; the next presence event replaces it.
+        }
+      });
+
       source.onerror = () => {
         failures += 1;
 
@@ -1858,6 +1955,8 @@ export function ChatsWorkspace({
   function selectSession(sessionId: string) {
     if (sessionId !== selectedSession?.id) {
       setReplyValue("");
+      setReplyAttachments([]);
+      setEmojiOpen(false);
       setError("");
       setConfirmCloseId(null);
     }
@@ -1906,6 +2005,58 @@ export function ChatsWorkspace({
     }));
   }
 
+  async function attachReplyFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    if (replyAttachments.length >= MAX_REPLY_ATTACHMENTS) {
+      setError(`You can attach up to ${MAX_REPLY_ATTACHMENTS} files per reply.`);
+      return;
+    }
+
+    setError("");
+    setIsUploading(true);
+
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const response = await fetch("/api/chat-attachments", { method: "POST", body: form });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; attachment?: ChatAttachmentItem };
+
+      if (!response.ok || !data.attachment) {
+        setError(data.error ?? "This file could not be uploaded.");
+        return;
+      }
+
+      const attachment = data.attachment;
+      setReplyAttachments((current) => [...current, attachment].slice(0, MAX_REPLY_ATTACHMENTS));
+    } catch {
+      setError("The file could not be uploaded. Check your connection and try again.");
+    } finally {
+      setIsUploading(false);
+
+      if (replyFileRef.current) {
+        replyFileRef.current.value = "";
+      }
+    }
+  }
+
+  /** Puts the emoji where the cursor is (or replaces the selected text). */
+  function insertReplyEmoji(emoji: string) {
+    const input = replyInputRef.current;
+    const start = input?.selectionStart ?? replyValue.length;
+    const end = input?.selectionEnd ?? replyValue.length;
+    const next = `${replyValue.slice(0, start)}${emoji}${replyValue.slice(end)}`.slice(0, MAX_REPLY_LENGTH);
+
+    setReplyValue(next);
+    setEmojiOpen(false);
+    window.requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  }
+
   async function handleSendReply() {
     if (!selectedSession || isSending || selectedSession.status === "CLOSED") {
       return;
@@ -1913,11 +2064,12 @@ export function ChatsWorkspace({
 
     const session = selectedSession;
     const content = replyValue.trim();
+    const attachments = replyAttachments;
 
     setError("");
     setDeliveryWarning(null);
 
-    if (!content) {
+    if (!content && attachments.length === 0) {
       setError("Write a reply before sending.");
       return;
     }
@@ -1935,7 +2087,7 @@ export function ChatsWorkspace({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, attachments }),
       });
 
       const data = (await response.json().catch(() => ({}))) as ReplyResponse;
@@ -1966,6 +2118,7 @@ export function ChatsWorkspace({
       // Replying takes over from the AI.
       applyStatusOverride(session.id, data.status ?? "ESCALATED");
       setReplyValue("");
+      setReplyAttachments([]);
 
       if (data.delivery?.status === "FAILED") {
         setDeliveryWarning({
@@ -2320,9 +2473,15 @@ export function ChatsWorkspace({
                       isSelected ? "bg-white/[0.04]" : "hover:bg-white/[0.02]"
                     }`}
                   >
+                    <div className="flex items-start gap-3">
+                    <CustomerAvatar session={session} online={onlineSessionIds.has(session.id)} />
+                    <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <p className="min-w-0 truncate font-semibold text-white">
                         {customerLabel(session)}
+                        {hasPresence(session.channel) && onlineSessionIds.has(session.id) ? (
+                          <span className="sr-only">(online now)</span>
+                        ) : null}
                       </p>
                       <span className="shrink-0 text-xs text-slate-500">
                         {relative(session.lastActivityAt)}
@@ -2343,6 +2502,8 @@ export function ChatsWorkspace({
                           {session.contact.sessionCount} conversations
                         </span>
                       ) : null}
+                    </div>
+                    </div>
                     </div>
                   </button>
                 );
@@ -2373,9 +2534,14 @@ export function ChatsWorkspace({
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                  <CustomerAvatar session={selectedSession} online={onlineSessionIds.has(selectedSession.id)} size="lg" />
                   <div className="min-w-0">
                     <p className="truncate text-xl font-semibold text-white">
                       {customerLabel(selectedSession)}
+                      {hasPresence(selectedSession.channel) && onlineSessionIds.has(selectedSession.id) ? (
+                        <span className="ml-2 align-middle text-xs font-medium text-emerald-300">Online now</span>
+                      ) : null}
                     </p>
                     <p className="mt-2 truncate text-sm text-slate-400">
                       {[
@@ -2408,6 +2574,7 @@ export function ChatsWorkspace({
                       ) : null}
                       {selectedSession.previousSessionId ? <ReturningBadge /> : null}
                     </div>
+                  </div>
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -2682,8 +2849,9 @@ export function ChatsWorkspace({
                         Replying pauses the AI (human takeover).
                       </p>
                     ) : null}
-                    <div className="rounded-xl border border-white/10 bg-[#0b0b0b] transition focus-within:border-white/30">
+                    <div className="relative rounded-xl border border-white/10 bg-[#0b0b0b] transition focus-within:border-white/30">
                       <textarea
+                        ref={replyInputRef}
                         value={replyValue}
                         onChange={(event) => setReplyValue(event.target.value)}
                         onKeyDown={handleReplyKeyDown}
@@ -2694,19 +2862,98 @@ export function ChatsWorkspace({
                         placeholder="Write a reply..."
                         className="block w-full resize-none bg-transparent px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-500 disabled:opacity-60"
                       />
-                      <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-2">
-                        <p className="text-xs text-slate-500">
-                          Enter to send, Shift+Enter for a new line
-                        </p>
+                      {replyAttachments.length > 0 ? (
+                        <ul className="flex flex-wrap gap-2 px-4 pb-3" aria-label="Files to send">
+                          {replyAttachments.map((attachment) => (
+                            <li
+                              key={attachment.url}
+                              className="inline-flex max-w-[16rem] items-center gap-2 rounded-lg border border-white/10 bg-[#111111] py-1 pl-2.5 pr-1 text-xs text-slate-200"
+                            >
+                              <span aria-hidden="true">{attachment.mimeType.startsWith("image/") ? "🖼️" : "📎"}</span>
+                              <span className="truncate">{attachment.name}</span>
+                              <span className="shrink-0 text-slate-500">{formatAttachmentSize(attachment.size)}</span>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${attachment.name}`}
+                                onClick={() => setReplyAttachments((current) => current.filter((item) => item.url !== attachment.url))}
+                                className={`rounded px-1.5 py-0.5 text-slate-400 hover:bg-white/10 hover:text-white ${focusRing}`}
+                              >
+                                ×
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="flex items-center justify-between gap-3 border-t border-white/10 px-2 py-2 sm:px-4">
+                        <div className="flex min-w-0 items-center gap-1">
+                          <input
+                            ref={replyFileRef}
+                            type="file"
+                            className="hidden"
+                            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,.docx"
+                            onChange={(event) => void attachReplyFile(event.target.files?.[0])}
+                          />
+                          <button
+                            type="button"
+                            aria-label="Attach a file"
+                            title="Attach an image or document (up to 5 MB, 3 per reply)"
+                            disabled={isSending || isUploading || replyAttachments.length >= MAX_REPLY_ATTACHMENTS}
+                            onClick={() => replyFileRef.current?.click()}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-40 ${focusRing}`}
+                          >
+                            {isUploading ? (
+                              <Spinner />
+                            ) : (
+                              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                <path d="m8 12 5.5-5.5a3 3 0 1 1 4.2 4.2L9.5 19a5 5 0 1 1-7.1-7.1l8.2-8.2" />
+                              </svg>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Insert emoji"
+                            aria-expanded={emojiOpen}
+                            disabled={isSending}
+                            onClick={() => setEmojiOpen((current) => !current)}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-40 ${focusRing}`}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                              <circle cx="12" cy="12" r="8" />
+                              <path d="M9 10h.01M15 10h.01M8.5 14a4 4 0 0 0 7 0" />
+                            </svg>
+                          </button>
+                          <p className="ml-2 hidden truncate text-xs text-slate-500 sm:block">
+                            Enter to send, Shift+Enter for a new line
+                          </p>
+                        </div>
                         <button
                           type="button"
-                          disabled={isSending || !replyValue.trim()}
+                          disabled={isSending || isUploading || (!replyValue.trim() && replyAttachments.length === 0)}
                           onClick={() => void handleSendReply()}
                           className={`pressable inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-[#050505] transition hover:bg-neutral-200 disabled:bg-neutral-400 ${focusRing}`}
                         >
                           {isSending ? "Sending..." : "Send"}
                         </button>
                       </div>
+                      {emojiOpen ? (
+                        <div
+                          className="absolute bottom-12 left-2 z-10 grid w-[272px] grid-cols-8 gap-1 rounded-xl border border-white/10 bg-[#111111] p-2 shadow-xl"
+                          role="dialog"
+                          aria-label="Emoji picker"
+                        >
+                          {QUICK_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              aria-label={`Insert ${emoji}`}
+                              onClick={() => insertReplyEmoji(emoji)}
+                              className={`flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-white/10 ${focusRing}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </>
                 )}

@@ -4,6 +4,7 @@ export const MAX_KNOWLEDGE_FILE_MB = 10;
 export const knowledgeFileExtensions = [
   ".pdf",
   ".docx",
+  ".doc",
   ".html",
   ".htm",
   ".txt",
@@ -17,6 +18,6 @@ export const knowledgeFileExtensions = [
 
 export const knowledgeFileAcceptAttribute = knowledgeFileExtensions.join(",");
 
-export const knowledgeFileTypesLabel = "PDF, Word (.docx), HTML, TXT, Markdown, CSV or JSON";
+export const knowledgeFileTypesLabel = "PDF, Word (.docx or .doc), HTML, TXT, Markdown, CSV or JSON";
 
 export const MAX_CRAWL_PAGES_UI = 25;

@@ -137,7 +137,7 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 |---|---|---|---|
 | M1 Assistant creation & omnichannel | 92% | **≈ 80%** | Core works end to end. Gaps: no voice; Slack/WhatsApp/SMTP never tested with real accounts (Slack uses a pasted token, not OAuth; WhatsApp has no media); a few settings do nothing (§5.2). |
 | M7 User dashboard | 90% | **≈ 85%** | All 5 FEs are real. Missing FR details: unsaved-changes prompt (attachments, emoji, presence dot added 19 Nov; inbox auto-reply 16 Nov); the API Keys page is a placeholder. |
-| M10 Knowledge base | 90% | **≈ 78%** | The ingest → chunk → embed → retrieve pipeline is real. Pinecone and Firecrawl are coded but **not configured**, so vectors live in Postgres. No bulk select, no `.doc`, no upload progress bar. |
+| M10 Knowledge base | 90% | **≈ 86%** | The ingest → chunk → embed → retrieve pipeline is real. Pinecone and Firecrawl are coded but **not configured**, so vectors live in Postgres. Bulk select, `.doc` and an upload progress bar were added on 19 Nov. |
 | M5 Context & sessions | 90% | **≈ 80%** | The lifecycle, 3-layer memory, contact merge and rate limiter match the M5 doc. No voice and SSE instead of WebSockets. Token streaming (17 Nov) and the scheduled jobs (16 Nov) are done. |
 | M8 Lead generation | 92% | **≈ 88%** | All 5 FEs plus HMAC webhooks. No API-key access for external systems; automatic webhook retries need a scheduler. |
 | M4 Monitoring & analytics | 90% | **≈ 84%** | All 5 FEs and FR-11.1–11.7 run on real data. Some SRS definitions are implemented differently (§4.6). |
@@ -189,10 +189,10 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 | FE-3 | Add / update / delete | ✅ | Delete is a hard delete with no log (the SDS state diagram has a DELETED state). |
 | FE-4 | Automatic indexing | ✅ | `after()` queue plus a recovery sweep. The cron route is not scheduled. |
 | FE-5 | Real-time updates | ✅ | — |
-| FR-10.1 | KB under the AI section of the sidebar | ⚠️ | It is under **Setup**. |
-| FR-10.2 | Drag-and-drop; PDF/CSV/DOC/TXT; progress | 🟡 | No `.doc`; "Uploading…" text instead of a progress bar; files stored on local disk (Cloudinary only for avatars). |
+| FR-10.1 | KB under the AI section of the sidebar | ✅ | Moved on 19 Nov (UI-KB-06). |
+| FR-10.2 | Drag-and-drop; PDF/CSV/DOC/TXT; progress | ✅ | `.doc` and a progress bar added 19 Nov (UT-70, IT-33, UI-KB-06); files are stored on the server volume (Cloudinary only for avatars and chat attachments). |
 | FR-10.3 | URL crawl via Firecrawl | 🟡 | Firecrawl is not configured, so the built-in crawler runs. |
-| FR-10.6 | Table with **bulk checkboxes** | 🟡 | No bulk selection. |
+| FR-10.6 | Table with **bulk checkboxes** | ✅ | Bulk re-index and delete added 19 Nov (IT-33, UI-KB-07). |
 | FR-10.4/10.5/10.7, SEC-4, UI-4 | Add button, search/filter, row menu, tenant isolation, pagination | ✅ | — |
 
 ### 4.4 M5: Real-time context & sessions (≈ 80%)

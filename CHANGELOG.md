@@ -18,6 +18,20 @@ Entry template:
 
 ---
 
+## 2026-11-19 — Knowledge base table: bulk actions, upload progress, .doc files
+**Module:** M10 (FR-10.1, FR-10.2, FR-10.6)   **Author:** Claude (with Muhammad Awais)
+**Files:** new `app/api/knowledge-sources/bulk/route.ts`, `src/types/word-extractor.d.ts`, `tests/fixtures/returns-policy.doc` (saved by Microsoft Word); dependency `word-extractor@1`; changed `src/components/dashboard/knowledge-base-client.tsx`, `src/components/dashboard/dashboard-config.ts`, `src/lib/document-extract.ts`, `src/lib/knowledge-file-types.ts`; tests `tests/unit/knowledge-doc.test.ts` (UT-70), `tests/integration/knowledge-bulk.int.ts` (IT-33), `tests/ui/knowledge-base.spec.ts` (UI-KB-06, UI-KB-07), `tests/unit/knowledge-ingestion.test.ts` (UT-13.01)
+
+**Added:**
+- **Bulk actions (FR-10.6):** a checkbox on every row and a "select all on this page" box (shown half-ticked when only some are selected). A bar shows how many are selected with **Re-index**, **Delete** (with a confirmation) and **Clear selection**. `POST /api/knowledge-sources/bulk` (`knowledge.manage`, at most 100 at a time) only touches the caller's workspace, removes vectors and stored files with each source, and writes one audit entry.
+- **Upload progress (FR-10.2):** files are sent with XMLHttpRequest, so the dialog shows a progress bar and the percentage, then "Indexing…" while the file is read.
+- **Word .doc files (FR-10.2):** legacy Word 97–2003 documents are read with `word-extractor` (pure JavaScript), alongside PDF, .docx, HTML and text.
+- **Sidebar (FR-10.1):** Knowledge Base moved from Setup to the AI group, after AI Agents.
+
+**Notes:** uploaded knowledge files are still stored on the server's volume (not cloud storage).
+
+---
+
 ## 2026-11-19 — Chats reply box: attachments, emoji, online dot, avatars
 **Module:** M7 (FR-6.1, FR-6.2, FR-6.6, FR-6.7), M5   **Author:** Claude (with Muhammad Awais)
 **Files:** new `src/lib/visitor-presence.ts`, `src/lib/emoji-set.ts`, `app/api/chat-attachments/route.ts`; changed `src/components/dashboard/chats-workspace.tsx`, `app/api/chat-sessions/[id]/messages/route.ts`, `app/api/chat-sessions/events/route.ts`, `app/api/widget/[widgetId]/stream/route.ts`, `app/api/widget/[widgetId]/messages/route.ts`, `src/lib/integrations/channel-outbound.ts`, `src/lib/rate-limit.ts`, `src/components/widget/chatbot-widget-client.tsx`; tests `tests/unit/chats-reply.test.ts` (UT-69), `tests/integration/chats-reply.int.ts` (IT-32), `tests/ui/chats.spec.ts` (UI-CHT-04)

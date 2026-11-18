@@ -13,7 +13,9 @@ describe("UT-13 document type detection", () => {
     expect(detectDocumentKind("notes.md", null)).toBe("text");
     expect(detectDocumentKind("data", "application/json")).toBe("text");
     expect(detectDocumentKind("virus.exe", "application/octet-stream")).toBeNull();
-    expect(detectDocumentKind("old.doc", null)).toBeNull();
+    // Legacy Word .doc is supported since 19 Nov 2026 (UT-70); old PowerPoint is not.
+    expect(detectDocumentKind("old.doc", null)).toBe("doc");
+    expect(detectDocumentKind("slides.ppt", "application/vnd.ms-powerpoint")).toBeNull();
   });
 
   it("UT-13.02 extracts text from plain and HTML uploads", async () => {

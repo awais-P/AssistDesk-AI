@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import path from "node:path";
+import { expect, test, type Page } from "@playwright/test";
 import { acceptNextConfirm, openDashboardPage, unique } from "./helpers";
 
 test.describe("Knowledge base (FR-10, M10)", () => {
@@ -52,4 +53,59 @@ test.describe("Knowledge base (FR-10, M10)", () => {
     await expect(page).toHaveURL(/\/dashboard\/knowledge-base\/[a-z0-9]+/);
     await expect(page.getByText(/warranty/i).first()).toBeVisible();
   });
+
+  test("UI-KB-06 a Word .doc is uploaded with a progress bar and indexed; Knowledge Base sits under AI - FR-10.1, FR-10.2", async ({ page }) => {
+    test.setTimeout(150_000);
+    const title = unique("Word 97 returns");
+    await openDashboardPage(page, "/dashboard/knowledge-base", "Knowledge Base");
+    // FR-10.1: the link is in the AI group of the sidebar.
+    await expect(page.getByText("AI", { exact: true }).locator("xpath=following::a[1]")).toHaveText(/AI Agents/);
+    await expect(page.getByRole("link", { name: "Knowledge Base" }).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Add Data Source" }).click();
+    await page.locator("#knowledge-source-title").fill(title);
+    await page.locator("#knowledge-source-type").selectOption("FILE");
+    await page.locator('input[type="file"]').setInputFiles(path.join(process.cwd(), "tests", "fixtures", "returns-policy.doc"));
+    const sawProgress = page.getByRole("progressbar", { name: "Upload progress" }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+    await page.getByRole("button", { name: "Save Source" }).click();
+    expect(await sawProgress).toBe(true);
+
+    const row = page.getByRole("row").filter({ hasText: title });
+    await expect(row).toContainText("Synced", { timeout: 90_000 });
+    await page.getByRole("link", { name: title }).click();
+    await expect(page.getByText(/returned within 30 days of delivery/).first()).toBeVisible();
+    await deleteSources(page, [title]);
+  });
+
+  test("UI-KB-07 several sources are selected and deleted at once - FR-10.6", async ({ page }) => {
+    test.setTimeout(150_000);
+    const titles = [unique("Bulk A"), unique("Bulk B")];
+    await openDashboardPage(page, "/dashboard/knowledge-base", "Knowledge Base");
+    for (const title of titles) {
+      await page.getByRole("button", { name: "Add Data Source" }).click();
+      await page.locator("#knowledge-source-title").fill(title);
+      await page.locator("#knowledge-source-type").selectOption("TEXT");
+      await page.locator("#knowledge-source-text").fill(`${title}: orders over PKR 10,000 ship free.`);
+      await page.getByRole("button", { name: "Save Source" }).click();
+      await expect(page.getByRole("link", { name: title })).toBeVisible();
+    }
+
+    await deleteSources(page, titles);
+    await expect(page.getByRole("status").filter({ hasText: "2 sources deleted." })).toBeVisible();
+  });
 });
+
+/** Ticks the sources' checkboxes and deletes them with the bulk bar. */
+async function deleteSources(page: Page, titles: string[]) {
+  await page.goto("/dashboard/knowledge-base");
+  for (const title of titles) {
+    await page.getByRole("checkbox", { name: `Select ${title}` }).check();
+  }
+  const bar = page.getByRole("region", { name: "Bulk actions" });
+  await expect(bar).toContainText(`${titles.length} selected`);
+  acceptNextConfirm(page);
+  await bar.getByRole("button", { name: "Delete" }).click();
+  for (const title of titles) {
+    await expect(page.getByRole("link", { name: title })).toHaveCount(0);
+  }
+}

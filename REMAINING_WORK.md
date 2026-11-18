@@ -21,7 +21,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | M7 | User dashboard | ≈ 92% *(Chats reply box, 19 Nov)* | Unsaved-changes prompt; "System Bot" entries in the thread |
 | M8 | Lead generation | ≈ 90% *(API access now exists)* | Scheduled webhook retries; inline validation |
 | M9 | Support escalation | ≈ 87% *(call transcript in the brief, 18 Nov)* | Team/skill routing; email/Slack alerts |
-| M10 | Knowledge base | ≈ 78% | Pinecone/Firecrawl not configured; bulk select; `.doc`; progress bar |
+| M10 | Knowledge base | ≈ 86% *(bulk actions, progress bar, .doc, 19 Nov)* | Pinecone/Firecrawl not configured; files on the volume, not cloud storage |
 | M11 | Integrations & customization | ≈ 82% | Live HubSpot/Shopify test; more connectors; API write endpoints |
 | | **Overall (equal weight)** | **≈ 79%** *(was ≈ 63% on 10 Oct)* | M6 is the only module far below the rest |
 
@@ -57,7 +57,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | 11 ✅ | **Token streaming of AI replies** *(done 17 Nov: widget and Playground, all providers and the LangGraph engine, first-word time recorded; see CHANGELOG)*. Stream LLM deltas over the existing SSE channel to the widget and Playground. It is needed by the SRS events and by voice. | M5, M6 FE-5/FE-8 | M |
 | 12 ✅ | *(built 18 Nov and verified with real calls: Deepgram Nova-3 speech-to-text with endpointing, streamed Groq Qwen 3.8 reply, Aura-2 streaming speech, barge-in; first audio 1.1–2.8 s on free tiers; see CHANGELOG)* **Voice channel** ⚠️ (Deepgram key, plus Cartesia or ElevenLabs): <ul><li>browser microphone → Deepgram streaming speech-to-text with VAD (FE-7);</li><li>Groq LLM with token streaming;</li><li>streaming TTS over WebSocket (FE-8);</li><li>a measured response time against the 500 ms target (FE-6, PER-1);</li><li>sessions under the same Contact (M5 FE-2) and the call transcript in the escalation brief (M9 FE-2).</li></ul> `@deepgram/sdk` is already installed. | M6, M5, M9, M1 | L |
 | 13 ✅ | *(done 19 Nov: attachments, emoji, online dot, avatars; see CHANGELOG)* **Agent attachments and emoji in Chats** (FR-6.6/6.7). The reply box is a plain textarea; reuse the widget's upload route and emoji picker. Also add the customer presence dot (FR-6.2) and avatars in the list (FR-6.1). | M7 | M |
-| 14 | **Knowledge base table:** <ul><li>bulk checkboxes with bulk delete and re-index (FR-10.6);</li><li>an upload progress bar (XHR `upload.onprogress`);</li><li>`.doc` support;</li><li>move "Knowledge base" to the AI group of the sidebar (FR-10.1).</li></ul> | M10 | M |
+| 14 ✅ | *(done 19 Nov: bulk select with re-index and delete, upload progress bar, .doc files, sidebar under AI; see CHANGELOG)* **Knowledge base table:** <ul><li>bulk checkboxes with bulk delete and re-index (FR-10.6);</li><li>an upload progress bar (XHR `upload.onprogress`);</li><li>`.doc` support;</li><li>move "Knowledge base" to the AI group of the sidebar (FR-10.1).</li></ul> | M10 | M |
 | 15 | **Configure Pinecone and Firecrawl** ⚠️ (free keys) and record one run, so FE-1 and FR-10.3 are shown working instead of "coded but not configured". | M10 | S |
 | 16 | **Live third-party runs** ⚠️ (test accounts). For each, run once and record the result in the module doc: <ul><li>Stripe test keys and the Stripe CLI (OPS-18);</li><li>HubSpot developer portal and Shopify development store (OPS-17);</li><li>Slack app and WhatsApp test number;</li><li>SMTP.</li></ul> | M1, M3, M11 | M total |
 | 17 | **Refund action** with customer confirmation (Stripe or Shopify refund), and a built-in invoice tool instead of the demo HTTP template. | M2 FE-1 | M |
@@ -170,9 +170,9 @@ The rest of the list (§3 and §4). Pick items as time allows.
 ### M10: Knowledge base (≈ 78%)
 - [ ] **FE-1:** Pinecone coded but not configured ⚠️; or switch to pgvector. (P2 #15)
 - [ ] **FR-10.3:** Firecrawl coded but not configured ⚠️. (P2 #15)
-- [ ] **FR-10.6:** no bulk checkboxes. (P2 #14)
-- [ ] **FR-10.2:** no `.doc`, no progress bar; files on local disk, not cloud storage. (P2 #14)
-- [ ] **FR-10.1:** Knowledge base sits under "Setup" in the sidebar, not "AI". (S)
+- [x] **FR-10.6:** bulk checkboxes with re-index and delete. (P2 #14) ✅ *19 Nov*
+- [x] **FR-10.2:** `.doc` files and an upload progress bar. (P2 #14) ✅ *19 Nov* — files are still on the server volume, not cloud storage.
+- [x] **FR-10.1:** Knowledge base is in the AI group of the sidebar. ✅ *19 Nov*
 - [ ] **FE-3:** delete is a hard delete (now audit-logged); the SDS shows a DELETED state. (S)
 - [x] **FE-4:** the recovery cron isn't scheduled. (P1 #5) ✅ *16 Nov*
 - [ ] OCR for scanned PDFs. (M)

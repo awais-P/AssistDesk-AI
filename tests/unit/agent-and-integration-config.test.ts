@@ -50,7 +50,7 @@ describe("UT-07 agent behaviour settings", () => {
   it("UT-07.08 includes a managed fallback model", () => {
     const chain = getManagedFallbackModels("google/gemini-2.5-flash");
 
-    expect(chain).toContain("groq/llama-3.3-70b-versatile");
+    expect(chain).toContain("groq/qwen/qwen3.8-27b");
   });
 
   it("UT-07.09 does not duplicate managed fallback models", () => {

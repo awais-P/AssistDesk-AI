@@ -234,7 +234,7 @@ model AIAgent {
   inboxId               String?
   name                  String
   provider              String             @default("Groq")
-  model                 String             @default("llama-3.3-70b-versatile")
+  model                 String             @default("qwen/qwen3.8-27b")
   apiKey                String?
   systemPrompt          String?
   temperature           Float              @default(0.7)

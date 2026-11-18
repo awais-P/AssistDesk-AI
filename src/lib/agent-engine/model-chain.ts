@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, type AIMessageChunk, type BaseMessage } from "@langchain/core/messages";
-import { getManagedFallbackModels } from "../agent-config";
+import { DEFAULT_MANAGED_MODEL, currentModel, getManagedFallbackModels, providerRequestOptions } from "../agent-config";
 import { type AgentRuntimeConfig, getAppUrl, hasManagedProviderKey, resolveManagedModel } from "../llm-runtime";
 import { decryptSecret } from "../secrets";
 import { withoutGoneModels } from "../model-health";
@@ -38,7 +38,7 @@ async function withFirstTokenTimeout<T>(
 export type ModelToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
 
 export type ToolCallingModel = {
-  /** e.g. "groq/llama-3.3-70b-versatile" or "OpenAI/gpt-4.1-mini", for logs. */
+  /** e.g. "groq/qwen/qwen3.8-27b" or "OpenAI/gpt-4.1-mini", for logs. */
   id: string;
   invoke: (
     messages: BaseMessage[],
@@ -119,11 +119,14 @@ function createModel(provider: string, model: string, apiKey: string, agent: Age
         model,
         apiKey,
         temperature: Math.min(1, Math.max(0, agent.temperature ?? 0.3)),
-        maxTokens: Math.min(2048, Math.max(256, agent.maxTokens ?? 512)),
+        // Voice calls ask for fewer tokens (VOICE_MAX_TOKENS); tool calls still fit in 128.
+        maxTokens: Math.min(2048, Math.max(128, agent.maxTokens ?? 512)),
         maxRetries: 0,
         // Streaming: the timeout covers the whole reply, so it gets the longer stream limit.
         timeout: onToken ? Math.max(timeoutMs, STREAM_TOTAL_TIMEOUT_MS) : timeoutMs,
         streamUsage: true,
+        // Reasoning models on Groq answer at once instead of "thinking" first (latency).
+        modelKwargs: providerRequestOptions(provider, model),
         configuration: { baseURL: endpoint.baseURL, defaultHeaders: endpoint.headers?.() },
       });
 
@@ -163,12 +166,13 @@ export function buildModelChain(agent: AgentRuntimeConfig): ToolCallingModel[] {
     const apiKey = decryptSecret(agent.apiKey);
 
     if (apiKey) {
-      chain.push(createModel(agent.provider, agent.model, apiKey, agent, `${agent.provider}/${agent.model}`));
+      const model = currentModel(agent.model);
+      chain.push(createModel(agent.provider, model, apiKey, agent, `${agent.provider}/${model}`));
     }
   }
 
   if (agent.provider === "Default" || hasManagedProviderKey()) {
-    const start = agent.provider === "Default" ? agent.model : getManagedFallbackModels("groq/llama-3.3-70b-versatile")[0];
+    const start = agent.provider === "Default" ? agent.model : DEFAULT_MANAGED_MODEL;
 
     // Keyless models are dropped first, so cooling-down filtering never leaves only them.
     const usable = getManagedFallbackModels(start).filter((candidate) => resolveManagedModel(candidate).apiKey);

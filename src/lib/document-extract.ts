@@ -6,7 +6,7 @@ import {
 
 export const MAX_KNOWLEDGE_FILE_BYTES = MAX_KNOWLEDGE_FILE_MB * 1024 * 1024;
 
-type DocumentKind = "pdf" | "docx" | "html" | "text";
+type DocumentKind = "pdf" | "docx" | "doc" | "html" | "text";
 
 const textExtensions = [".txt", ".md", ".markdown", ".csv", ".json", ".xml", ".log"];
 
@@ -26,6 +26,11 @@ export function detectDocumentKind(
     name.endsWith(".docx")
   ) {
     return "docx";
+  }
+
+  // FR-10.2: legacy Word 97-2003 documents (binary .doc).
+  if (mime === "application/msword" || name.endsWith(".doc")) {
+    return "doc";
   }
 
   if (mime.includes("html") || name.endsWith(".html") || name.endsWith(".htm")) {
@@ -58,7 +63,7 @@ function normalizeExtractedText(value: string) {
 }
 
 /**
- * Extracts plain text from an uploaded knowledge document (PDF, DOCX, HTML or text).
+ * Extracts plain text from an uploaded knowledge document (PDF, Word .docx/.doc, HTML or text).
  */
 export async function extractDocumentText({
   buffer,
@@ -86,6 +91,10 @@ export async function extractDocumentText({
     const mammoth = await import("mammoth");
     const result = await mammoth.extractRawText({ buffer });
     text = result.value;
+  } else if (kind === "doc") {
+    const { default: WordExtractor } = await import("word-extractor");
+    const document = await new WordExtractor().extract(buffer);
+    text = document.getBody();
   } else if (kind === "html") {
     text = htmlToText(buffer.toString("utf8"));
   } else {

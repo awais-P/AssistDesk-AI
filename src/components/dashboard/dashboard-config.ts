@@ -111,6 +111,15 @@ export const dashboardItems: DashboardItem[] = [
     group: "AI",
   },
   {
+    href: "/dashboard/knowledge-base",
+    title: "Knowledge Base",
+    section: "knowledge-base",
+    description:
+      "Organize training data, manual notes, and website content for assistant knowledge.",
+    moduleLabel: "Module 10 - Knowledge Base Management",
+    group: "AI",
+  },
+  {
     href: "/dashboard/tools",
     title: "Tools",
     section: "tools",
@@ -153,15 +162,6 @@ export const dashboardItems: DashboardItem[] = [
     description:
       "Set up widget-level chatbot appearance, messages, and web deployment behavior.",
     moduleLabel: "Module 1 - Assistant Creation & Omnichannel Integration",
-    group: "Setup",
-  },
-  {
-    href: "/dashboard/knowledge-base",
-    title: "Knowledge Base",
-    section: "knowledge-base",
-    description:
-      "Organize training data, manual notes, and website content for assistant knowledge.",
-    moduleLabel: "Module 10 - Knowledge Base Management",
     group: "Setup",
   },
   {

@@ -1,7 +1,37 @@
 "use client";
 
+/**
+ * FR-10.2: uploads with XMLHttpRequest, because fetch cannot report upload progress.
+ * Resolves with the status and parsed JSON like a fetch Response would.
+ */
+function sendWithProgress(url: string, method: string, body: FormData, onProgress: (percent: number) => void) {
+  return new Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(method, url);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    request.onload = () =>
+      resolve({
+        ok: request.status >= 200 && request.status < 300,
+        status: request.status,
+        json: async () => {
+          try {
+            return JSON.parse(request.responseText) as unknown;
+          } catch {
+            return {};
+          }
+        },
+      });
+    request.onerror = () => reject(new Error("The upload failed. Check your connection and try again."));
+    request.send(body);
+  });
+}
+
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MAX_CRAWL_PAGES_UI,
   MAX_KNOWLEDGE_FILE_MB,
@@ -399,6 +429,12 @@ export function KnowledgeBaseClient({
   const [isSaving, setIsSaving] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
+  // FR-10.6: sources ticked in the table, and the bulk action running on them.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkAction, setBulkAction] = useState<"reindex" | "delete" | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  // FR-10.2: upload progress of the file being saved (null when not uploading).
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -457,6 +493,30 @@ export function KnowledgeBaseClient({
   const currentPage = Math.min(page, pageCount);
   const pageStart = (currentPage - 1) * pageSize;
   const pagedSources = visibleSources.slice(pageStart, pageStart + pageSize);
+  // FR-10.6: the header checkbox selects the sources on this page.
+  const pageIds = pagedSources.map((source) => source.id);
+  const pageSelected = pageIds.filter((id) => selectedIds.has(id)).length;
+  const allOnPageSelected = pageIds.length > 0 && pageSelected === pageIds.length;
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectPage() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const id of pageIds) {
+        if (allOnPageSelected) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }
 
   const summary = useMemo(
     () => ({
@@ -581,15 +641,13 @@ export function KnowledgeBaseClient({
         formData.set("type", createType);
         if (selectedFile) formData.set("file", selectedFile);
 
-        response = await fetch(
-          editingSourceId
-            ? `/api/knowledge-sources/${editingSourceId}`
-            : "/api/knowledge-sources",
-          {
-            method: editingSourceId ? "PATCH" : "POST",
-            body: formData,
-          },
-        );
+        if (selectedFile) setUploadProgress(0);
+        response = (await sendWithProgress(
+          editingSourceId ? `/api/knowledge-sources/${editingSourceId}` : "/api/knowledge-sources",
+          editingSourceId ? "PATCH" : "POST",
+          formData,
+          setUploadProgress,
+        )) as unknown as Response;
       } else {
         response = await fetch(
           editingSourceId
@@ -653,6 +711,7 @@ export function KnowledgeBaseClient({
       );
     } finally {
       setIsSaving(false);
+      setUploadProgress(null);
     }
   }
 
@@ -818,6 +877,7 @@ export function KnowledgeBaseClient({
   }
 
   function closeCreateModal() {
+    setUploadProgress(null);
     setShowCreateModal(false);
     setEditingSourceId(null);
     setSelectedFile(null);
@@ -861,6 +921,78 @@ export function KnowledgeBaseClient({
       );
     } finally {
       setActiveActionId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = pageSelected > 0 && !allOnPageSelected;
+    }
+  }, [pageSelected, allOnPageSelected]);
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const existing = new Set(sources.map((source) => source.id));
+      const kept = [...current].filter((id) => existing.has(id));
+      return kept.length === current.size ? current : new Set(kept);
+    });
+  }, [sources]);
+
+  async function handleBulk(action: "reindex" | "delete") {
+    const ids = [...selectedIds];
+
+    if (ids.length === 0) {
+      return;
+    }
+
+    if (
+      action === "delete" &&
+      !window.confirm(
+        `Delete ${ids.length} knowledge source${ids.length === 1 ? "" : "s"}? Their chunks and vectors are removed and agents stop using their content. This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setBulkAction(action);
+
+    try {
+      const response = await fetch("/api/knowledge-sources/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ids }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; processed?: number; failed?: string[] };
+
+      if (!response.ok) {
+        setError(data.error ?? "The selected sources could not be updated. Try again.");
+        return;
+      }
+
+      const failed = new Set(data.failed ?? []);
+      const done = ids.filter((id) => !failed.has(id));
+
+      if (action === "delete") {
+        setSources((current) => current.filter((source) => !done.includes(source.id)));
+      } else {
+        setSources((current) =>
+          current.map((source) => (done.includes(source.id) ? { ...source, status: "PENDING", processingError: null } : source)),
+        );
+      }
+
+      setSelectedIds(new Set(failed));
+      const count = data.processed ?? done.length;
+      setSuccess(
+        action === "delete"
+          ? `${count} source${count === 1 ? "" : "s"} deleted.${failed.size ? ` ${failed.size} could not be deleted.` : ""}`
+          : `${count} source${count === 1 ? "" : "s"} queued for re-indexing.`,
+      );
+    } catch {
+      setError("The selected sources could not be updated. Check your connection and try again.");
+    } finally {
+      setBulkAction(null);
     }
   }
 
@@ -1101,11 +1233,60 @@ export function KnowledgeBaseClient({
         </div>
       ) : null}
 
+      {canManage && selectedIds.size > 0 ? (
+        <div
+          className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-[#101010] px-4 py-3 text-sm"
+          role="region"
+          aria-label="Bulk actions"
+        >
+          <span className="font-medium text-white">
+            {selectedIds.size} selected
+          </span>
+          <button
+            type="button"
+            disabled={bulkAction !== null}
+            onClick={() => void handleBulk("reindex")}
+            className="rounded-xl border border-white/10 bg-[#161616] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#1f1f1f] disabled:opacity-50"
+          >
+            {bulkAction === "reindex" ? "Re-indexing..." : "Re-index"}
+          </button>
+          <button
+            type="button"
+            disabled={bulkAction !== null}
+            onClick={() => void handleBulk("delete")}
+            className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
+          >
+            {bulkAction === "delete" ? "Deleting..." : "Delete"}
+          </button>
+          <button
+            type="button"
+            disabled={bulkAction !== null}
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-auto text-sm text-slate-400 transition hover:text-white disabled:opacity-50"
+          >
+            Clear selection
+          </button>
+        </div>
+      ) : null}
+
       <div className="mt-5 overflow-hidden rounded-[20px] border border-white/10 bg-[#080808]">
         <div className="overflow-x-auto">
           <table className="min-w-[1040px] divide-y divide-white/10 text-left lg:min-w-full">
             <thead className="bg-white/[0.02] text-xs uppercase tracking-[0.18em] text-slate-400">
               <tr>
+                {canManage ? (
+                  <th scope="col" className="w-12 py-4 pl-5 pr-0">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleSelectPage}
+                      disabled={pageIds.length === 0}
+                      aria-label="Select all sources on this page"
+                      className="h-4 w-4 cursor-pointer accent-white"
+                    />
+                  </th>
+                ) : null}
                 <th scope="col" className="px-5 py-4 font-semibold">Name</th>
                 <th scope="col" className="px-5 py-4 font-semibold">Type</th>
                 <th scope="col" className="px-5 py-4 font-semibold">Vector Status</th>
@@ -1122,7 +1303,7 @@ export function KnowledgeBaseClient({
               {pagedSources.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={canManage ? 9 : 8}
                     className="px-5 py-12 text-center text-sm text-slate-400"
                   >
                     {sources.length === 0
@@ -1138,7 +1319,21 @@ export function KnowledgeBaseClient({
                   const isBusy = activeActionId === source.id;
 
                   return (
-                    <tr key={source.id} className="align-top text-sm text-slate-200">
+                    <tr
+                      key={source.id}
+                      className={`align-top text-sm text-slate-200 ${selectedIds.has(source.id) ? "bg-white/[0.03]" : ""}`}
+                    >
+                      {canManage ? (
+                        <td className="w-12 py-4 pl-5 pr-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(source.id)}
+                            onChange={() => toggleSelected(source.id)}
+                            aria-label={`Select ${source.title}`}
+                            className="mt-1 h-4 w-4 cursor-pointer accent-white"
+                          />
+                        </td>
+                      ) : null}
                       <td className="max-w-[20rem] px-5 py-4">
                         <Link
                           href={`/dashboard/knowledge-base/${source.id}`}
@@ -1612,6 +1807,25 @@ export function KnowledgeBaseClient({
               </div>
             ) : null}
 
+            {isSaving && uploadProgress !== null ? (
+              <div className="mt-5" aria-live="polite">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>{uploadProgress < 100 ? "Uploading the file…" : "Uploaded. Reading and indexing it…"}</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div
+                  className="mt-2 h-2 overflow-hidden rounded-full bg-white/10"
+                  role="progressbar"
+                  aria-label="Upload progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={uploadProgress}
+                >
+                  <div className="h-full rounded-full bg-white transition-[width] duration-200" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-5 flex items-center justify-end gap-3">
               <button
                 type="button"
@@ -1630,7 +1844,9 @@ export function KnowledgeBaseClient({
               >
                 {isSaving
                   ? createType === "FILE" && selectedFile
-                    ? "Uploading..."
+                    ? uploadProgress !== null && uploadProgress < 100
+                      ? `Uploading ${uploadProgress}%`
+                      : "Indexing..."
                     : "Saving..."
                   : editingSourceId
                     ? "Update Source"

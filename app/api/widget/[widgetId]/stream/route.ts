@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { markVisitorSeen } from "@/src/lib/visitor-presence";
 import { authorizeWidgetRequest } from "@/src/lib/chatbot-widget";
 import { isWorkspaceOnline } from "@/src/lib/presence";
 import { prisma } from "@/src/lib/prisma";
@@ -54,6 +55,8 @@ export async function GET(request: Request, context: WidgetStreamRouteContext) {
       }
 
       if (session.status !== "CLOSED") {
+        // FR-6.2: the visitor has the chat open (the green dot in Chats).
+        markVisitorSeen(session.id, chatbot.workspaceId);
         await runFallbackIfDue(chatbot, session.id);
       }
 

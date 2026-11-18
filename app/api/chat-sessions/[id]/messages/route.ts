@@ -4,6 +4,7 @@ import { deliverAgentMessageToChannel } from "@/src/lib/integrations/channel-out
 import { EscalationError, acceptEscalation, findOpenEscalation, openEscalation } from "@/src/lib/escalation";
 import { prisma } from "@/src/lib/prisma";
 import { appendSessionMessage } from "@/src/lib/session-lifecycle";
+import { parseWidgetAttachments } from "@/src/lib/widget-conversation";
 
 type ChatSessionMessagesRouteContext = {
   params: Promise<{
@@ -24,10 +25,16 @@ export async function POST(request: Request, context: ChatSessionMessagesRouteCo
   }
 
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { content?: unknown };
+  const body = (await request.json().catch(() => ({}))) as { content?: unknown; attachments?: unknown };
   const content = typeof body.content === "string" ? body.content.trim() : "";
+  // FR-6.6: files uploaded with POST /api/chat-attachments (at most 3, our own storage only).
+  const attachments = parseWidgetAttachments(body.attachments);
 
-  if (!content) {
+  if (!attachments) {
+    return NextResponse.json({ error: "One of the attachments is invalid. Please attach it again." }, { status: 400 });
+  }
+
+  if (!content && attachments.length === 0) {
     return NextResponse.json({ error: "Write a reply before sending." }, { status: 400 });
   }
 
@@ -85,10 +92,11 @@ export async function POST(request: Request, context: ChatSessionMessagesRouteCo
     workspaceId: chatSession.workspaceId,
     sender: "AGENT",
     content,
+    attachments: attachments.length > 0 ? attachments : undefined,
     authorName: session.user.fullName,
   });
 
-  const delivery = await deliverAgentMessageToChannel(chatSession.id, content);
+  const delivery = await deliverAgentMessageToChannel(chatSession.id, content, attachments);
 
   return NextResponse.json({
     message: {
@@ -96,7 +104,7 @@ export async function POST(request: Request, context: ChatSessionMessagesRouteCo
       sender: message.sender,
       content: message.content,
       authorName: message.authorName,
-      attachments: [],
+      attachments,
       createdAt: message.createdAt.toISOString(),
     },
     status: "ESCALATED",

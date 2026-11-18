@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { onlineVisitorSessions } from "@/src/lib/visitor-presence";
 import { getCurrentSession } from "@/src/lib/auth";
 import { prisma } from "@/src/lib/prisma";
 import { createEventStream, subscribeToWorkspace } from "@/src/lib/realtime";
@@ -24,10 +25,22 @@ export async function GET(request: Request) {
 
   await expireIdleSessions({ workspaceId, limit: 25 });
 
+  let lastOnline: string | null = null;
+
   return createEventStream({
     request,
     subscribe: (wake) => subscribeToWorkspace(workspaceId, wake),
     poll: async () => {
+      const payloads: Array<{ event: string; data: unknown }> = [];
+      // FR-6.2: which visitors have the chat open; sent when it changes (and on connect).
+      const online = onlineVisitorSessions(workspaceId);
+      const onlineKey = online.join(",");
+
+      if (onlineKey !== lastOnline) {
+        lastOnline = onlineKey;
+        payloads.push({ event: "presence", data: { online } });
+      }
+
       const changed = await prisma.chatSession.findMany({
         where: { workspaceId, updatedAt: { gt: cursor } },
         orderBy: { updatedAt: "asc" },
@@ -36,12 +49,13 @@ export async function GET(request: Request) {
       });
 
       if (changed.length === 0) {
-        return [];
+        return payloads;
       }
 
       cursor = changed[changed.length - 1].updatedAt;
 
       return [
+        ...payloads,
         {
           event: "changed",
           data: {

@@ -18,7 +18,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | M4 | Monitoring & analytics | ≈ 84% | KPI auto-refresh; pre-aggregation for big tenants; three SRS definitions differ |
 | M5 | Real-time context & sessions | ≈ 88% *(token streaming 17 Nov, voice under the same customer 18 Nov)* | Multi-instance real time |
 | M6 | LLM management & fast inference | **≈ 80%** *(FE-5 streaming 17 Nov; voice FE-6–8 18 Nov, verified with real calls)* | < 500 ms: measured 1.1–2.8 s end of speech to first audio on free tiers in dev; needs Groq's paid tier and a production measurement |
-| M7 | User dashboard | ≈ 86% *(API Keys page now real)* | Attachments/emoji in the Chats reply box; presence dot; unsaved-changes prompt; inbox auto-reply |
+| M7 | User dashboard | ≈ 92% *(Chats reply box, 19 Nov)* | Unsaved-changes prompt; "System Bot" entries in the thread |
 | M8 | Lead generation | ≈ 90% *(API access now exists)* | Scheduled webhook retries; inline validation |
 | M9 | Support escalation | ≈ 87% *(call transcript in the brief, 18 Nov)* | Team/skill routing; email/Slack alerts |
 | M10 | Knowledge base | ≈ 78% | Pinecone/Firecrawl not configured; bulk select; `.doc`; progress bar |
@@ -56,7 +56,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 |---|---|---|---|
 | 11 ✅ | **Token streaming of AI replies** *(done 17 Nov: widget and Playground, all providers and the LangGraph engine, first-word time recorded; see CHANGELOG)*. Stream LLM deltas over the existing SSE channel to the widget and Playground. It is needed by the SRS events and by voice. | M5, M6 FE-5/FE-8 | M |
 | 12 ✅ | *(built 18 Nov and verified with real calls: Deepgram Nova-3 speech-to-text with endpointing, streamed Groq Qwen 3.8 reply, Aura-2 streaming speech, barge-in; first audio 1.1–2.8 s on free tiers; see CHANGELOG)* **Voice channel** ⚠️ (Deepgram key, plus Cartesia or ElevenLabs): <ul><li>browser microphone → Deepgram streaming speech-to-text with VAD (FE-7);</li><li>Groq LLM with token streaming;</li><li>streaming TTS over WebSocket (FE-8);</li><li>a measured response time against the 500 ms target (FE-6, PER-1);</li><li>sessions under the same Contact (M5 FE-2) and the call transcript in the escalation brief (M9 FE-2).</li></ul> `@deepgram/sdk` is already installed. | M6, M5, M9, M1 | L |
-| 13 | **Agent attachments and emoji in Chats** (FR-6.6/6.7). The reply box is a plain textarea; reuse the widget's upload route and emoji picker. Also add the customer presence dot (FR-6.2) and avatars in the list (FR-6.1). | M7 | M |
+| 13 ✅ | *(done 19 Nov: attachments, emoji, online dot, avatars; see CHANGELOG)* **Agent attachments and emoji in Chats** (FR-6.6/6.7). The reply box is a plain textarea; reuse the widget's upload route and emoji picker. Also add the customer presence dot (FR-6.2) and avatars in the list (FR-6.1). | M7 | M |
 | 14 | **Knowledge base table:** <ul><li>bulk checkboxes with bulk delete and re-index (FR-10.6);</li><li>an upload progress bar (XHR `upload.onprogress`);</li><li>`.doc` support;</li><li>move "Knowledge base" to the AI group of the sidebar (FR-10.1).</li></ul> | M10 | M |
 | 15 | **Configure Pinecone and Firecrawl** ⚠️ (free keys) and record one run, so FE-1 and FR-10.3 are shown working instead of "coded but not configured". | M10 | S |
 | 16 | **Live third-party runs** ⚠️ (test accounts). For each, run once and record the result in the module doc: <ul><li>Stripe test keys and the Stripe CLI (OPS-18);</li><li>HubSpot developer portal and Shopify development store (OPS-17);</li><li>Slack app and WhatsApp test number;</li><li>SMTP.</li></ul> | M1, M3, M11 | M total |
@@ -141,8 +141,8 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **Groq key** ⚠️: the free Groq key is empty locally, so replies go through slow free OpenRouter models (7–12 s). Add one before the demo (AI-10).
 
 ### M7: User dashboard (≈ 86%)
-- [ ] **FR-6.6 / 6.7:** attachments and emoji in the Chats reply box. (P2 #13)
-- [ ] **FR-6.1 / 6.2:** avatars in the chat list; customer presence dot. (P2 #13)
+- [x] **FR-6.6 / 6.7:** attachments and emoji in the Chats reply box. (P2 #13) ✅ *19 Nov*
+- [x] **FR-6.1 / 6.2:** avatars in the chat list; customer presence dot. (P2 #13) ✅ *19 Nov*
 - [ ] **FR-6.8:** "System Bot" entries are shown inside the thread. (S)
 - [ ] **FR-15.1:** no unsaved-changes prompt on any form (`beforeunload` / route-leave guard). (S)
 - [x] **FR-15.5 / UI-21:** inbox auto-reply. There is no toggle (hard-coded `true`), no template choice and no sending. (P1 #4) ✅ *16 Nov*

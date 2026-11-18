@@ -28,7 +28,7 @@ to the feature areas below:
 | `voice-live.spec.ts` | UI-VOI-02 | A real call with real Deepgram (opt-in: `VOICE_LIVE_WAV`) |
 | `streaming.spec.ts` | UI-STR-01…04 | Token streaming in the widget, Playground and after the lead form; first word in Analytics (real AI) |
 
-Unit groups `UT-01`–`UT-68`, integration groups `IT-01`–`IT-31`, and HTTP
+Unit groups `UT-01`–`UT-69`, integration groups `IT-01`–`IT-32`, and HTTP
 end-to-end groups `API-01`–`API-09` cover the same requirements at different
 boundaries. Their full coverage map and commands are in
 [TESTING_INSTRUCTIONS.md](../../TESTING_INSTRUCTIONS.md).

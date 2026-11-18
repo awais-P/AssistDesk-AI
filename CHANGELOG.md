@@ -18,6 +18,22 @@ Entry template:
 
 ---
 
+## 2026-11-19 — Chats reply box: attachments, emoji, online dot, avatars
+**Module:** M7 (FR-6.1, FR-6.2, FR-6.6, FR-6.7), M5   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/lib/visitor-presence.ts`, `src/lib/emoji-set.ts`, `app/api/chat-attachments/route.ts`; changed `src/components/dashboard/chats-workspace.tsx`, `app/api/chat-sessions/[id]/messages/route.ts`, `app/api/chat-sessions/events/route.ts`, `app/api/widget/[widgetId]/stream/route.ts`, `app/api/widget/[widgetId]/messages/route.ts`, `src/lib/integrations/channel-outbound.ts`, `src/lib/rate-limit.ts`, `src/components/widget/chatbot-widget-client.tsx`; tests `tests/unit/chats-reply.test.ts` (UT-69), `tests/integration/chats-reply.int.ts` (IT-32), `tests/ui/chats.spec.ts` (UI-CHT-04)
+
+**Added:**
+- **Attachments in replies (FR-6.6):** a paperclip button in the Chats reply box; up to 3 images, PDF, TXT or DOCX files of 5 MB each per reply (`POST /api/chat-attachments`, signed-in team members, 20 uploads a minute). A reply can be files only. The website widget shows them inline; WhatsApp and Slack customers get them as download links under the text.
+- **Emoji (FR-6.7):** an emoji button with the same set as the widget, inserted where the cursor is.
+- **Customer online dot (FR-6.2):** the widget's live connection checks in every few seconds; the Chats stream sends a `presence` event whenever the list of visitors with the chat open changes (gone for 30 s = offline). A green dot on the avatar, "Online now" in the conversation header, and "(online now)" after the name for screen readers. Website and voice conversations only (other channels can't tell).
+- **Avatars (FR-6.1):** initials with a stable colour per customer in the list and the conversation header.
+
+**Fixed:** the dot was first announced before the customer's name by screen readers ("Online now, Visitor"); it is now announced after it.
+
+**Notes:** presence is kept in memory per server process (like the live updates); with several instances a visitor on another instance shows as offline until they write.
+
+---
+
 ## 2026-11-18 — First live voice calls; Groq's retired Llama models replaced
 **Module:** M6 (FE-1, FE-5, FE-6), M5   **Author:** Claude (with Muhammad Awais)
 **Files:** `src/lib/agent-config.ts`, `src/lib/llm-runtime.ts`, `src/lib/llm-stream.ts`, `src/lib/agent-engine/model-chain.ts`, `src/lib/conversation-runtime.ts`, `src/lib/demo-data.ts`, `src/components/widget/use-voice-call.ts`, `prisma/schema.prisma`, migration `20261118120000_groq_retired_llama`; new `scripts/voice/make-test-question.mjs`, `tests/ui/voice-live.spec.ts` (UI-VOI-02), `tests/unit/groq-models.test.ts` (UT-68); `tests/unit/agent-and-integration-config.test.ts` (UT-07.08)

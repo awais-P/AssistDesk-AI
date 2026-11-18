@@ -136,7 +136,7 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 | Module | ROADMAP claim | Verified | Verdict |
 |---|---|---|---|
 | M1 Assistant creation & omnichannel | 92% | **≈ 80%** | Core works end to end. Gaps: no voice; Slack/WhatsApp/SMTP never tested with real accounts (Slack uses a pasted token, not OAuth; WhatsApp has no media); a few settings do nothing (§5.2). |
-| M7 User dashboard | 90% | **≈ 85%** | All 5 FEs are real. Missing FR details: agent attachments and emoji in Chats, presence dot, inbox auto-reply template, unsaved-changes prompt; the API Keys page is a placeholder. |
+| M7 User dashboard | 90% | **≈ 85%** | All 5 FEs are real. Missing FR details: unsaved-changes prompt (attachments, emoji, presence dot added 19 Nov; inbox auto-reply 16 Nov); the API Keys page is a placeholder. |
 | M10 Knowledge base | 90% | **≈ 78%** | The ingest → chunk → embed → retrieve pipeline is real. Pinecone and Firecrawl are coded but **not configured**, so vectors live in Postgres. No bulk select, no `.doc`, no upload progress bar. |
 | M5 Context & sessions | 90% | **≈ 80%** | The lifecycle, 3-layer memory, contact merge and rate limiter match the M5 doc. No voice and SSE instead of WebSockets. Token streaming (17 Nov) and the scheduled jobs (16 Nov) are done. |
 | M8 Lead generation | 92% | **≈ 88%** | All 5 FEs plus HMAC webhooks. No API-key access for external systems; automatic webhook retries need a scheduler. |
@@ -172,8 +172,8 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 |---|---|---|---|
 | FE-1…FE-5 | Central dashboard, KB management, notifications, playground, profile/organisation | ✅ | No user avatar upload. |
 | FR-5.x | Tickets list, search, filters, bulk, pagination | ✅ | There is no separate advanced-filter panel (FR-5.4). |
-| FR-6.1 / 6.2 | Chat list avatar; customer presence dot | 🟡 / ❌ | — |
-| FR-6.6 / 6.7 | Agent attachments and emoji in Chats | ❌ | Admitted in ROADMAP. |
+| FR-6.1 / 6.2 | Chat list avatar; customer presence dot | ✅ / ✅ | Added 19 Nov (UI-CHT-04). |
+| FR-6.6 / 6.7 | Agent attachments and emoji in Chats | ✅ | Added 19 Nov (IT-32, UI-CHT-04). |
 | FR-6.8 | System Bot entries | ⚠️ | Shown inside the thread. |
 | FR-9.x | Prompt templates | ✅ | Used for ticket AI drafts only. |
 | FR-15.1 | Unsaved-changes prompt | ❌ | — |

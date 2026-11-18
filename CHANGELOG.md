@@ -18,6 +18,22 @@ Entry template:
 
 ---
 
+## 2026-11-18 — First live voice calls; Groq's retired Llama models replaced
+**Module:** M6 (FE-1, FE-5, FE-6), M5   **Author:** Claude (with Muhammad Awais)
+**Files:** `src/lib/agent-config.ts`, `src/lib/llm-runtime.ts`, `src/lib/llm-stream.ts`, `src/lib/agent-engine/model-chain.ts`, `src/lib/conversation-runtime.ts`, `src/lib/demo-data.ts`, `src/components/widget/use-voice-call.ts`, `prisma/schema.prisma`, migration `20261118120000_groq_retired_llama`; new `scripts/voice/make-test-question.mjs`, `tests/ui/voice-live.spec.ts` (UI-VOI-02), `tests/unit/groq-models.test.ts` (UT-68); `tests/unit/agent-and-integration-config.test.ts` (UT-07.08)
+
+**Fixed:**
+- **Groq retired its Llama models** (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`: "model not found"). The managed and own-key Groq lists now offer **Qwen 3.8 27B (fastest, the new default)**, GPT-OSS 120B and GPT-OSS 20B. A migration moves existing agents (including the setup wizard's and the demo agent) to Qwen 3.8, and agents saved later with an old model id are mapped on the fly.
+- **Reasoning models answer at once:** Groq requests send `reasoning_effort: "none"` for Qwen 3 and `"low"` for GPT-OSS (streamed, non-streamed and LangGraph calls). Measured first word: Qwen ~100–500 ms, GPT-OSS ~400–950 ms.
+- **Callers were cut off at the start:** recording only began once the Deepgram connection was open, so words said right after pressing Call were lost. Recording now starts as soon as the microphone is granted and the audio is held until the connection opens.
+- **Groq free-tier budget:** Groq counts each request's whole `max_tokens` against a per-minute output budget (Qwen 3.8: 1,000 tokens a minute). Calls now ask for at most 200 tokens (`VOICE_MAX_TOKENS`), and background jobs (summaries, customer memory, briefs) always use GPT-OSS 20B, so live replies keep Qwen's budget.
+
+**Verified live (first real calls, nothing simulated):** UI-VOI-02 plays a recorded question (made with Deepgram's own speech) as the microphone; Deepgram transcribed "What is your return policy?", the agent answered from the knowledge base, and the answer was spoken. On the local dev server with free tiers: end of speech to first audio **1.1–2.8 s**; the server's own time to the first word **0.5–1.5 s** (Groq Qwen 3.8). Production (pre-built, no dev compilation) should be faster; under 500 ms reliably needs Groq's paid tier.
+
+**Notes:** headless Chrome's fake microphone (`--use-file-for-fake-audio-capture`) gives only silence, so the live test feeds the recording through Web Audio instead; the recording lives in `tests/ui/.auth/` because Playwright empties `test-results/`.
+
+---
+
 ## 2026-11-18 — Voice calls in the website widget (Deepgram speech in and out)
 **Module:** M6 (FE-6, FE-7, FE-8), M1 (FR-16.6), M5 (FE-2), M9 (FE-2), M4   **Author:** Claude (with Muhammad Awais)
 **Files:** new `src/lib/voice.ts`, `src/lib/voice-text.ts`, `src/lib/reply-stream-client.ts`, `app/api/widget/[widgetId]/voice/route.ts`, `src/components/widget/use-voice-call.ts`, `src/components/widget/voice-call-panel.tsx`, migration `20261118090000_voice_calls` (`Chatbot.voiceEnabled`, `AiInteraction.firstAudioMs`); changed `src/lib/llm-runtime.ts`, `src/lib/widget-conversation.ts`, `src/lib/widget-session.ts`, `src/lib/rate-limit.ts`, `src/lib/escalation-summary.ts`, `src/lib/analytics.ts`, `app/api/widget/[widgetId]/route.ts`, `app/api/widget/[widgetId]/messages/route.ts`, `app/api/chatbots/route.ts`, `app/api/analytics/export/route.ts`, `app/dashboard/chatbots/[id]/page.tsx`, `src/components/widget/chatbot-widget-client.tsx`, `src/components/dashboard/{chatbot-configuration-workspace,agent-configuration-workspace,analytics-overview-workspace,chats-workspace}.tsx`, `.env.example`, `DEPLOYMENT.md`; tests `tests/unit/voice.test.ts` (UT-67), `tests/integration/voice.int.ts` (IT-31), `tests/ui/voice.spec.ts` (UI-VOI-01), `tests/ui/streaming.spec.ts`

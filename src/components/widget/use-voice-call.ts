@@ -77,6 +77,8 @@ export function useVoiceCall({
     connection: DeepgramConnection | null;
     stream: MediaStream | null;
     recorder: MediaRecorder | null;
+    /** Audio recorded while the speech-to-text connection was still opening. */
+    pendingAudio: Blob[];
     listen: WebSocket | null;
     speak: WebSocket | null;
     speakQueue: string[];
@@ -98,6 +100,7 @@ export function useVoiceCall({
     connection: null,
     stream: null,
     recorder: null,
+    pendingAudio: [],
     listen: null,
     speak: null,
     speakQueue: [],
@@ -495,7 +498,7 @@ export function useVoiceCall({
     }
 
     void state.audio?.close().catch(() => undefined);
-    Object.assign(state, { listen: null, speak: null, recorder: null, stream: null, audio: null, speakQueue: [], heard: "" });
+    Object.assign(state, { listen: null, speak: null, recorder: null, stream: null, audio: null, speakQueue: [], pendingAudio: [], heard: "" });
     state.sources.clear();
   }, []);
 
@@ -533,6 +536,26 @@ export function useVoiceCall({
       state.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+
+      // Recording starts now, not once Deepgram is connected: a caller who talks straight
+      // away is not cut off. Audio is held until the connection opens, then sent in order.
+      const mimeType = preferredRecordingType();
+      const recorder = new MediaRecorder(state.stream, mimeType ? { mimeType } : undefined);
+      state.pendingAudio = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size === 0) {
+          return;
+        }
+
+        if (state.listen?.readyState === WebSocket.OPEN) {
+          state.listen.send(event.data);
+        } else {
+          state.pendingAudio.push(event.data);
+        }
+      };
+      // Small pieces: the words reach speech-to-text within a tenth of a second.
+      recorder.start(100);
+      state.recorder = recorder;
     } catch {
       cleanUp();
       setError("Microphone access was blocked. Allow it in your browser to call.");
@@ -578,16 +601,10 @@ export function useVoiceCall({
       }
     };
     listen.onopen = () => {
-      const mimeType = preferredRecordingType();
-      const recorder = new MediaRecorder(state.stream as MediaStream, mimeType ? { mimeType } : undefined);
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && listen.readyState === WebSocket.OPEN) {
-          listen.send(event.data);
-        }
-      };
-      // Small pieces: the words reach speech-to-text within a tenth of a second.
-      recorder.start(100);
-      state.recorder = recorder;
+      for (const chunk of state.pendingAudio.splice(0)) {
+        listen.send(chunk);
+      }
+
       state.keepAlive = window.setInterval(() => {
         if (listen.readyState === WebSocket.OPEN) listen.send(JSON.stringify({ type: "KeepAlive" }));
       }, KEEP_ALIVE_MS);

@@ -1,3 +1,4 @@
+import { VOICE_MAX_TOKENS } from "./agent-config";
 import { runAgentReply } from "./agent-engine/run-agent";
 import { AI_LIMIT_NOTICE, aiReplyAllowed } from "./billing";
 import { safeTimeZone } from "./analytics-math";
@@ -146,6 +147,11 @@ export async function generateSessionReply({
   const question = `${latest.content}${describeAttachments(latest.attachments)}`;
   const memory = { customerContext: customerContext.text, conversationSummary };
   const runtimeAgent = toRuntimeAgent(agent, extraSystemPrompt);
+
+  // Calls: short spoken answers, and less of the provider's per-minute budget reserved.
+  if (channel === "VOICE") {
+    runtimeAgent.maxTokens = Math.min(runtimeAgent.maxTokens ?? VOICE_MAX_TOKENS, VOICE_MAX_TOKENS);
+  }
   // Module 2: agents with tools reason and act through the LangGraph engine.
   const response =
     toolset.tools.length > 0 && toolset.settings && session

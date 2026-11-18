@@ -7,7 +7,11 @@ import {
 import {
   MAX_AGENT_MAX_TOKENS,
   MIN_AGENT_MAX_TOKENS,
+  BACKGROUND_MANAGED_MODEL,
+  VOICE_MAX_TOKENS,
   buildBehaviourInstructions,
+  currentModel,
+  providerRequestOptions,
   clampAgentNumber,
   getManagedFallbackModels,
 } from "./agent-config";
@@ -163,12 +167,15 @@ export async function buildPrompt({
     system,
     messages: [...priorTurns, { role: "user", content: finalUserTurn }],
     temperature: clampAgentNumber(agent.temperature, { min: 0, max: 1, fallback: 0.3 }),
-    maxTokens: Math.round(
-      clampAgentNumber(agent.maxTokens, {
-        min: MIN_AGENT_MAX_TOKENS,
-        max: MAX_AGENT_MAX_TOKENS,
-        fallback: 512,
-      }),
+    maxTokens: Math.min(
+      channel === "VOICE" ? VOICE_MAX_TOKENS : MAX_AGENT_MAX_TOKENS,
+      Math.round(
+        clampAgentNumber(agent.maxTokens, {
+          min: MIN_AGENT_MAX_TOKENS,
+          max: MAX_AGENT_MAX_TOKENS,
+          fallback: 512,
+        }),
+      ),
     ),
   };
 
@@ -202,6 +209,7 @@ async function callOpenAiCompatibleModel({
   prompt,
   timeoutMs,
   extraHeaders,
+  extraBody,
 }: {
   endpoint: string;
   apiKey: string;
@@ -209,6 +217,7 @@ async function callOpenAiCompatibleModel({
   prompt: ChatPrompt;
   timeoutMs: number;
   extraHeaders?: Record<string, string>;
+  extraBody?: Record<string, unknown>;
 }): Promise<ProviderResult> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -222,6 +231,7 @@ async function callOpenAiCompatibleModel({
       temperature: prompt.temperature,
       max_tokens: prompt.maxTokens,
       messages: [{ role: "system", content: prompt.system }, ...prompt.messages],
+      ...extraBody,
     }),
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -375,7 +385,11 @@ function streamCustomProvider(
     case "Google":
       return streamGoogle(request);
     case "Groq":
-      return streamOpenAiCompatible({ ...request, endpoint: "https://api.groq.com/openai/v1/chat/completions" });
+      return streamOpenAiCompatible({
+        ...request,
+        endpoint: "https://api.groq.com/openai/v1/chat/completions",
+        extraBody: providerRequestOptions(provider, model),
+      });
     case "OpenAI":
       return streamOpenAiCompatible({ ...request, endpoint: "https://api.openai.com/v1/chat/completions" });
     default:
@@ -443,6 +457,7 @@ function callCustomProvider(
         model,
         prompt,
         timeoutMs,
+        extraBody: providerRequestOptions(provider, model),
       });
     case "OpenAI":
       return callOpenAiCompatibleModel({
@@ -613,8 +628,8 @@ export async function generateAgentReply({
       }
 
       result = {
-        ...(await callProvider(agent.provider, apiKey, agent.model, prompt, CUSTOM_PROVIDER_TIMEOUT_MS, stream)),
-        modelUsed: agent.model,
+        ...(await callProvider(agent.provider, apiKey, currentModel(agent.model), prompt, CUSTOM_PROVIDER_TIMEOUT_MS, stream)),
+        modelUsed: currentModel(agent.model),
       };
     }
 
@@ -677,7 +692,7 @@ export async function generateCompletion({
         const result = await callCustomProvider(
           agent.provider,
           apiKey,
-          agent.model,
+          currentModel(agent.model),
           chatPrompt,
           CUSTOM_PROVIDER_TIMEOUT_MS,
         );
@@ -697,7 +712,9 @@ export async function generateCompletion({
 
   try {
     const result = await callManagedChain(
-      agent?.provider === "Default" ? agent.model : getManagedFallbackModels("groq/llama-3.3-70b-versatile")[0],
+      // Managed models: background work never uses the fastest model's per-minute budget,
+      // which live replies (chat and calls) need.
+      BACKGROUND_MANAGED_MODEL,
       chatPrompt,
     );
     return result.reply.trim();

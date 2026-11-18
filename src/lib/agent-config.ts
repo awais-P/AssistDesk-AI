@@ -61,15 +61,23 @@ export const agentProviderOptions: AgentProviderOption[] = [
 ] as const;
 
 export const agentModelCatalog: AgentModelConfig[] = [
+  // Groq retired its Llama models (Nov 2026). Measured first word on Groq: Qwen 3.8 with
+  // thinking off ~100–500 ms, GPT-OSS with low reasoning ~400–950 ms.
   {
-    value: "groq/llama-3.3-70b-versatile",
-    label: "Groq Llama 3.3 70B (fast)",
+    value: "groq/qwen/qwen3.8-27b",
+    label: "Groq Qwen 3.8 27B (fastest)",
     provider: "Default",
     managed: true,
   },
   {
-    value: "groq/llama-3.1-8b-instant",
-    label: "Groq Llama 3.1 8B Instant",
+    value: "groq/openai/gpt-oss-120b",
+    label: "Groq GPT-OSS 120B (smartest)",
+    provider: "Default",
+    managed: true,
+  },
+  {
+    value: "groq/openai/gpt-oss-20b",
+    label: "Groq GPT-OSS 20B",
     provider: "Default",
     managed: true,
   },
@@ -150,14 +158,20 @@ export const agentModelCatalog: AgentModelConfig[] = [
     managed: false,
   },
   {
-    value: "llama-3.1-8b-instant",
-    label: "Llama 3.1 8B Instant",
+    value: "qwen/qwen3.8-27b",
+    label: "Qwen 3.8 27B (fastest)",
     provider: "Groq",
     managed: false,
   },
   {
-    value: "llama-3.3-70b-versatile",
-    label: "Llama 3.3 70B Versatile",
+    value: "openai/gpt-oss-120b",
+    label: "GPT-OSS 120B",
+    provider: "Groq",
+    managed: false,
+  },
+  {
+    value: "openai/gpt-oss-20b",
+    label: "GPT-OSS 20B",
     provider: "Groq",
     managed: false,
   },
@@ -167,23 +181,58 @@ export const agentModelCatalog: AgentModelConfig[] = [
     provider: "OpenRouter",
     managed: false,
   },
-  {
-    value: "qwen/qwen3.8-27b:free",
-    label: "Qwen 3.8 27B Free",
-    provider: "OpenRouter",
-    managed: false,
-  },
-  {
-    value: "nvidia/nemotron-3-super-120b-a12b:free",
-    label: "Nemotron 3 Super 120B Free",
-    provider: "OpenRouter",
-    managed: false,
-  },
 ] as const;
 
 export const agentModelOptions = agentModelCatalog
   .filter((model) => model.provider === "Default")
   .map((model) => model.value);
+
+/** The managed model new agents start from (fastest on Groq). */
+export const DEFAULT_MANAGED_MODEL = "groq/qwen/qwen3.8-27b";
+/**
+ * Background jobs (summaries, customer memory, escalation briefs) start from another model:
+ * Groq limits each model's output tokens per minute (Qwen 3.8: 1,000 on the free tier),
+ * so live replies keep the fastest model's budget.
+ */
+export const BACKGROUND_MANAGED_MODEL = "groq/openai/gpt-oss-20b";
+/**
+ * A spoken answer is one to three sentences (~60 tokens). Groq reserves a request's whole
+ * max_tokens against the per-minute budget, so calls ask for little.
+ */
+export const VOICE_MAX_TOKENS = 200;
+
+/** Models providers withdrew, mapped to what replaces them (agents saved earlier keep working). */
+export const RETIRED_MODEL_REPLACEMENTS: Record<string, string> = {
+  "groq/llama-3.3-70b-versatile": DEFAULT_MANAGED_MODEL,
+  "groq/llama-3.1-8b-instant": DEFAULT_MANAGED_MODEL,
+  "llama-3.3-70b-versatile": "qwen/qwen3.8-27b",
+  "llama-3.1-8b-instant": "qwen/qwen3.8-27b",
+};
+
+export function currentModel(model: string) {
+  return RETIRED_MODEL_REPLACEMENTS[model] ?? model;
+}
+
+/**
+ * Extra request settings some models need for fast answers (OpenAI-compatible APIs).
+ * Groq's Qwen 3 and GPT-OSS are reasoning models: without these they "think" first
+ * and the first word comes seconds later.
+ */
+export function providerRequestOptions(provider: string, model: string): Record<string, unknown> {
+  if (provider !== "Groq") {
+    return {};
+  }
+
+  if (/qwen3/i.test(model)) {
+    return { reasoning_effort: "none" };
+  }
+
+  if (/gpt-oss/i.test(model)) {
+    return { reasoning_effort: "low" };
+  }
+
+  return {};
+}
 
 export const managedFallbackModels = agentModelCatalog
   .filter((model) => model.provider === "Default")
@@ -311,9 +360,10 @@ export function usesCustomApiKey(provider: string) {
 }
 
 export function getManagedFallbackModels(model: string) {
-  const remainingModels = managedFallbackModels.filter((entry) => entry !== model);
+  const start = currentModel(model);
+  const remainingModels = managedFallbackModels.filter((entry) => entry !== start);
 
-  return [model, ...remainingModels];
+  return [start, ...remainingModels];
 }
 
 export function formatAgentRuntimeLabel(model: string) {

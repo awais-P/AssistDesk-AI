@@ -206,8 +206,14 @@ type StreamRequest = {
 export async function streamOpenAiCompatible({
   endpoint,
   extraHeaders,
+  extraBody,
   ...request
-}: StreamRequest & { endpoint: string; extraHeaders?: Record<string, string> }): Promise<StreamedResult> {
+}: StreamRequest & {
+  endpoint: string;
+  extraHeaders?: Record<string, string>;
+  /** Provider-specific settings, e.g. Groq's reasoning_effort for reasoning models. */
+  extraBody?: Record<string, unknown>;
+}): Promise<StreamedResult> {
   const deadline = streamDeadline(request.firstTokenMs);
 
   try {
@@ -226,6 +232,7 @@ export async function streamOpenAiCompatible({
         stream: true,
         stream_options: { include_usage: true },
         messages: [{ role: "system", content: request.system }, ...request.messages],
+        ...extraBody,
       }),
       signal: deadline.signal,
     });

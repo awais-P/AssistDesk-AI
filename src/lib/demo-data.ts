@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { DEFAULT_MANAGED_MODEL } from "./agent-config";
 import { hashPassword } from "./auth";
 import { prisma } from "./prisma";
 
@@ -86,7 +87,7 @@ async function seedDemoData() {
         inboxId: inbox.id,
         name: "Support Assistant",
         provider: "Default",
-        model: "groq/llama-3.3-70b-versatile",
+        model: DEFAULT_MANAGED_MODEL,
         systemPrompt:
           "You are AssistDesk support assistant. Keep answers clear and helpful.",
         status: "ACTIVE",

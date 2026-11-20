@@ -7,6 +7,8 @@ import {
   escalationSettingsFrom,
   slaDueAt,
 } from "./escalation-triggers";
+import { sendEscalationAlerts } from "./escalation-alerts";
+import { routeNewEscalation } from "./escalation-routing";
 import { createNotification } from "./notifications";
 import { prisma } from "./prisma";
 import { publishConversationEvent } from "./realtime";
@@ -166,10 +168,12 @@ export async function openEscalation(input: OpenEscalationInput) {
               },
             })
           : existing;
-      return { escalation, created: false, accepted: Boolean(accept), wasEscalated: true, target };
+      return { escalation, created: false, accepted: Boolean(accept), wasEscalated: true, target, routed: null };
     }
 
     const now = new Date();
+    // Round-robin routing (if switched on) picks who it goes to; it stays PENDING until they accept.
+    const routed = actor ? null : await routeNewEscalation(tx, workspaceId, now);
     const escalation = await tx.escalation.create({
       data: {
         workspaceId,
@@ -182,7 +186,7 @@ export async function openEscalation(input: OpenEscalationInput) {
         sentimentScore: input.sentimentScore ?? null,
         priority,
         status: actor ? "ACCEPTED" : "PENDING",
-        assigneeId: actor?.id ?? null,
+        assigneeId: actor?.id ?? routed?.id ?? null,
         acceptedAt: actor ? now : null,
         slaDueAt: actor ? null : slaDueAt(now, settings.slaMinutes),
         createdAt: now,
@@ -199,10 +203,10 @@ export async function openEscalation(input: OpenEscalationInput) {
       await tx.ticket.update({ where: { id: ticketId }, data: { priority }, select: { id: true } });
     }
 
-    return { escalation, created: true, accepted: Boolean(actor), wasEscalated, target };
+    return { escalation, created: true, accepted: Boolean(actor), wasEscalated, target, routed };
   });
 
-  const { escalation, target } = result;
+  const { escalation, target, routed } = result;
   const label = TRIGGER_LABELS[input.trigger];
   let noticeMessage: Awaited<ReturnType<typeof appendSessionMessage>> | null = null;
 
@@ -238,10 +242,34 @@ export async function openEscalation(input: OpenEscalationInput) {
       workspaceId,
       type: "ESCALATION_CREATED",
       severity: priority === "URGENT" ? "ERROR" : "WARNING",
-      title: `${priority === "URGENT" || priority === "HIGH" ? `${priority === "URGENT" ? "Urgent" : "High priority"} escalation` : "Escalation"}: ${target.name ?? "a customer"}`,
+      title: `${priority === "URGENT" || priority === "HIGH" ? `${priority === "URGENT" ? "Urgent" : "High priority"} escalation` : "Escalation"}: ${target.name ?? "a customer"}${routed ? ` (assigned to ${routed.fullName})` : ""}`,
       body: `${label} - ${input.reason}`,
       link: `/dashboard/escalations?id=${escalation.id}`,
     });
+
+    if (routed && sessionId) {
+      await recordSessionEvent({
+        workspaceId,
+        sessionId,
+        contactId: escalation.contactId,
+        type: "ESCALATION_ROUTED",
+        detail: `Assigned to ${routed.fullName} by round-robin routing.`,
+        metadata: { escalationId: escalation.id, assigneeId: routed.id },
+      });
+    }
+
+    // Email and Slack in the background: the customer's reply must not wait for them.
+    void sendEscalationAlerts(workspaceId, {
+      kind: "created",
+      escalationId: escalation.id,
+      customer: target.name ?? "A customer",
+      channel: escalation.channel,
+      priority,
+      triggerLabel: label,
+      reason: input.reason.slice(0, 300),
+      assignee: routed ? { fullName: routed.fullName, email: routed.email } : null,
+      slaMinutes: settings.slaMinutes,
+    }).catch((error) => console.error("[escalation] alert failed:", error));
   }
 
   if (result.created) {
@@ -641,6 +669,9 @@ export async function checkEscalationSla(now = new Date()) {
       reason: true,
       createdAt: true,
       priority: true,
+      channel: true,
+      trigger: true,
+      assignee: { select: { fullName: true, email: true } },
       session: { select: { customerName: true, customerEmail: true } },
       ticket: { select: { requesterName: true, requesterEmail: true, ticketNumber: true } },
     },
@@ -682,6 +713,18 @@ export async function checkEscalationSla(now = new Date()) {
         metadata: { escalationId: item.id },
       });
     }
+
+    await sendEscalationAlerts(item.workspaceId, {
+      kind: "sla_breached",
+      escalationId: item.id,
+      customer: who,
+      channel: item.channel,
+      priority: item.priority as "LOW" | "MEDIUM" | "HIGH" | "URGENT",
+      triggerLabel: TRIGGER_LABELS[item.trigger as EscalationTrigger] ?? item.trigger,
+      reason: item.reason.slice(0, 300),
+      assignee: item.assignee,
+      waitedMinutes: minutes,
+    }).catch((error) => console.error("[escalation] overdue alert failed:", error));
   }
 
   return { breached };

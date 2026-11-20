@@ -260,6 +260,7 @@ Verified after the module was built (see [M9_SUPPORT_ESCALATION.md](M9_SUPPORT_E
 | FE-5 | Context for agents during hand-off | ✅ | Queue cards and the Chats banner with reason, priority, brief and deadline; the M5 context panel. |
 | FE-6 | Logs of escalated conversations for review | ✅ | Escalation records with owner, times, outcome and note; views, 30-day figures, CSV (IT-21.07, UI-ESC-04); timeline events. |
 | — | Queue, ownership, SLA | ✅ | Accept / take over / assign with role checks (IT-21.02–04); SLA breach flagged once with an alert (IT-19.12). |
+| — | Alerts and routing *(added 20 Nov)* | ✅ | Email and Slack alerts for new (optionally only high/urgent) and overdue escalations, with a test button and a warning when a channel fails; round-robin assignment among chosen or online members, still waiting for acceptance so the SLA applies (UT-72, IT-35, UI-ESC-05). No skill-based routing. |
 
 Bug found while testing: an email whose body repeats its subject had its words counted twice, so an ordinary "Delivery delayed" email was escalated. Fixed before commit (caught by IT-12.03).
 

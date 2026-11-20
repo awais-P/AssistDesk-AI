@@ -5,15 +5,10 @@ import { getCurrentSession } from "@/src/lib/auth";
 import { normalizeEmail } from "@/src/lib/identity";
 import { prisma } from "@/src/lib/prisma";
 import { requireRole } from "@/src/lib/rbac";
-import { decryptSecret, encryptSecret } from "@/src/lib/secrets";
+import { encryptSecret } from "@/src/lib/secrets";
+import { SLACK_WEBHOOK_PATTERN, maskSlackUrl } from "@/src/lib/slack-webhook";
 
 const MAX_NOTIFY_EMAILS = 10;
-const SLACK_WEBHOOK_PATTERN = /^https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+$/;
-
-function maskSlackUrl(stored: string | null) {
-  const url = decryptSecret(stored);
-  return url ? `https://hooks.slack.com/services/…${url.slice(-6)}` : null;
-}
 
 async function readSettings(workspaceId: string) {
   const settings = await prisma.workspaceSetting.findUnique({

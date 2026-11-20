@@ -18,6 +18,19 @@ Entry template:
 
 ---
 
+## 2026-11-20 — Escalation alerts by email and Slack, and round-robin routing
+**Module:** M9 (with M8's notifier)   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/lib/escalation-alerts.ts`, `src/lib/escalation-routing.ts`, `src/lib/slack-webhook.ts` (moved out of `leads.ts`), `app/api/escalations/alerts/route.ts`, `app/api/escalations/alerts/test/route.ts`, `src/components/dashboard/escalation-alerts-section.tsx`, migration `20261120120000_escalation_alerts_routing`; changed `prisma/schema.prisma`, `src/lib/escalation.ts`, `src/lib/leads.ts`, `app/api/leads/settings/route.ts`, `src/components/dashboard/escalation-settings-workspace.tsx`, `escalations-workspace.tsx`, `chats-workspace.tsx`; tests `tests/unit/escalation-routing-alerts.test.ts` (UT-72), `tests/integration/escalation-routing.int.ts` (IT-35), `tests/ui/escalations.spec.ts` (UI-ESC-05)
+
+**Added:**
+- **Alerts outside the dashboard:** on the Escalation settings page, a list of up to 10 emails and a Slack incoming webhook (stored encrypted, shown masked). New escalations alert them, or only high and urgent ones if chosen; escalations nobody accepted in time always alert. Each alert names the customer, channel, priority, reason and who owns it, with a link. A **Send a test alert** button reports each channel. A failing channel raises one dashboard warning an hour. Alerts are sent in the background so the customer's reply never waits for them.
+- **Round-robin routing:** "Shared queue" (as before) or "Round-robin". Round-robin assigns each new escalation to the next person in turn: everyone who handles conversations, or the people chosen, and by default only those online now. If nobody is available it waits in the shared queue. The person picked is emailed. It stays *waiting* until they accept, so the response time still applies and anyone can step in. Two escalations opened at the same moment go to different people (the settings row is locked while picking).
+- The queue shows "Assigned to X, not accepted yet" for these; the conversation timeline shows "Assigned by round-robin". Missed response times and refund requests also got timeline labels.
+
+**Updated:** the Slack sender used by lead alerts moved to `src/lib/slack-webhook.ts` and is shared.
+
+---
+
 ## 2026-11-20 — Refunds approved by the team, and invoice links
 **Module:** M2 (FE-1), with M11 (Shopify connector, permissions)   **Author:** Claude (with Muhammad Awais)
 **Files:** new `src/lib/refunds.ts`, `src/lib/store-orders.ts`, `src/lib/order-invoices.ts`, `app/api/refund-requests/route.ts`, `app/api/refund-requests/[id]/route.ts`, `app/api/refund-requests/settings/route.ts`, `app/dashboard/refunds/page.tsx` + `loading.tsx`, `src/components/dashboard/tools/refunds-workspace.tsx`, `app/invoice/[token]/page.tsx`, `src/components/invoice/print-button.tsx`, migration `20261119120000_refunds_and_invoices`; changed `prisma/schema.prisma`, `src/lib/connectors.ts`, `src/lib/tools/builtin-tools.ts`, `src/lib/permissions.ts`, `src/lib/sample-workspace.ts`, `src/components/dashboard/dashboard-config.ts`, `dashboard-sidebar.tsx`, `dashboard-route-skeleton.tsx`, `connectors-workspace.tsx`, `app/robots.ts`; tests `tests/unit/refunds-invoices.test.ts` (UT-71), `tests/integration/refunds-invoices.int.ts` (IT-34), `tests/ui/refunds.spec.ts` (UI-REF-01, UI-REF-02), counts updated in IT-01.01, IT-25.01, the tool-admin test and UT-54.03

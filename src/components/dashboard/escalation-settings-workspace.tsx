@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { EscalationSettings } from "@/src/lib/escalation-triggers";
+import { EscalationAlertsSection } from "./escalation-alerts-section";
 
 const inputClass =
   "w-full rounded-xl border border-white/10 bg-black px-4 py-2.5 text-white outline-none transition focus:border-white disabled:opacity-60";
@@ -225,6 +226,8 @@ export function EscalationSettingsWorkspace({ canManage }: { canManage: boolean 
           ) : null}
         </form>
       ) : null}
+
+      <EscalationAlertsSection canManage={canManage} />
     </div>
   );
 }

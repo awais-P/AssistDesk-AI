@@ -411,6 +411,9 @@ const eventLabels: Record<string, string> = {
   AI_LIMIT_REACHED: "AI reply limit reached",
   AI_FALLBACK_REPLY: "AI fallback reply",
   VOICE_CALL_STARTED: "Voice call started",
+  ESCALATION_ROUTED: "Assigned by round-robin",
+  ESCALATION_SLA_BREACHED: "Response time missed",
+  REFUND_REQUESTED: "Refund requested",
 };
 
 function eventLabel(type: string) {

@@ -173,7 +173,7 @@ afterAll(async () => {
 
 describe("IT-01 registry", () => {
   it("IT-01.01 creates the built-in tools once and loads the agent's enabled tools", async () => {
-    expect(await prisma.agentTool.count({ where: { workspaceId, type: "BUILT_IN" } })).toBe(9);
+    expect(await prisma.agentTool.count({ where: { workspaceId, type: "BUILT_IN" } })).toBe(11);
 
     const { tools, settings } = await loadAgentToolset(workspaceId, agentId);
     expect(tools.map((item) => item.key)).toEqual(expect.arrayContaining(["get_customer_info", "book_appointment", "track_order"]));

@@ -14,6 +14,7 @@ import LeadsLoading from "@/app/dashboard/leads/loading";
 import EscalationsLoading from "@/app/dashboard/escalations/loading";
 import LogsLoading from "@/app/dashboard/logs/loading";
 import AppointmentsLoading from "@/app/dashboard/appointments/loading";
+import RefundsLoading from "@/app/dashboard/refunds/loading";
 import CannedResponsesLoading from "@/app/dashboard/canned-responses/loading";
 import PromptsLoading from "@/app/dashboard/prompts/loading";
 import IntegrationsLoading from "@/app/dashboard/integrations/loading";
@@ -74,6 +75,9 @@ export function DashboardRouteSkeleton({ href }: { href: string }) {
   }
   if (path.startsWith("/dashboard/appointments")) {
     return <AppointmentsLoading />;
+  }
+  if (path.startsWith("/dashboard/refunds")) {
+    return <RefundsLoading />;
   }
   if (path.startsWith("/dashboard/canned-responses")) {
     return <CannedResponsesLoading />;

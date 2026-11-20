@@ -75,6 +75,15 @@ export const dashboardItems: DashboardItem[] = [
     group: "Main",
   },
   {
+    href: "/dashboard/refunds",
+    title: "Refunds",
+    section: "refunds",
+    description:
+      "Refund requests the AI collected in chat, waiting for your team to approve or decline.",
+    moduleLabel: "Module 2 - Agentic Tools",
+    group: "Main",
+  },
+  {
     href: "/dashboard/analytics",
     title: "Analytics",
     section: "analytics",

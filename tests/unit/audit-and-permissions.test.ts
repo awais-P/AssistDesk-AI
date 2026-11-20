@@ -24,7 +24,7 @@ describe("UT-54 permission matrix and custom roles - Module 11 FE-3, FE-4", () =
 
   it("UT-54.03 the owner keeps every permission so a workspace cannot lock itself out", () => {
     const owner = { role: "OWNER", customRole: { permissions: [], deniedPermissions: ["roles.manage", "audit.view"] } };
-    expect(effectivePermissions(owner)).toHaveLength(10);
+    expect(effectivePermissions(owner)).toHaveLength(11);
   });
 
   it("UT-54.04 validates custom roles", () => {

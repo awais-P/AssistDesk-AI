@@ -11,6 +11,7 @@ const rank: Record<BaseRole, number> = { AGENT: 1, MANAGER: 2, ADMIN: 3, OWNER: 
 export type PermissionKey =
   | "tickets.handle"
   | "escalations.assign"
+  | "refunds.approve"
   | "data.export"
   | "knowledge.manage"
   | "escalations.settings"
@@ -31,6 +32,7 @@ export type PermissionDefinition = {
 export const PERMISSIONS: PermissionDefinition[] = [
   { key: "tickets.handle", label: "Handle tickets, chats and escalations", description: "Reply to customers, accept and resolve their own escalations.", group: "Support", minRole: "AGENT" },
   { key: "escalations.assign", label: "Assign and take over escalations", description: "Give an escalation to a team member or take it from a colleague.", group: "Support", minRole: "MANAGER" },
+  { key: "refunds.approve", label: "Approve refunds", description: "Approve or decline the refund requests the AI collects; approving refunds the order in Shopify.", group: "Support", minRole: "MANAGER" },
   { key: "data.export", label: "Export data", description: "Download leads, analytics, escalations and the audit log as CSV.", group: "Data", minRole: "MANAGER" },
   { key: "knowledge.manage", label: "Manage the knowledge base", description: "Add, edit, re-index and delete knowledge sources.", group: "AI & knowledge", minRole: "MANAGER" },
   { key: "escalations.settings", label: "Change escalation rules", description: "Triggers, sentiment threshold, trigger phrases and response time.", group: "Administration", minRole: "ADMIN" },

@@ -206,6 +206,131 @@ export async function findShopifyOrder(workspaceId: string, input: { orderNumber
   return { found: true as const, ...summarizeOrder(order) };
 }
 
+/** A Shopify order with what refunds and invoices need (line items, totals, ids). */
+export type ShopifyOrderDetail = {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  created_at: string;
+  cancelled_at: string | null;
+  financial_status: string | null;
+  fulfillment_status: string | null;
+  currency: string;
+  subtotal_price: string;
+  total_tax: string;
+  total_price: string;
+  line_items?: Array<{ id: number; title: string; quantity: number; price: string }>;
+  customer?: { email?: string | null; phone?: string | null; first_name?: string | null; last_name?: string | null } | null;
+};
+
+/**
+ * Module 2 FE-1: the customer's own Shopify order with its lines and totals (for refunds
+ * and invoices). Like `findShopifyOrder`, it is returned only when the email or phone
+ * matches the order; otherwise the answer is the same as "not found".
+ */
+export async function getShopifyOrderDetail(workspaceId: string, input: { orderNumber: string; email: string | null; phone: string | null }) {
+  const connector = await loadConnector(workspaceId, "SHOPIFY");
+
+  if (!connector?.token || !connector.shopDomain) {
+    throw new ConnectorError("The online store is not connected.", 409);
+  }
+
+  const number = input.orderNumber.replace(/[^0-9A-Za-z-]/g, "").slice(0, 20);
+
+  if (!number) {
+    throw new ConnectorError("Ask the customer for their order number.");
+  }
+
+  const fields = "id,name,email,phone,created_at,cancelled_at,financial_status,fulfillment_status,currency,subtotal_price,total_tax,total_price,line_items,customer";
+  const body = await vendorFetch(
+    `https://${connector.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&limit=1&name=${encodeURIComponent(`#${number}`)}&fields=${fields}`,
+    { headers: shopifyHeaders(connector.token) },
+  ).catch(async (error) => {
+    await markConnectorError(connector.id, workspaceId, error);
+    throw error;
+  });
+  const order = ((body.orders as ShopifyOrderDetail[] | undefined) ?? [])[0];
+
+  if (!order) {
+    return { found: false as const, needsVerification: false };
+  }
+
+  if (!orderBelongsTo(order, input)) {
+    return { found: false as const, needsVerification: !input.email && !input.phone };
+  }
+
+  return { found: true as const, order };
+}
+
+/**
+ * Module 2 FE-1: refunds a Shopify order in full, after a team member approved it.
+ * Shopify works out what can be refunded (items and shipping) and through which payment;
+ * that suggestion is then created as the refund, and Shopify emails the customer.
+ */
+export async function refundShopifyOrder(workspaceId: string, orderId: string, note: string) {
+  const connector = await loadConnector(workspaceId, "SHOPIFY");
+
+  if (!connector?.token || !connector.shopDomain) {
+    throw new ConnectorError("The online store is not connected.", 409);
+  }
+
+  const base = `https://${connector.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders/${encodeURIComponent(orderId)}`;
+  const headers = shopifyHeaders(connector.token);
+
+  try {
+    const orderBody = await vendorFetch(`${base}.json?fields=id,line_items`, { headers });
+    const lineItems = ((orderBody.order as { line_items?: Array<{ id: number; quantity: number }> } | undefined)?.line_items ?? []).map((item) => ({
+      line_item_id: item.id,
+      quantity: item.quantity,
+      restock_type: "no_restock",
+    }));
+    const calculated = await vendorFetch(`${base}/refunds/calculate.json`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ refund: { shipping: { full_refund: true }, refund_line_items: lineItems } }),
+    });
+    const suggestion = (calculated.refund as { transactions?: Array<{ parent_id: number; amount: string; gateway: string }> } | undefined)?.transactions ?? [];
+
+    if (suggestion.length === 0) {
+      throw new ConnectorError("Shopify found nothing left to refund on this order (it may already be refunded).", 409);
+    }
+
+    const created = await vendorFetch(`${base}/refunds.json`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        refund: {
+          notify: true,
+          note: note.slice(0, 250),
+          shipping: { full_refund: true },
+          refund_line_items: lineItems,
+          transactions: suggestion.map((transaction) => ({
+            parent_id: transaction.parent_id,
+            amount: transaction.amount,
+            kind: "refund",
+            gateway: transaction.gateway,
+          })),
+        },
+      }),
+    });
+    const refund = created.refund as { id?: number } | undefined;
+    const amount = suggestion.reduce((total, transaction) => total + Number(transaction.amount || 0), 0);
+    return { refundId: refund?.id ? String(refund.id) : null, amount };
+  } catch (error) {
+    // A token that can read orders but not refund them (no write_orders scope) is not a
+    // broken connector: order lookups keep working, only this refund fails.
+    if (error instanceof ConnectorError && error.authFailed && /permission/.test(error.message)) {
+      throw new ConnectorError("The Shopify token can't create refunds. Give the app the write_orders permission, connect again, then retry.", 400);
+    }
+
+    if (!(error instanceof ConnectorError && error.status === 409)) {
+      await markConnectorError(connector.id, workspaceId, error);
+    }
+    throw error;
+  }
+}
+
 // ------------------------------------------------------------------ storage
 
 type ConnectorConfig = { shopDomain?: string; autoSync?: boolean; accountName?: string };

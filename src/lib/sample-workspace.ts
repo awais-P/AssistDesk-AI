@@ -420,6 +420,22 @@ export async function createSampleWorkspace({
       },
     });
 
+    // A refund request waiting for approval. No conversation or email is attached, so
+    // deciding it in a demo never messages anyone.
+    await prisma.refundRequest.create({
+      data: {
+        workspaceId,
+        contactId: contact.id,
+        orderNumber: "1042",
+        source: "MANUAL",
+        amount: 8500,
+        currency: "PKR",
+        reason: "The left earbud stopped charging after two days.",
+        customerName: "Ali Khan",
+        createdAt: hoursAgo(now, 1.5),
+      },
+    });
+
     await prisma.customRole.create({
       data: {
         workspaceId,

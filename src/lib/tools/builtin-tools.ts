@@ -5,7 +5,10 @@ import { captureLead } from "../leads";
 import { ConnectorError, findShopifyOrder } from "../connectors";
 import { EscalationError, openEscalation } from "../escalation";
 import { createNotification } from "../notifications";
+import { createOrderInvoice, INVOICE_LINK_DAYS } from "../order-invoices";
 import { prisma } from "../prisma";
+import { requestRefund } from "../refunds";
+import { findCustomerOrder } from "../store-orders";
 import { recordSessionEvent } from "../session-lifecycle";
 import { maskEmail, maskPhone } from "../session-memory";
 import { bookAppointment, findFreeSlots } from "./appointments";
@@ -576,6 +579,105 @@ const shopifyOrderStatus: BuiltInDefinition = {
   },
 };
 
+/** Email and phone for an order check: the customer's own (unmasked) or known details. */
+function orderIdentity(values: ToolInputValues, ctx: ToolContext) {
+  const email = str(values.email);
+  const phone = str(values.phone);
+  return {
+    email: email && !isMasked(email) ? normalizeEmail(email) : ctx.customer.email,
+    phone: phone && !isMasked(phone) ? normalizePhone(phone) : ctx.customer.phone,
+  };
+}
+
+const orderParameters: ToolParameter[] = [
+  { name: "order_number", type: "string", description: "The order number, e.g. 1042 or #1042.", required: true },
+  { name: "email", type: "string", description: "Email used for the order, if the customer gave it.", required: false },
+  { name: "phone", type: "string", description: "Phone used for the order, if the customer gave it.", required: false },
+];
+
+/**
+ * Module 2 FE-1: a refund *request*. The AI never moves money: the request waits on the
+ * Refunds page until a team member approves (refunded in Shopify) or declines it.
+ */
+const requestRefundTool: BuiltInDefinition = {
+  key: "request_refund",
+  name: "Request a refund",
+  description:
+    "Send a refund request for the customer's order to the team for approval. Needs the order number, the reason, and the email or phone used for the order. The request is checked against the refund window. Never say the refund is approved: the team decides and replies in this conversation.",
+  parameters: [...orderParameters, { name: "reason", type: "string", description: "Why the customer wants a refund, in their words.", required: true }],
+  requiresConfirmation: true,
+  effect: "WRITE",
+  summarize: (values) => `Request a refund for order ${values.order_number}`,
+  async execute(values, ctx) {
+    const { email, phone } = orderIdentity(values, ctx);
+
+    if (ctx.dryRun) {
+      return { simulated: true, note: "Test mode: no refund request was created.", orderNumber: String(values.order_number) };
+    }
+
+    try {
+      return await requestRefund({
+        workspaceId: ctx.workspaceId,
+        sessionId: ctx.sessionId,
+        contactId: ctx.contactId,
+        orderNumber: String(values.order_number),
+        reason: String(values.reason ?? ""),
+        customer: { name: ctx.customer.name, email, phone },
+      });
+    } catch (error) {
+      if (error instanceof ConnectorError) {
+        throw new ToolError(error.message);
+      }
+      throw error;
+    }
+  },
+};
+
+/** Module 2 FE-1: a printable invoice for the customer's own order, shared as a link. */
+const getInvoiceTool: BuiltInDefinition = {
+  key: "get_invoice",
+  name: "Get invoice",
+  description:
+    "Create a link to a printable invoice for the customer's order (they can save it as a PDF). Needs the order number and the email or phone used for the order. Share the link exactly as returned.",
+  parameters: orderParameters,
+  requiresConfirmation: false,
+  effect: "READ",
+  summarize: (values) => `Get the invoice for order ${values.order_number}`,
+  async execute(values, ctx) {
+    const { email, phone } = orderIdentity(values, ctx);
+
+    try {
+      const lookup = await findCustomerOrder(ctx.workspaceId, { orderNumber: String(values.order_number), email, phone });
+
+      if (!lookup.found) {
+        return {
+          found: false,
+          note:
+            lookup.reason === "needs_verification"
+              ? "Ask for the email or phone number used for the order, then try again."
+              : lookup.reason === "not_found"
+                ? "No order with this number matches the customer's details. Ask them to check the number and the email or phone used."
+                : "Invoices aren't available here because no store is connected. Offer to connect the customer with the team.",
+        };
+      }
+
+      const invoice = await createOrderInvoice(ctx.workspaceId, lookup.order);
+      return {
+        found: true,
+        invoiceNumber: invoice.data.invoiceNumber,
+        total: `${invoice.data.currency} ${invoice.data.total}`,
+        link: invoice.url,
+        note: `Share the link; it works for ${INVOICE_LINK_DAYS} days and the page has a "Save as PDF" button.`,
+      };
+    } catch (error) {
+      if (error instanceof ConnectorError) {
+        throw new ToolError(error.message);
+      }
+      throw error;
+    }
+  },
+};
+
 export const BUILT_IN_TOOLS: BuiltInDefinition[] = [
   getCustomerInfo,
   lookupTicketStatus,
@@ -586,6 +688,8 @@ export const BUILT_IN_TOOLS: BuiltInDefinition[] = [
   bookAppointmentTool,
   searchKnowledgeBase,
   shopifyOrderStatus,
+  requestRefundTool,
+  getInvoiceTool,
 ];
 
 export const BUILT_IN_BY_KEY = new Map(BUILT_IN_TOOLS.map((tool) => [tool.key, tool]));

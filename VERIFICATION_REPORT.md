@@ -141,7 +141,7 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 | M5 Context & sessions | 90% | **≈ 80%** | The lifecycle, 3-layer memory, contact merge and rate limiter match the M5 doc. No voice and SSE instead of WebSockets. Token streaming (17 Nov) and the scheduled jobs (16 Nov) are done. |
 | M8 Lead generation | 92% | **≈ 88%** | All 5 FEs plus HMAC webhooks. No API-key access for external systems; automatic webhook retries need a scheduler. |
 | M4 Monitoring & analytics | 90% | **≈ 84%** | All 5 FEs and FR-11.1–11.7 run on real data. Some SRS definitions are implemented differently (§4.6). |
-| M2 Agentic tools | 90% | **≈ 88%** | All FEs, LangGraph, confirmation, action logs. Order tracking and invoices are HTTP templates against a demo store, not built-ins. No refund or payment tool. |
+| M2 Agentic tools | 90% | **≈ 94%** | All FEs, LangGraph, confirmation, action logs. Built-in Shopify order lookup, refund requests approved by the team (refunded in Shopify) and invoice links were added by 20 Nov; the Shopify actions are tested against a fake Shopify only. |
 | M6 LLM management (bonus) | 35% | ≈ 80% | Multi-provider support, fallback chain, retired and busy-model memory, feedback loop, token streaming with measured first-word time (FE-5), voice calls with VAD, streaming TTS and measured first-audio time (FE-6–8; verified with real calls: end of speech to first audio 1.1–2.8 s on free tiers, dev server). |
 | M9 Escalation | 15% → 88% *(15 Nov)* | ≈ 32% (10 Oct) → **≈ 85%** (15 Nov, §4.8) | 10 Oct: human takeover, plus the AI `escalate_to_human` action and auto hand-over on failure. 15 Nov: the full module (triggers, brief, queue, SLA, log); see §4.8. |
 | M11 Integrations & customization | 45% → 85% *(15 Nov)* | ≈ 45% (10 Oct) → **≈ 82%** (15 Nov, §4.9) | 10 Oct: RBAC with 4 roles, channels, signed webhooks. 15 Nov: audit log, public API + keys, HubSpot/Shopify connectors, custom roles; see §4.9. |
@@ -238,12 +238,12 @@ Each module's ROADMAP figure counts Proposal features (FE) only. The **verified*
 
 | Ref | Requirement | Status | Evidence / gap |
 |---|---|---|---|
-| FE-1 | Appointment booking, order tracking, invoices, customer info | ⚠️ | Booking and customer info are built in. Order tracking and invoices are **HTTP tool templates** against the demo store; locally they need `ASSISTDESK_ALLOW_PRIVATE_TOOLS=true`. |
+| FE-1 | Appointment booking, order tracking, invoices, customer info | ✅ | All built in: booking, customer info, Shopify order status, `get_invoice` (printable invoice link) and `request_refund` (20 Nov, UT-71, IT-34, UI-REF-01/02). The demo-store HTTP templates remain as examples of custom tools. |
 | FE-2 / CON-4 | Multi-step reasoning with LangGraph | ✅ | `StateGraph` agent ⇄ tools; step limit; model fallback. |
 | FE-2b | Custom actions | ✅ | HTTP tools with encrypted secret headers and an SSRF guard. |
 | FE-3 / FE-4 / FE-5 | Admin UI, intent rules, action logs with chain of thought | ✅ | Every number in M2_AGENTIC_TOOLS.md matched the code except the timeout range (corrected). |
 | SEC-2 | RBAC on tool APIs | ✅ | Unauthorized attempts return 403 but are **not logged**. |
-| SRS examples | Refunds and payment-gateway calls | ❌ | No payment integration. |
+| SRS examples | Refunds and payment-gateway calls | ✅ | Refund requests approved by the team and refunded through Shopify (IT-34.06); without a store they are paid out by the team. The AI never moves money itself. |
 | UI-4 | Logs paginated, filterable, sortable | ✅ | — |
 
 ---
@@ -274,7 +274,7 @@ See [M11_INTEGRATIONS_CUSTOMIZATION.md](M11_INTEGRATIONS_CUSTOMIZATION.md). Test
 | FE-1 | CRM, help desk and e-commerce integration | ⚠️ | HubSpot lead sync and the Shopify order action (IT-24), tested against a fake of each API, not a live account. Help desks use the API/webhooks; no Zendesk/Salesforce connector. |
 | FE-2 | APIs and connectors | ✅ | `/api/v1` with scoped keys, rate limit, expiry, revoke, OpenAPI (IT-23). No write endpoints for ticket updates. |
 | FE-3 | RBAC | ✅ | Role checks on all write APIs plus the permission matrix; refusals logged (IT-22.03/04, IT-25.04). |
-| FE-4 | Admin-defined roles | ✅ | Custom roles with added/removed permissions (IT-25). They change the ten listed permissions (incl. `billing.manage` from M3); other pages follow the base level. |
+| FE-4 | Admin-defined roles | ✅ | Custom roles with added/removed permissions (IT-25). They change the eleven listed permissions (incl. `billing.manage` from M3); other pages follow the base level. |
 | FE-5 | System logs for security and audit | ✅ | Append-only audit log, the database refuses updates (IT-22.07), hashed IPs, filters, CSV. |
 
 Found while testing: the PGlite test database returns wrong results for parallel queries after a unique-constraint error (OPS-10), so the roles API now checks names first and reads sequentially; on real PostgreSQL this never happens.

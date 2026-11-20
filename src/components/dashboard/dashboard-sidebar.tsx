@@ -52,6 +52,13 @@ const iconPaths: Record<string, ReactNode> = {
       <path d="m9 15 2 2 4-4" />
     </>
   ),
+  refunds: (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7" />
+      <path d="M4 4v4.7h4.7" />
+      <path d="M14.5 9.5h-3.2a1.5 1.5 0 0 0 0 3h1.4a1.5 1.5 0 0 1 0 3H9.5M12 8v1.5M12 15.5V17" />
+    </>
+  ),
   tools: <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5Z" />,
   analytics: (
     <>

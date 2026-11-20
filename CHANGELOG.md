@@ -18,6 +18,23 @@ Entry template:
 
 ---
 
+## 2026-11-20 — Refunds approved by the team, and invoice links
+**Module:** M2 (FE-1), with M11 (Shopify connector, permissions)   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/lib/refunds.ts`, `src/lib/store-orders.ts`, `src/lib/order-invoices.ts`, `app/api/refund-requests/route.ts`, `app/api/refund-requests/[id]/route.ts`, `app/api/refund-requests/settings/route.ts`, `app/dashboard/refunds/page.tsx` + `loading.tsx`, `src/components/dashboard/tools/refunds-workspace.tsx`, `app/invoice/[token]/page.tsx`, `src/components/invoice/print-button.tsx`, migration `20261119120000_refunds_and_invoices`; changed `prisma/schema.prisma`, `src/lib/connectors.ts`, `src/lib/tools/builtin-tools.ts`, `src/lib/permissions.ts`, `src/lib/sample-workspace.ts`, `src/components/dashboard/dashboard-config.ts`, `dashboard-sidebar.tsx`, `dashboard-route-skeleton.tsx`, `connectors-workspace.tsx`, `app/robots.ts`; tests `tests/unit/refunds-invoices.test.ts` (UT-71), `tests/integration/refunds-invoices.int.ts` (IT-34), `tests/ui/refunds.spec.ts` (UI-REF-01, UI-REF-02), counts updated in IT-01.01, IT-25.01, the tool-admin test and UT-54.03
+
+**Added:**
+- **`request_refund` AI action:** asks the customer to confirm, checks that the order is theirs (email or phone must match), that it isn't cancelled or already refunded, that it is inside the refund window (default 30 days) and that there is no open request for it. It then creates a **pending refund request**, notifies the team and records it on the conversation. The AI is told never to say the refund is approved. **The AI never moves money.**
+- **Refunds page** (Main group of the sidebar): waiting / decided / all, search, Approve or Decline with an optional note. Deciding needs the new **`refunds.approve`** permission (managers and above; custom roles can add or remove it). Admins set the refund window.
+  - Shopify order: approving refunds it in Shopify (Shopify calculates what can be refunded; the customer is emailed by Shopify). A failure is kept as "Store refund failed" with the reason and can be retried or declined; a token without `write_orders` no longer marks the whole connector broken.
+  - No store: approving marks it "Approved, pay out manually".
+  - The customer is told the outcome in the conversation if it is still open, otherwise by email. Every decision is audited.
+- **`get_invoice` AI action and invoice page:** for the customer's own order (Shopify, or the sample store in demos), the AI shares a link to a printable invoice (`/invoice/<token>`, 24 random bytes, works for 30 days, not indexed, no referrer) with lines, subtotal, tax and total, and a **Print / Save as PDF** button. Sample-store invoices are marked as sample data. Expired links show a short message.
+- The sample workspace now includes one pending refund request (no conversation or email attached, so deciding it messages nobody).
+
+**Notes:** the sample store (used for demo orders and invoices) is off in production unless `ASSISTDESK_SAMPLE_STORE=true`. Existing agents need the two new actions switched on in their Actions tab.
+
+---
+
 ## 2026-11-19 — Knowledge base table: bulk actions, upload progress, .doc files
 **Module:** M10 (FR-10.1, FR-10.2, FR-10.6)   **Author:** Claude (with Muhammad Awais)
 **Files:** new `app/api/knowledge-sources/bulk/route.ts`, `src/types/word-extractor.d.ts`, `tests/fixtures/returns-policy.doc` (saved by Microsoft Word); dependency `word-extractor@1`; changed `src/components/dashboard/knowledge-base-client.tsx`, `src/components/dashboard/dashboard-config.ts`, `src/lib/document-extract.ts`, `src/lib/knowledge-file-types.ts`; tests `tests/unit/knowledge-doc.test.ts` (UT-70), `tests/integration/knowledge-bulk.int.ts` (IT-33), `tests/ui/knowledge-base.spec.ts` (UI-KB-06, UI-KB-07), `tests/unit/knowledge-ingestion.test.ts` (UT-13.01)

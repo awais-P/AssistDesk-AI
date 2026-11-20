@@ -151,6 +151,8 @@ model Workspace {
   customRoles       CustomRole[]
   subscription      Subscription?
   invoices          Invoice[]
+  refundRequests    RefundRequest[]
+  orderInvoices     OrderInvoice[]
 }
 
 model User {
@@ -494,6 +496,8 @@ model WorkspaceSetting {
   /// Module 8 FE-2: create leads automatically when a customer shows buying intent
   /// on WhatsApp/Slack or types their contact details in the website chat.
   autoCaptureLeads             Boolean   @default(true)
+  /// Module 2: refunds can be requested this many days after the order was placed.
+  refundWindowDays             Int       @default(30)
   /// Module 2: appointment booking (book_appointment tool). Hours: { days: [1..7], start: "09:00", end: "17:00" }.
   appointmentSlotMinutes       Int       @default(30)
   appointmentHours             Json?
@@ -1333,4 +1337,62 @@ model BillingEvent {
   createdAt   DateTime @default(now())
 
   @@index([workspaceId, createdAt])
+}
+
+enum RefundStatus {
+  PENDING
+  REFUNDED
+  APPROVED
+  DECLINED
+  FAILED
+}
+
+/// Module 2 FE-1: a refund the AI agent requested for a customer; a team member decides.
+/// APPROVED = approved, to be paid out by the team (no store connected); REFUNDED = paid
+/// back through the connected store.
+model RefundRequest {
+  id               String       @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sessionId        String?
+  contactId        String?
+  orderNumber      String
+  /// SHOPIFY, SAMPLE (demo store) or MANUAL (no store connected).
+  source           String
+  externalOrderId  String?
+  amount           Float?
+  currency         String?
+  reason           String
+  customerName     String?
+  customerEmail    String?
+  customerPhone    String?
+  status           RefundStatus @default(PENDING)
+  decidedById      String?
+  decidedByName    String?
+  decidedAt        DateTime?
+  decisionNote     String?
+  externalRefundId String?
+  error            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([workspaceId, status, createdAt])
+  @@index([workspaceId, orderNumber])
+}
+
+/// Module 2 FE-1: a printable invoice for a customer's order, shared by link (token).
+model OrderInvoice {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  orderNumber String
+  /// SHOPIFY or SAMPLE.
+  source      String
+  /// The invoice as shown: lines, totals, currency, customer, dates (a snapshot).
+  data        Json
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+
+  @@index([workspaceId, orderNumber])
 }

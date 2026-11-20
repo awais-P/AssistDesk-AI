@@ -13,7 +13,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | # | Module | Verified now | Biggest thing missing |
 |---|---|---|---|
 | M1 | Assistant creation & omnichannel | ≈ 84% *(voice calls 18 Nov)* | Slack OAuth; WhatsApp media |
-| M2 | Agentic tools | ≈ 88% | Refund/payment action; invoices still a demo HTTP template |
+| M2 | Agentic tools | ≈ 94% *(refunds + invoice links, 20 Nov)* | Shopify actions tested against a fake Shopify only |
 | M3 | Subscription & payment | ≈ 82% | One run against a live Stripe test account; tax |
 | M4 | Monitoring & analytics | ≈ 84% | KPI auto-refresh; pre-aggregation for big tenants; three SRS definitions differ |
 | M5 | Real-time context & sessions | ≈ 88% *(token streaming 17 Nov, voice under the same customer 18 Nov)* | Multi-instance real time |
@@ -60,7 +60,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | 14 ✅ | *(done 19 Nov: bulk select with re-index and delete, upload progress bar, .doc files, sidebar under AI; see CHANGELOG)* **Knowledge base table:** <ul><li>bulk checkboxes with bulk delete and re-index (FR-10.6);</li><li>an upload progress bar (XHR `upload.onprogress`);</li><li>`.doc` support;</li><li>move "Knowledge base" to the AI group of the sidebar (FR-10.1).</li></ul> | M10 | M |
 | 15 | **Configure Pinecone and Firecrawl** ⚠️ (free keys) and record one run, so FE-1 and FR-10.3 are shown working instead of "coded but not configured". | M10 | S |
 | 16 | **Live third-party runs** ⚠️ (test accounts). For each, run once and record the result in the module doc: <ul><li>Stripe test keys and the Stripe CLI (OPS-18);</li><li>HubSpot developer portal and Shopify development store (OPS-17);</li><li>Slack app and WhatsApp test number;</li><li>SMTP.</li></ul> | M1, M3, M11 | M total |
-| 17 | **Refund action** with customer confirmation (Stripe or Shopify refund), and a built-in invoice tool instead of the demo HTTP template. | M2 FE-1 | M |
+| 17 ✅ | *(done 20 Nov: AI collects refund requests, the team approves them on the Refunds page and Shopify orders are refunded; built-in invoice links; see CHANGELOG)* **Refund action** with customer confirmation (Stripe or Shopify refund), and a built-in invoice tool instead of the demo HTTP template. | M2 FE-1 | M |
 | 18 | **Escalation alerts by email and Slack** (reuse the M8 notifier), and simple round-robin or team routing. | M9 | M |
 | 19 | **Rewrite SDS Chapters 3–5.** The SDS still describes the 30% system ("custom TypeScript runtime", "30% coverage", 17 of 36 models, 5 unit tests). Update the class and sequence diagrams for M2, M3, M5, M8, M9 and M11, and replace the Chapter 5 test tables with the real suites (≈ 325 unit, 155 integration, Playwright UI). | Docs / DOC-07, DOC-01 | L |
 | 20 | **SRS tech promised but unused:** Zustand and TanStack Query (SRS CON-2). Use them on one real page (Chats or the KB list), or change the SRS and remove them. | Docs / DOC-03 | M |
@@ -92,8 +92,8 @@ The rest of the list (§3 and §4). Pick items as time allows.
 - [ ] **UI-24:** domain and URL chips in the setup wizard can't be removed. (S)
 
 ### M2: Agentic tools (≈ 88%)
-- [ ] **FE-1:** refund/payment action. (P2 #17)
-- [ ] **FE-1:** invoices are an HTTP template against the demo store. Build an invoice tool (local invoices or Shopify orders). (M)
+- [x] **FE-1:** refund action: the AI requests, the team approves, Shopify refunds. (P2 #17) ✅ *20 Nov*
+- [x] **FE-1:** built-in `get_invoice` action with a printable invoice link (Shopify or sample-store orders). ✅ *20 Nov*
 - [ ] **FE-1:** the `shopify_order_status` built-in has only been tested against a fake Shopify ⚠️. (P2 #16)
 - [ ] A **confirm button in the widget** for actions that change data. Today confirmation is word rules (SEC-35). (M)
 - [ ] Appointment reminders and calendar sync (Google/Outlook) ⚠️. (M)

@@ -250,7 +250,7 @@ export function ConnectorsWorkspace({ canManage }: { canManage: boolean }) {
                 Admin API access token
                 <input type="password" autoComplete="off" value={shopToken} onChange={(event) => setShopToken(event.target.value)} placeholder="shpat_…" className={`${inputClass} mt-1.5 font-normal`} />
               </label>
-              <p className="text-xs text-slate-500">Shopify admin → Settings → Apps → Develop apps → Create an app with the read_orders scope → Install.</p>
+              <p className="text-xs text-slate-500">Shopify admin → Settings → Apps → Develop apps → Create an app with the read_orders scope (add write_orders so approved refunds go through Shopify) → Install.</p>
               <button type="submit" className={primaryClass} disabled={busy !== null || !shopToken.trim() || !shopDomain.trim()}>
                 {busy === "shopify" ? "Checking..." : "Connect Shopify"}
               </button>

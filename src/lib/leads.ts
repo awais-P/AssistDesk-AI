@@ -15,6 +15,7 @@ import {
 } from "./lead-form";
 import { generateCompletion, toRuntimeAgent } from "./llm-runtime";
 import { sendTeamEmail } from "./mailer";
+import { postToSlack } from "./slack-webhook";
 import { createNotification } from "./notifications";
 import { prisma } from "./prisma";
 import { decryptSecret } from "./secrets";
@@ -345,24 +346,6 @@ export async function captureLead(input: CaptureLeadInput) {
   void import("./connectors").then(({ scheduleLeadCrmSync }) => scheduleLeadCrmSync(lead.id, workspaceId)).catch(() => undefined);
 
   return { lead: serialized, created: !existing };
-}
-
-async function postToSlack(webhookUrl: string, text: string) {
-  if (!/^https:\/\/hooks\.slack\.com\/services\//.test(webhookUrl)) {
-    throw new Error("The Slack URL must be an incoming-webhook URL (https://hooks.slack.com/services/…).");
-  }
-
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-    redirect: "manual",
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Slack answered HTTP ${response.status}.`);
-  }
 }
 
 function leadSummaryText(lead: SerializedLead) {

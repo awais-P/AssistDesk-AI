@@ -288,7 +288,10 @@ export function EscalationsWorkspace({ initialView, focusId }: { initialView: Es
                       {dueIn < 0 ? `Overdue by ${Math.abs(dueIn)} min` : `Accept within ${dueIn} min`}
                     </p>
                   ) : null}
-                  {item.assignee && open ? <p>{mine ? "You are handling this" : `${item.assignee.fullName} is handling this`}</p> : null}
+                  {item.assignee && item.status === "PENDING" ? (
+                    <p className={mine ? "font-semibold text-white" : ""}>{mine ? "Assigned to you: accept to take it" : `Assigned to ${item.assignee.fullName}, not accepted yet`}</p>
+                  ) : null}
+                  {item.assignee && item.status === "ACCEPTED" ? <p>{mine ? "You are handling this" : `${item.assignee.fullName} is handling this`}</p> : null}
                   {item.assignee && !open ? <p>Handled by {mine ? "you" : item.assignee.fullName}</p> : null}
                   {!item.assignee && open ? <p>Unassigned</p> : null}
                   {item.resolution ? (

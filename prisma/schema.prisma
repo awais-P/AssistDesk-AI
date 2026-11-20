@@ -513,6 +513,20 @@ model WorkspaceSetting {
   escalationSensitiveTopics    Boolean   @default(true)
   escalationKeywords           String[]  @default([])
   escalationSlaMinutes         Int       @default(15)
+  /// Module 9 alerts: who hears about new escalations and missed deadlines, outside
+  /// the dashboard. The Slack incoming-webhook URL is stored encrypted.
+  escalationNotifyEmails       String[]  @default([])
+  escalationSlackWebhookUrl    String?
+  /// Alert on new escalations only when they are HIGH or URGENT (missed deadlines always alert).
+  escalationAlertUrgentOnly    Boolean   @default(false)
+  /// Module 9 routing: QUEUE (everyone picks from the shared queue) or ROUND_ROBIN
+  /// (each new escalation is assigned to the next team member in turn). The rotation is
+  /// limited to `escalationRoutingUserIds` (empty: everyone who handles tickets) and,
+  /// when `escalationRoutingOnlineOnly`, to people online now.
+  escalationRouting            String    @default("QUEUE")
+  escalationRoutingUserIds     String[]  @default([])
+  escalationRoutingOnlineOnly  Boolean   @default(true)
+  escalationLastRoutedUserId   String?
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
   workspace                    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

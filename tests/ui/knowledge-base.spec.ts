@@ -93,6 +93,23 @@ test.describe("Knowledge base (FR-10, M10)", () => {
     await deleteSources(page, titles);
     await expect(page.getByRole("status").filter({ hasText: "2 sources deleted." })).toBeVisible();
   });
+
+  test("UI-KB-08 the table's search and sort stay when you open a source and come back (Zustand, TanStack Query) - FR-10.5, SRS CON-2", async ({ page }) => {
+    await openDashboardPage(page, "/dashboard/knowledge-base", "Knowledge Base");
+    await page.getByLabel("Search knowledge sources").fill("Store");
+    await page.getByLabel("Sort sources").selectOption("NAME");
+    await expect(page.getByRole("link", { name: /Product FAQ/ })).toHaveCount(0);
+
+    await page.getByRole("link", { name: /Store policies/ }).click();
+    await expect(page).toHaveURL(/\/dashboard\/knowledge-base\/[a-z0-9]+/);
+    // Back through the sidebar: the list is mounted again, not restored from the browser cache.
+    await page.getByRole("link", { name: "Knowledge Base" }).first().click();
+    await expect(page.getByRole("heading", { level: 1, name: "Knowledge Base" })).toBeVisible();
+    await expect(page.getByLabel("Search knowledge sources")).toHaveValue("Store");
+    await expect(page.getByLabel("Sort sources")).toHaveValue("NAME");
+    await expect(page.getByRole("link", { name: /Store policies/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Product FAQ/ })).toHaveCount(0);
+  });
 });
 
 /** Ticks the sources' checkboxes and deletes them with the bulk bar. */

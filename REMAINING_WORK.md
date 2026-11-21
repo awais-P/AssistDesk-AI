@@ -23,7 +23,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | M9 | Support escalation | ≈ 93% *(email/Slack alerts and round-robin routing, 20 Nov)* | Skill-based routing; sentiment is a lexicon scorer |
 | M10 | Knowledge base | ≈ 86% *(bulk actions, progress bar, .doc, 19 Nov)* | Pinecone/Firecrawl not configured; files on the volume, not cloud storage |
 | M11 | Integrations & customization | ≈ 82% | Live HubSpot/Shopify test; more connectors; API write endpoints |
-| | **Overall (equal weight)** | **≈ 79%** *(was ≈ 63% on 10 Oct)* | M6 is the only module far below the rest |
+| | **Overall (equal weight)** | **≈ 87%** *(21 Nov; was ≈ 79% on 16 Nov and ≈ 63% on 10 Oct)* | M6 (≈ 80%) is the lowest; no module is far behind |
 
 **Takeaway:**
 - **Voice:** one piece of work, a **voice channel** (speech in, LLM, streaming speech out), would lift four modules at once: M6 FE-6–8, M5 FE-2, M9 FE-2 and M1 FR-16.6. It is the largest remaining block.
@@ -63,7 +63,7 @@ Effort: **S** = under half a day · **M** = 1–2 days · **L** = 3+ days. ⚠�
 | 17 ✅ | *(done 20 Nov: AI collects refund requests, the team approves them on the Refunds page and Shopify orders are refunded; built-in invoice links; see CHANGELOG)* **Refund action** with customer confirmation (Stripe or Shopify refund), and a built-in invoice tool instead of the demo HTTP template. | M2 FE-1 | M |
 | 18 ✅ | *(done 20 Nov: email and Slack alerts for new and overdue escalations, round-robin routing among chosen or online members; see CHANGELOG)* **Escalation alerts by email and Slack** (reuse the M8 notifier), and simple round-robin or team routing. | M9 | M |
 | 19 | **Rewrite SDS Chapters 3–5.** The SDS still describes the 30% system ("custom TypeScript runtime", "30% coverage", 17 of 36 models, 5 unit tests). Update the class and sequence diagrams for M2, M3, M5, M8, M9 and M11, and replace the Chapter 5 test tables with the real suites (≈ 325 unit, 155 integration, Playwright UI). | Docs / DOC-07, DOC-01 | L |
-| 20 | **SRS tech promised but unused:** Zustand and TanStack Query (SRS CON-2). Use them on one real page (Chats or the KB list), or change the SRS and remove them. | Docs / DOC-03 | M |
+| 20 ✅ | *(done 21 Nov: TanStack Query for the knowledge base list, its polling and bulk actions; Zustand for the table view kept per tab; see CHANGELOG)* **SRS tech promised but unused:** Zustand and TanStack Query (SRS CON-2). Use them on one real page (Chats or the KB list), or change the SRS and remove them. | Docs / DOC-03 | M |
 
 ### Priority 3: polish and future work
 

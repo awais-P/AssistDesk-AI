@@ -373,7 +373,7 @@ Security-related and lower-priority findings from this pass (logging of refused 
 | CI-1 | WebSockets | ⚠️ | SSE (documented). |
 | CI-3 | Signed webhooks | ✅ | — |
 | CON-1 / 3 / 4 | Next.js 15, Prisma, LangGraph | ✅ | — |
-| CON-2 | Zustand + TanStack Query | ❌ | Installed, never imported. |
+| CON-2 | Zustand + TanStack Query | ✅ | *(21 Nov)* TanStack Query loads and refreshes the knowledge base list (bulk actions are mutations); a Zustand store keeps the table view per tab (UT-73, UI-KB-08). Other pages use server components and plain state. |
 | CON-5 | Deepgram + TTS | ❌ | Not used (voice is out of the 60% scope). |
 | CON-6 / CON-7 | Firecrawl, Cloudinary | 🟡 | Coded with fallbacks; not configured. |
 | CON-8 / SI-4 | Stripe, Twilio/Vapi | ❌ | M3 and voice scope. |
@@ -418,7 +418,7 @@ Security-related and lower-priority findings from this pass (logging of refused 
 | R4 | Fix or hide the five do-nothing settings (§5.2), and add `vercel.json` cron entries plus `CRON_SECRET`. | Avoid a demo surprise. | 2–3 h |
 | R5 | Add a free **Groq key** (or $10 of OpenRouter credit for 1,000 free-model requests a day); optionally set Pinecone and Firecrawl keys. | **The free OpenRouter tier (50 requests/day) ran out during testing, and it would run out during a demo.** Also speed (PER-2, REL-4), and the named technologies run live. | 15 min |
 | R6 | Log refused requests (403s, refused widget origins) in a small audit table. | SRS events and M11 FE-5. | 3 h |
-| R7 | In the viva, state the documented deviations: SSE instead of WebSockets, Postgres instead of Redis, no voice in the 60% scope, Zustand/TanStack not needed with server components. | Pre-empts questions. | — |
+| R7 | In the viva, state the documented deviations: SSE instead of WebSockets, Postgres instead of Redis, no voice in the 60% scope (voice was added on 18 Nov), Zustand/TanStack used where client state helps (the knowledge base list), server components elsewhere. | Pre-empts questions. | — |
 
 ---
 

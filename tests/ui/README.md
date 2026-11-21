@@ -13,7 +13,7 @@ to the feature areas below:
 | `chats.spec.ts` | UI-CHT-01…03 | FR-6 conversation list, thread, search, filters |
 | `agents.spec.ts` | UI-AGT-01…06 | FR-7, FR-8 agents and agent settings |
 | `prompts.spec.ts` | UI-PRM-01…03 | FR-9 prompt templates and variables |
-| `knowledge-base.spec.ts` | UI-KB-01…05 | FR-10 knowledge sources, ingestion, filters |
+| `knowledge-base.spec.ts` | UI-KB-01…08 | FR-10 knowledge sources, ingestion, filters |
 | `refunds.spec.ts` | UI-REF-01…02 | M2 FE-1 refunds approved on the Refunds page; the public invoice page and its expiry |
 | `analytics.spec.ts` | UI-ANL-01…06 | FR-11 KPIs, latency chart, interactions, reports, export |
 | `chatbots.spec.ts` | UI-BOT-01…05 | FR-12, FR-13, FR-14 chatbots and their configuration |
@@ -29,7 +29,7 @@ to the feature areas below:
 | `voice-live.spec.ts` | UI-VOI-02 | A real call with real Deepgram (opt-in: `VOICE_LIVE_WAV`) |
 | `streaming.spec.ts` | UI-STR-01…04 | Token streaming in the widget, Playground and after the lead form; first word in Analytics (real AI) |
 
-Unit groups `UT-01`–`UT-72`, integration groups `IT-01`–`IT-35`, and HTTP
+Unit groups `UT-01`–`UT-73`, integration groups `IT-01`–`IT-35`, and HTTP
 end-to-end groups `API-01`–`API-09` cover the same requirements at different
 boundaries. Their full coverage map and commands are in
 [TESTING_INSTRUCTIONS.md](../../TESTING_INSTRUCTIONS.md).

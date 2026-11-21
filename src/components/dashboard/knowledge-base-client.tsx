@@ -30,8 +30,11 @@ function sendWithProgress(url: string, method: string, body: FormData, onProgres
   });
 }
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useKnowledgeListStore } from "@/src/lib/stores/knowledge-list-store";
 import {
   MAX_CRAWL_PAGES_UI,
   MAX_KNOWLEDGE_FILE_MB,
@@ -391,24 +394,56 @@ function KnowledgeFileDropZone({
   );
 }
 
+/** SRS CON-2: the knowledge sources, cached by TanStack Query under this key. */
+export const KNOWLEDGE_SOURCES_KEY = ["knowledge-sources"] as const;
+
+async function fetchKnowledgeSources() {
+  const response = await fetch("/api/knowledge-sources", { method: "GET", cache: "no-store" });
+  const data = (await response.json().catch(() => ({}))) as { error?: string; knowledgeSources?: KnowledgeSourceItem[] };
+
+  if (!response.ok || !data.knowledgeSources) {
+    throw new Error(data.error ?? "Unable to refresh knowledge sources.");
+  }
+
+  return data.knowledgeSources;
+}
+
+type BulkResult = { action: "reindex" | "delete"; ids: string[]; processed?: number; failed?: string[] };
+
 export function KnowledgeBaseClient({
   initialSources,
   canManage,
   pineconeConfigured,
   embeddingModel,
 }: KnowledgeBaseClientProps) {
-  const [sources, setSources] = useState<KnowledgeSourceItem[]>(
-    initialSources.map(mapSource),
+  const queryClient = useQueryClient();
+  // The server renders the first list; after that TanStack Query owns it: it refetches
+  // every 4 s while something is indexing, when the tab regains focus, and after changes.
+  const { data: sources = [] } = useQuery({
+    queryKey: KNOWLEDGE_SOURCES_KEY,
+    queryFn: fetchKnowledgeSources,
+    initialData: () => initialSources.map(mapSource),
+    refetchInterval: (query) => (query.state.data?.some((source) => isIndexing(source.status)) ? 4000 : false),
+  });
+  /** Updates the cached list in place (same shape as a state setter). */
+  const setSources = useCallback(
+    (update: (current: KnowledgeSourceItem[]) => KnowledgeSourceItem[]) =>
+      queryClient.setQueryData<KnowledgeSourceItem[]>(KNOWLEDGE_SOURCES_KEY, (current) => update(current ?? [])),
+    [queryClient],
   );
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] =
-    useState<(typeof typeOptions)[number]>("ALL");
-  const [statusFilter, setStatusFilter] =
-    useState<(typeof statusOptions)[number]>("ALL");
-  const [agentFilter, setAgentFilter] = useState("ALL");
-  const [sortKey, setSortKey] = useState<SortKey>("NEWEST");
-  const [pageSize, setPageSize] = useState(pageSizeOptions[0]);
-  const [page, setPage] = useState(1);
+  // Filters, sort and page live in a Zustand store kept for the tab.
+  const { search, typeFilter, statusFilter, agentFilter, sortKey, pageSize, page } = useKnowledgeListStore(
+    useShallow((state) => ({
+      search: state.search,
+      typeFilter: state.typeFilter,
+      statusFilter: state.statusFilter,
+      agentFilter: state.agentFilter,
+      sortKey: state.sortKey,
+      pageSize: state.pageSize,
+      page: state.page,
+    })),
+  );
+  const { setSearch, setTypeFilter, setStatusFilter, setAgentFilter, setSortKey, setPageSize, setPage } = useKnowledgeListStore.getState();
   const [timeZone, setTimeZone] = useState<string | null>(null);
   const [rowMenu, setRowMenu] = useState<RowMenuState | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -438,6 +473,8 @@ export function KnowledgeBaseClient({
 
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    // Restore this tab's filters after hydration (see the store).
+    void useKnowledgeListStore.persist.rehydrate();
   }, []);
 
   const agentOptions = useMemo(() => {
@@ -528,41 +565,11 @@ export function KnowledgeBaseClient({
     [sources],
   );
 
-  const hasIndexingSources = summary.indexing > 0;
   const usesPinecone =
     pineconeConfigured || sources.some((source) => source.vectorStore === "pinecone");
   const menuSource = rowMenu ? sources.find((source) => source.id === rowMenu.id) : null;
 
-  const refreshSources = useCallback(async () => {
-    const response = await fetch("/api/knowledge-sources", {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      knowledgeSources?: Array<KnowledgeSourceItem>;
-    };
-
-    if (!response.ok || !data.knowledgeSources) {
-      throw new Error(data.error ?? "Unable to refresh knowledge sources.");
-    }
-
-    setSources(data.knowledgeSources);
-  }, []);
-
-  // Indexing runs in the background; poll until every source settles.
-  useEffect(() => {
-    if (!hasIndexingSources) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      void refreshSources().catch(() => undefined);
-    }, 4000);
-
-    return () => window.clearInterval(interval);
-  }, [hasIndexingSources, refreshSources]);
+  const refreshSources = useCallback(() => queryClient.invalidateQueries({ queryKey: KNOWLEDGE_SOURCES_KEY }), [queryClient]);
 
   useEffect(() => {
     if (!rowMenu) {
@@ -938,7 +945,54 @@ export function KnowledgeBaseClient({
     });
   }, [sources]);
 
-  async function handleBulk(action: "reindex" | "delete") {
+  const bulkMutation = useMutation({
+    mutationFn: async ({ action, ids }: { action: "reindex" | "delete"; ids: string[] }): Promise<BulkResult> => {
+      const response = await fetch("/api/knowledge-sources/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ids }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; processed?: number; failed?: string[] };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "The selected sources could not be updated. Try again.");
+      }
+
+      return { action, ids, processed: data.processed, failed: data.failed };
+    },
+    onSuccess: ({ action, ids, processed, failed: failedIds }) => {
+      const failed = new Set(failedIds ?? []);
+      const done = ids.filter((id) => !failed.has(id));
+
+      // Show the result at once, then let the list refetch the real statuses.
+      if (action === "delete") {
+        setSources((current) => current.filter((source) => !done.includes(source.id)));
+      } else {
+        setSources((current) =>
+          current.map((source) => (done.includes(source.id) ? { ...source, status: "PENDING", processingError: null } : source)),
+        );
+      }
+      void refreshSources();
+
+      setSelectedIds(new Set(failed));
+      const count = processed ?? done.length;
+      setSuccess(
+        action === "delete"
+          ? `${count} source${count === 1 ? "" : "s"} deleted.${failed.size ? ` ${failed.size} could not be deleted.` : ""}`
+          : `${count} source${count === 1 ? "" : "s"} queued for re-indexing.`,
+      );
+    },
+    onError: (thrown) => {
+      setError(
+        thrown instanceof TypeError
+          ? "The selected sources could not be updated. Check your connection and try again."
+          : thrown.message,
+      );
+    },
+    onSettled: () => setBulkAction(null),
+  });
+
+  function handleBulk(action: "reindex" | "delete") {
     const ids = [...selectedIds];
 
     if (ids.length === 0) {
@@ -957,43 +1011,7 @@ export function KnowledgeBaseClient({
     setError("");
     setSuccess("");
     setBulkAction(action);
-
-    try {
-      const response = await fetch("/api/knowledge-sources/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ids }),
-      });
-      const data = (await response.json().catch(() => ({}))) as { error?: string; processed?: number; failed?: string[] };
-
-      if (!response.ok) {
-        setError(data.error ?? "The selected sources could not be updated. Try again.");
-        return;
-      }
-
-      const failed = new Set(data.failed ?? []);
-      const done = ids.filter((id) => !failed.has(id));
-
-      if (action === "delete") {
-        setSources((current) => current.filter((source) => !done.includes(source.id)));
-      } else {
-        setSources((current) =>
-          current.map((source) => (done.includes(source.id) ? { ...source, status: "PENDING", processingError: null } : source)),
-        );
-      }
-
-      setSelectedIds(new Set(failed));
-      const count = data.processed ?? done.length;
-      setSuccess(
-        action === "delete"
-          ? `${count} source${count === 1 ? "" : "s"} deleted.${failed.size ? ` ${failed.size} could not be deleted.` : ""}`
-          : `${count} source${count === 1 ? "" : "s"} queued for re-indexing.`,
-      );
-    } catch {
-      setError("The selected sources could not be updated. Check your connection and try again.");
-    } finally {
-      setBulkAction(null);
-    }
+    bulkMutation.mutate({ action, ids });
   }
 
   async function handleDelete(source: KnowledgeSourceItem) {
@@ -1245,7 +1263,7 @@ export function KnowledgeBaseClient({
           <button
             type="button"
             disabled={bulkAction !== null}
-            onClick={() => void handleBulk("reindex")}
+            onClick={() => handleBulk("reindex")}
             className="rounded-xl border border-white/10 bg-[#161616] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#1f1f1f] disabled:opacity-50"
           >
             {bulkAction === "reindex" ? "Re-indexing..." : "Re-index"}
@@ -1253,7 +1271,7 @@ export function KnowledgeBaseClient({
           <button
             type="button"
             disabled={bulkAction !== null}
-            onClick={() => void handleBulk("delete")}
+            onClick={() => handleBulk("delete")}
             className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-100 transition hover:bg-red-500/20 disabled:opacity-50"
           >
             {bulkAction === "delete" ? "Deleting..." : "Delete"}

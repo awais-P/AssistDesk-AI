@@ -18,6 +18,17 @@ Entry template:
 
 ---
 
+## 2026-11-21 — Zustand and TanStack Query on the knowledge base list (SRS CON-2)
+**Module:** M10 / SRS CON-2   **Author:** Claude (with Muhammad Awais)
+**Files:** new `src/components/providers/query-provider.tsx`, `src/lib/stores/knowledge-list-store.ts`; changed `app/dashboard/layout.tsx`, `src/components/dashboard/knowledge-base-client.tsx`; tests `tests/unit/knowledge-list-store.test.ts` (UT-73), `tests/ui/knowledge-base.spec.ts` (UI-KB-08)
+
+**Updated:**
+- **TanStack Query** (one client for the dashboard): the knowledge base list is a query. It starts from the server-rendered list, refetches every 4 s while something is indexing (this replaces the hand-written polling), when the tab regains focus and after changes; bulk re-index/delete is a mutation that updates the list at once and then refetches the real statuses.
+- **Zustand**: the table's search, filters, sort, page size and page are a store kept for the browser tab, so opening a source and coming back (or reloading) keeps the same view. It is restored after hydration, so the server and browser render the same first frame.
+- Both libraries were installed but unused since the start (DOC-03); they are now used where they help, and the rest of the dashboard keeps server components and plain state.
+
+---
+
 ## 2026-11-20 — Escalation alerts by email and Slack, and round-robin routing
 **Module:** M9 (with M8's notifier)   **Author:** Claude (with Muhammad Awais)
 **Files:** new `src/lib/escalation-alerts.ts`, `src/lib/escalation-routing.ts`, `src/lib/slack-webhook.ts` (moved out of `leads.ts`), `app/api/escalations/alerts/route.ts`, `app/api/escalations/alerts/test/route.ts`, `src/components/dashboard/escalation-alerts-section.tsx`, migration `20261120120000_escalation_alerts_routing`; changed `prisma/schema.prisma`, `src/lib/escalation.ts`, `src/lib/leads.ts`, `app/api/leads/settings/route.ts`, `src/components/dashboard/escalation-settings-workspace.tsx`, `escalations-workspace.tsx`, `chats-workspace.tsx`; tests `tests/unit/escalation-routing-alerts.test.ts` (UT-72), `tests/integration/escalation-routing.int.ts` (IT-35), `tests/ui/escalations.spec.ts` (UI-ESC-05)
